@@ -1,0 +1,17 @@
+{
+    "elasticsearch": {
+        "hosts": "https://127.0.0.1:9200/",
+        "basic_auth_username": "elastic",
+        "basic_auth_password": "hnUB+cMBlrpxWfeLOuqz"
+    },
+    "log_file": "myapp.log",
+    "model_path": "bge_large_zh",
+    "stopwords": "stopwords.txt",
+    "secret_token": "Sundeinfollm_KmcGPT",
+    "external_api": {
+        "llm_ans": "http://106.14.20.122:8086/llm/ans",
+        "backend_notify": "http://172.16.20.52:82/sync/syncCallback"
+    },
+    "file_storage_path": "F:\\testpdf",
+    "record_path": "QA_record.json"
+}
