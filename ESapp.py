@@ -77,8 +77,10 @@ model.eval()
 
 predefined_qa = {
     "你是谁？": "我是小孔，是双地信息有限公司基于大模型的办公助手。",
-    "你好？": "您好，我是小孔，是双地信息有限公司基于大模型的办公助手，欢迎向我提问",
+    "你是谁": "我是小孔，是双地信息有限公司基于大模型的办公助手。",
+    "你好": "您好，我是小孔，是双地信息有限公司基于大模型的办公助手\n欢迎向我提问^_^",
     "你叫什么？": "我是小孔，是双地信息有限公司基于大模型的办公助手。",
+    "你叫什么": "我是小孔，是双地信息有限公司基于大模型的办公助手。",
     "如何使用此服务？": "您可以在选定的助手中向我提问，我将帮您检索您想找的内容。",
     "我要怎么开始？": "您可以在选定的助手中向我提问，我将帮您检索您想找的内容。",
     "如何提问？": "在提问框中输入您的问题，然后点击“发送”图标即可。",
@@ -133,7 +135,7 @@ def process_pdf_file(pdf_path):
                     if filtered_text not in filtered_texts:
                         filtered_texts.add(filtered_text)
                         doc_list.append({'page': page_index, 'text': filtered_text})
-                        print(f"Added text (Page {page_index}): {filtered_text[:30]}...")  # 打印文本的前30个字符
+                        # print(f"Added text (Page {page_index}): {filtered_text[:30]}...")  # 打印文本的前30个字符
     except Exception as e:
         logger.error("PDF文件 %s 处理过程出现错误: %s", pdf_path, str(e))
         print(f"PDF文件{pdf_path}处理过程出现错误: {str(e)}")
@@ -395,9 +397,10 @@ def build_file_index():
 def get_open_ans():
     data = request.json
     query = data.get('query')
-    response = requests.post(llm_ans_api, json={'query': query, 'loratype': 'qa'}).json()
+    prompt = f"你是帮我解决办公相关问题的助手，请你根据你的知识库回答这个问题：{query}\n请用尽量亲切的语气回答问题"
+    response = requests.post(f'http://106.14.20.122:8086/llm/ans', json={'query': prompt, 'loratype': 'qa'}).json()
     ans = response['ans']
-    return ans
+    return jsonify({'answer': ans, 'matches': []}), 200
 
 
 def get_ans(query, refs):
@@ -407,7 +410,7 @@ def get_ans(query, refs):
         prex += f"[{i + 1}]:{ref}\n"
 
     query = extend_query(query)
-    query = f"{prex}\n问题：{query}\n：你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。如果回答内容在30字以内，请在回答之后将该段原文总结，不要太短。"
+    query = f"{prex}\n问题：{query}\n：你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。如果回答内容在30字以内，请在回答之后将上述三段文本进行总结，不要重复。"
     print("最后的prompt:", query)
     logger.info("prompt: %s", query)
     # print("prompt:", query)
