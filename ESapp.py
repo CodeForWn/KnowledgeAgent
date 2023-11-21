@@ -29,7 +29,10 @@ from urllib3.exceptions import InsecureRequestWarning
 from sentence_transformers import SentenceTransformer
 import json
 # from ltp import LTP
+import queue
+import threading
 
+file_queue=queue.Queue()
 
 # 加载配置文件
 with open('es_config.json') as config_file:
@@ -348,12 +351,30 @@ def notify_backend(file_id, result, failure_reason=None):
     print("后端接口返回状态码：", response.status_code)
     return response.status_code
 
+def _push(file_data):
+    global file_queue
+    file_queue.put(file_data)
 
-@app.route('/api/build_file_index', methods=['POST'])
-def build_file_index():
-    data = request.json  # 获取前端传来的json数据
-    # 添加请求等待队列
-    
+def _thread_index_func():
+    while True:
+        try:
+            _index_func()
+        except Exception as e:
+            print("索引处理失败:",e)
+
+
+def _index_func():
+    global file_queue
+    try:
+        file_data=file_queue.get(timeout=10)
+        print("获取到队列语料")
+        _process_file_data(file_data)
+        print("队列语料处理完毕")
+        return True
+    except queue.Empty as e:
+        return False
+
+def _process_file_data(data):
     user_id = data.get('user_id')
     assistant_id = data.get('assistant_id')
     file_id = data.get('file_id')
@@ -395,6 +416,13 @@ def build_file_index():
         logger.error("建立索引失败: %s_%s, 错误: %s", assistant_id, file_id, e)
         print("建立索引失败:", f'{assistant_id}_{file_id}', e)
         return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/build_file_index', methods=['POST'])
+def build_file_index():
+    data = request.json  # 获取前端传来的json数据
+    # 添加请求等待队列
+    _push(data)
+    return jsonify({"status": "success", "message": "语料已接收，准备处理。。。"})
 
 
 def get_history(session_id, token):
@@ -606,4 +634,6 @@ def delete_index(index_name):
 
 
 if __name__ == '__main__':
+    thread_index=threading.Thread(target=_thread_index_func())
+    thread_index.start()
     app.run(host='0.0.0.0', port=5777, debug=False)
