@@ -25,7 +25,12 @@ KmcGPT是一个基于最新自然语言处理技术的智能问答系统，旨�
 
 ## 使用方法
 
-详细的安装、配置和使用方法将在项目的Wiki或文档部分提供。
+- 准备好miniconda或Anaconda环境，建立一个python3.10环境
+- ```bash
+~/miniconda3/bin/conda create -n kmccode_env python=3.10
+while read requirement; do conda install --yes $requirement || pip install $requirement; done < requirements.txt
+sudo yum install -y gcc gcc-c++ poppler-cpp-devel python3-devel
+
 
 ## 支持和反馈
 
