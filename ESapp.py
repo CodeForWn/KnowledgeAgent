@@ -28,7 +28,7 @@ import warnings
 from urllib3.exceptions import InsecureRequestWarning
 from sentence_transformers import SentenceTransformer
 import json
-from ltp import LTP
+# from ltp import LTP
 
 
 # 加载配置文件
@@ -122,7 +122,7 @@ def process_pdf_file(pdf_path):
         logger.info("加载 %d 页，文件源：%s", len(pages), pdf_path)
         logger.info("按页处理开始。。。")
         stopwords = load_stopwords("stopwords.txt")
-        text_splitter = CharacterTextSplitter(chunk_size=350, chunk_overlap=0, separator='\n', length_function=len)
+        text_splitter = CharacterTextSplitter(chunk_size=400, chunk_overlap=40, separator='\n', length_function=len)
         document_texts = set()
         filtered_texts = set()  # 存储处理后的文本
         for page_index, page in enumerate(pages, start=1):
@@ -134,7 +134,7 @@ def process_pdf_file(pdf_path):
                     filtered_text = ''.join(word for word, flag in words if word not in stopwords)
                     if filtered_text not in filtered_texts:
                         filtered_texts.add(filtered_text)
-                        doc_list.append({'page': page_index, 'text': filtered_text})
+                        doc_list.append({'page': page_index, 'text': filtered_text, 'original_text': text})
                         # print(f"Added text (Page {page_index}): {filtered_text[:30]}...")  # 打印文本的前30个字符
     except Exception as e:
         logger.error("PDF文件 %s 处理过程出现错误: %s", pdf_path, str(e))
@@ -312,6 +312,7 @@ def create_es_index(user_id, tenant_id, assistant_id, file_id, file_name, downlo
     for item in doc_list:
         page = item['page']
         text = item['text']
+        original_text = item['original_text']
         embed = cal_passage_embed(text)
         document = {
             "user_id": user_id,
@@ -322,6 +323,7 @@ def create_es_index(user_id, tenant_id, assistant_id, file_id, file_name, downlo
             "download_path": download_path,
             "page": page,
             "text": text,
+            "original_text": original_text,
             "embed": embed
         }
         es.index(index=index_name, document=document)
@@ -343,12 +345,15 @@ def notify_backend(file_id, result, failure_reason=None):
         payload['failureReason'] = failure_reason
 
     response = requests.post(url, json=payload, headers=headers)
+    print("后端接口返回状态码：", response.status_code)
     return response.status_code
 
 
 @app.route('/api/build_file_index', methods=['POST'])
 def build_file_index():
     data = request.json  # 获取前端传来的json数据
+    # 添加请求等待队列
+    
     user_id = data.get('user_id')
     assistant_id = data.get('assistant_id')
     file_id = data.get('file_id')
@@ -392,25 +397,53 @@ def build_file_index():
         return jsonify({"status": "error", "message": str(e)})
 
 
+def get_history(session_id, token):
+    url = f"http://172.16.20.154:39250/api/client/answerhistory/getOpen?sessionId={session_id}"
+    headers = {"token": token}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json().get("data", [])
+    else:
+        return []
+
+
+def generate_prompt(query, history):
+    overall_instruction = "你是复旦大学知识工场实验室训练出来的语言模型CuteGPT。给定任务描述，请给出对应请求的回答。\n"
+    prompt = overall_instruction
+    for item in history:
+        prompt += "问：{}\n答：{}\n".format(item['question'], item['content'])
+    prompt += "问：{}\n答：\n".format(query)
+    return prompt
+
+
 # 获得开放性回答
 @app.route('/api/get_open_ans', methods=['POST'])
 def get_open_ans():
     data = request.json
+    session_id = data.get('session_id')
+    token = data.get('token')
     query = data.get('query')
-    prompt = f"你是帮我解决办公相关问题的助手，请你根据你的知识库回答这个问题：{query}\n请用尽量亲切的语气回答问题"
+    # 获取历史对话内容
+    history = get_history(session_id, token)
+
+    # 构建新的prompt
+    prompt = generate_prompt(query, history)
+
+    # 调用大模型接口
     response = requests.post(f'http://106.14.20.122:8086/llm/ans', json={'query': prompt, 'loratype': 'qa'}).json()
     ans = response['ans']
+
     return jsonify({'answer': ans, 'matches': []}), 200
 
 
 def get_ans(query, refs):
     ref_list = [k['text'] for k in refs]
-    prex = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，然后基于这些内容，回答后面的问题：\n"
+    prex = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，请仔细阅读，然后基于这些内容，回答后面的问题：\n"
     for i, ref in enumerate(ref_list):
         prex += f"[{i + 1}]:{ref}\n"
 
     query = extend_query(query)
-    query = f"{prex}\n问题：{query}\n：你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。如果回答内容在30字以内，请在回答之后将上述三段文本进行总结，不要重复。"
+    query = f"{prex}\n问题：{query}\n：你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。\n注意：直接输出回答，回答中不要出现”根据上述文本“这样的内容，不要重复。"
     print("最后的prompt:", query)
     logger.info("prompt: %s", query)
     # print("prompt:", query)
@@ -490,6 +523,7 @@ def answer_question():
             print("命中结果")
             hits = result['hits']['hits'][:top_k]
             refs = [{'text': hit['_source']['text'],
+                     'original_text': hit['_source']['original_text'],
                      'page': hit['_source']['page'],
                      'file_id': hit['_source']['file_id'],
                      'file_name': hit['_source']['file_name'],
@@ -502,6 +536,9 @@ def answer_question():
             return jsonify({'error': '未找到相关文本片段'})
 
         ans = get_ans(query, refs)
+        # 删除回答中不需要的短语
+        ans = ans.replace("根据上述文本，", "").replace("如上所述，", "")
+
         # 返回包含匹配得分的结果
         # logger.info("回答: %s 匹配文本: %s", ans, refs)
         print('回答:', ans, '匹配文本:', refs)
