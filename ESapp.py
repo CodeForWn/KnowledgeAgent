@@ -634,6 +634,6 @@ def delete_index(index_name):
 
 
 if __name__ == '__main__':
-    thread_index=threading.Thread(target=_thread_index_func())
+    thread_index=threading.Thread(target=_thread_index_func)
     thread_index.start()
     app.run(host='0.0.0.0', port=5777, debug=False)
