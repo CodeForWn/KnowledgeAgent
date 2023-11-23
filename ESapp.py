@@ -32,7 +32,7 @@ import json
 import queue
 import threading
 
-file_queue=queue.Queue()
+file_queue = queue.Queue()
 
 # 加载配置文件
 with open('es_config.json') as config_file:
@@ -336,6 +336,11 @@ def create_es_index(user_id, tenant_id, assistant_id, file_id, file_name, downlo
     return "success"
 
 
+def pull_file_data():
+    # get file data from server
+    return []
+
+
 def notify_backend(file_id, result, failure_reason=None):
     """通知后端接口处理结果"""
     url = backend_notify_api  # 更新后的后端接口URL
@@ -351,28 +356,38 @@ def notify_backend(file_id, result, failure_reason=None):
     print("后端接口返回状态码：", response.status_code)
     return response.status_code
 
+
 def _push(file_data):
     global file_queue
     file_queue.put(file_data)
 
-def _thread_index_func():
+
+def _thread_index_func(isFirst):
     while True:
         try:
-            _index_func()
+            _index_func(isFirst)
         except Exception as e:
-            print("索引处理失败:",e)
+            print("索引处理失败:", e)
 
 
-def _index_func():
+def _index_func(isFirst):
     global file_queue
     try:
-        file_data=file_queue.get(timeout=10)
+        file_data = file_queue.get(timeout=5)
         print("获取到队列语料")
         _process_file_data(file_data)
         print("队列语料处理完毕")
         return True
     except queue.Empty as e:
+        if isFirst:
+            files = pull_file_data()
+            for file_data in files:
+                _push(file_data)
+            if len(files) == 0:
+                # get failed files from server
+                pass
         return False
+
 
 def _process_file_data(data):
     user_id = data.get('user_id')
@@ -416,6 +431,7 @@ def _process_file_data(data):
         logger.error("建立索引失败: %s_%s, 错误: %s", assistant_id, file_id, e)
         print("建立索引失败:", f'{assistant_id}_{file_id}', e)
         return jsonify({"status": "error", "message": str(e)})
+
 
 @app.route('/api/build_file_index', methods=['POST'])
 def build_file_index():
@@ -634,6 +650,9 @@ def delete_index(index_name):
 
 
 if __name__ == '__main__':
-    thread_index=threading.Thread(target=_thread_index_func)
-    thread_index.start()
+    # thread_index=threading.Thread(target=_thread_index_func)
+    # thread_index.start()
+    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(2)]
+    for t in threads:
+        t.start()
     app.run(host='0.0.0.0', port=5777, debug=False)
