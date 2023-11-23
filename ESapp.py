@@ -390,47 +390,48 @@ def _index_func(isFirst):
 
 
 def _process_file_data(data):
-    user_id = data.get('user_id')
-    assistant_id = data.get('assistant_id')
-    file_id = data.get('file_id')
-    file_name = data.get('file_name')
-    download_path = data.get('download_path')
-    tenant_id = data.get('tenant_id')
+    with app.app_context():
+        user_id = data.get('user_id')
+        assistant_id = data.get('assistant_id')
+        file_id = data.get('file_id')
+        file_name = data.get('file_name')
+        download_path = data.get('download_path')
+        tenant_id = data.get('tenant_id')
 
-    try:
-        # 下载文件并处理
-        logger.info("开始下载文件并处理: %s", file_name)
-        print("开始下载PDF文件：", file_name)
-        pdf_path = download_pdf(download_path, file_id)
-        doc_list = process_pdf_file(pdf_path)
+        try:
+            # 下载文件并处理
+            logger.info("开始下载文件并处理: %s", file_name)
+            print("开始下载PDF文件：", file_name)
+            pdf_path = download_pdf(download_path, file_id)
+            doc_list = process_pdf_file(pdf_path)
 
-        if not doc_list:
-            notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
-            logger.error("未能成功处理PDF文件: %s", file_id)
-            print("未能成功处理PDF文件:", file_id)
-            return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
+            if not doc_list:
+                notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
+                logger.error("未能成功处理PDF文件: %s", file_id)
+                print("未能成功处理PDF文件:", file_id)
+                return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
 
-        # 建立ES索引
-        logger.info("开始建立索引")
-        print("开始建立索引")
-        result = create_es_index(user_id, tenant_id, assistant_id, file_id, file_name, download_path, doc_list)
+            # 建立ES索引
+            logger.info("开始建立索引")
+            print("开始建立索引")
+            result = create_es_index(user_id, tenant_id, assistant_id, file_id, file_name, download_path, doc_list)
 
-        if result == "success":
-            notify_backend(file_id, "SUCCESS")
-            logger.info("建立索引成功: %s_%s", assistant_id, file_id)
-            print("建立索引成功:", f'{assistant_id}_{file_id}')
-            return jsonify({"status": "成功建立索引"})
-        else:
-            notify_backend(file_id, "FAILURE", result)
-            logger.error("建立索引失败: %s_%s", assistant_id, file_id)
-            print("建立索引失败:", f'{assistant_id}_{file_id}')
-            return jsonify({"status": "建立索引失败", "message": result})
+            if result == "success":
+                notify_backend(file_id, "SUCCESS")
+                logger.info("建立索引成功: %s_%s", assistant_id, file_id)
+                print("建立索引成功:", f'{assistant_id}_{file_id}')
+                return jsonify({"status": "成功建立索引"})
+            else:
+                notify_backend(file_id, "FAILURE", result)
+                logger.error("建立索引失败: %s_%s", assistant_id, file_id)
+                print("建立索引失败:", f'{assistant_id}_{file_id}')
+                return jsonify({"status": "建立索引失败", "message": result})
 
-    except Exception as e:
-        notify_backend(file_id, "FAILURE", str(e))
-        logger.error("建立索引失败: %s_%s, 错误: %s", assistant_id, file_id, e)
-        print("建立索引失败:", f'{assistant_id}_{file_id}', e)
-        return jsonify({"status": "error", "message": str(e)})
+        except Exception as e:
+            notify_backend(file_id, "FAILURE", str(e))
+            logger.error("建立索引失败: %s_%s, 错误: %s", assistant_id, file_id, e)
+            print("建立索引失败:", f'{assistant_id}_{file_id}', e)
+            return jsonify({"status": "error", "message": str(e)})
 
 
 @app.route('/api/build_file_index', methods=['POST'])
