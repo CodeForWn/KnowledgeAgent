@@ -1,0 +1,53 @@
+{
+  "development": {
+    "elasticsearch": {
+        "hosts": "https://127.0.0.1:9200/",
+        "basic_auth_username": "elastic",
+        "basic_auth_password": "hnUB+cMBlrpxWfeLOuqz"
+    },
+    "log_file": "myapp.log",
+    "model_path": "bge_large_zh",
+    "stopwords": "stopwords.txt",
+    "secret_token": "Sundeinfollm_KmcGPT",
+    "external_api": {
+        "llm_ans": "http://106.14.20.122:8086/llm/ans",
+        "backend_notify": "http://172.16.20.52:82/sync/syncCallback"
+    },
+    "file_storage_path": "F:\\testpdf",
+    "record_path": "QA_record.json"
+},
+  "testing": {
+    "elasticsearch": {
+        "hosts": "https://172.16.20.154:39252/",
+        "basic_auth_username": "elastic",
+        "basic_auth_password": "ypDJzjoqU6+LRMx8IbYt"
+    },
+    "log_file": "myapp.log",
+    "model_path": "/pro_work/docker_home/work/kmc/kmccode/bge_large_zh/",
+    "stopwords": "stopwords.txt",
+    "secret_token": "Sundeinfollm_KmcGPT",
+    "external_api": {
+        "llm_ans": "http://106.14.20.122:8086/llm/ans",
+        "backend_notify": "http://172.16.20.154:39250/sync/syncCallback"
+    },
+    "file_storage_path": "/pro_work/docker_home/work/kmc/kmccode/kmctemp/",
+    "record_path": "QA_record.json"
+},
+  "production": {
+    "elasticsearch": {
+        "hosts": "http://127.0.0.1:9200/",
+        "basic_auth_username": "elastic",
+        "basic_auth_password": "=3KtbmJug4-Skm2n3oV*"
+    },
+    "log_file": "myapp.log",
+    "model_path": "bge_large_zh",
+    "stopwords": "stopwords.txt",
+    "secret_token": "Sundeinfollm_KmcGPT",
+    "external_api": {
+        "llm_ans": "http://106.14.20.122:8086/llm/ans",
+        "backend_notify": "http://119.45.114.43/sync/syncCallback"
+    },
+    "file_storage_path": "/work/kmc/kmcPython/KmcGPT/kmctemp/",
+    "record_path": "QA_record.json"
+}
+}
