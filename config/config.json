@@ -7,7 +7,7 @@
     },
     "log_file": "myapp.log",
     "model_path": "bge_large_zh",
-    "history_api_url": "http://172.16.20.52:port/api/client/answerhistory/getOpen?sessionId=",
+    "history_api_url": "http://172.16.20.52:82/client/answerhistory/getOpen?sessionId=",
     "stopwords": "stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
     "external_api": {
@@ -43,7 +43,7 @@
     },
     "log_file": "myapp.log",
     "model_path": "bge_large_zh",
-    "history_api_url": "http://dev-server:port/api/client/answerhistory/getOpen?sessionId=",
+    "history_api_url": "http://119.45.114.43/api/client/answerhistory/getOpen?sessionId=",
     "stopwords": "stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
     "external_api": {
