@@ -34,22 +34,26 @@ import threading
 
 file_queue = queue.Queue()
 
+# 读取环境变量
+env = os.getenv('ENV', 'development')  # 如果没有设置，默认为'development'
+
 # 加载配置文件
-with open('es_config.json') as config_file:
+with open('config.json') as config_file:
     config = json.load(config_file)
+    env_config = config.get(env, {})  # 获取指定环境的配置
 
 # 使用配置
-elasticsearch_hosts = config['elasticsearch']['hosts']
-basic_auth_username = config['elasticsearch']['basic_auth_username']
-basic_auth_password = config['elasticsearch']['basic_auth_password']
-log_file = config['log_file']
-stop_words = config['stopwords']
-model_path = config['model_path']
-secret_token = config['secret_token']
-llm_ans_api = config['external_api']['llm_ans']
-backend_notify_api = config['external_api']['backend_notify']
-file_storage_path = config['file_storage_path']
-record_path = config['record_path']
+elasticsearch_hosts = env_config['elasticsearch']['hosts']
+basic_auth_username = env_config['elasticsearch']['basic_auth_username']
+basic_auth_password = env_config['elasticsearch']['basic_auth_password']
+log_file = env_env_config['log_file']
+stop_words = env_config['stopwords']
+model_path = env_config['model_path']
+secret_token = env_config['secret_token']
+llm_ans_api = env_config['external_api']['llm_ans']
+backend_notify_api = env_config['external_api']['backend_notify']
+file_storage_path = env_config['file_storage_path']
+record_path = env_config['record_path']
 # 创建日志记录器，并设置日志级别
 logger = logging.getLogger('myapp')
 logger.setLevel(logging.INFO)
