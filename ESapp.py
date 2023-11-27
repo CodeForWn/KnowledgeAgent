@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 import re
 import urllib3
@@ -38,7 +39,7 @@ file_queue = queue.Queue()
 env = os.getenv('ENV', 'development')  # 如果没有设置，默认为'development'
 
 # 加载配置文件
-with open('config.json') as config_file:
+with open(r"E:\工作\KmcGPT\KmcGPT\config\config.json", 'r', encoding='utf-8') as config_file:
     config = json.load(config_file)
     env_config = config.get(env, {})  # 获取指定环境的配置
 
@@ -46,7 +47,7 @@ with open('config.json') as config_file:
 elasticsearch_hosts = env_config['elasticsearch']['hosts']
 basic_auth_username = env_config['elasticsearch']['basic_auth_username']
 basic_auth_password = env_config['elasticsearch']['basic_auth_password']
-log_file = env_env_config['log_file']
+log_file = env_config['log_file']
 stop_words = env_config['stopwords']
 history_api_url = env_config['history_api_url']
 model_path = env_config['model_path']
@@ -449,20 +450,26 @@ def build_file_index():
 
 def get_history(session_id, token):
     url = f"{history_api_url}{session_id}"
-    headers = {"token": token}
-    response = requests.get(url, headers=headers)
+    headers = {"Token": token}
+    response = requests.post(url, headers=headers)
     if response.status_code == 200:
+        print("获取历史记录成功")
         return response.json().get("data", [])
     else:
+        print(f"Error: {response.status_code}")
         return []
 
 
 def generate_prompt(query, history):
     overall_instruction = "你是复旦大学知识工场实验室训练出来的语言模型CuteGPT。给定任务描述，请给出对应请求的回答。\n"
     prompt = overall_instruction
-    for item in history:
-        prompt += "问：{}\n答：{}\n".format(item['question'], item['content'])
-    prompt += "问：{}\n答：\n".format(query)
+
+    if history:
+        for item in history:
+            if 'question' in item and 'content' in item:
+                prompt += f"问：{item['question']}\n答：{item['content']}\n"
+
+    prompt += f"问：{query}\n答：\n"
     return prompt
 
 

@@ -114,16 +114,16 @@ def test_get_open_answer():
     response = requests.post(url, json=data)
     # 解析响应JSON内容
     try:
-        response_data = response.text
+        response_data = response.json()
         print(response_data)
     except Exception as e:
         print(f"获取问答失败: {str(e)}")
 
 
 if __name__ == '__main__':
-    test_build_file_index()
+    # test_build_file_index()
     # read_index_content()
     # test_get_answer()
-    # test_get_open_answer()
+    test_get_open_answer()
     # test_delete_index("0001_2204")
 
