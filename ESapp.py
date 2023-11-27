@@ -48,6 +48,7 @@ basic_auth_username = env_config['elasticsearch']['basic_auth_username']
 basic_auth_password = env_config['elasticsearch']['basic_auth_password']
 log_file = env_env_config['log_file']
 stop_words = env_config['stopwords']
+history_api_url = env_config['history_api_url']
 model_path = env_config['model_path']
 secret_token = env_config['secret_token']
 llm_ans_api = env_config['external_api']['llm_ans']
@@ -447,7 +448,7 @@ def build_file_index():
 
 
 def get_history(session_id, token):
-    url = f"http://172.16.20.154:39250/api/client/answerhistory/getOpen?sessionId={session_id}"
+    url = f"{history_api_url}{session_id}"
     headers = {"token": token}
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
@@ -479,7 +480,7 @@ def get_open_ans():
     prompt = generate_prompt(query, history)
 
     # 调用大模型接口
-    response = requests.post(f'http://106.14.20.122:8086/llm/ans', json={'query': prompt, 'loratype': 'qa'}).json()
+    response = requests.post(llm_ans_api, json={'query': prompt, 'loratype': 'qa'}).json()
     ans = response['ans']
 
     return jsonify({'answer': ans, 'matches': []}), 200
