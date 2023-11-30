@@ -32,7 +32,7 @@ import json
 # from ltp import LTP
 import queue
 import threading
-
+import spacy
 file_queue = queue.Queue()
 
 # 读取环境变量
@@ -115,10 +115,116 @@ def extend_query(query):
         return query
 
 
+# 加载停用词列表
 def load_stopwords(filepath):
     """读取停用词文件"""
     with open(filepath, "r", encoding="utf-8") as f:
         return [line.strip() for line in f]
+
+
+# 调用小模型来进行文本分割
+def spacy_chinese_text_splitter(text, max_length=400):
+    """
+    使用spaCy的中文模型分割文本。
+    :param text: 需要分割的文本。
+    :param max_length: 每个文本块的最大长度。
+    :return: 分割后的文本块列表。
+    """
+    # 加载spaCy中文模型
+    nlp = spacy.load("zh_core_web_sm")
+    doc = nlp(text)
+
+    current_chunk = ""
+    chunks = []
+
+    for sent in doc.sents:
+        sentence = sent.text.strip()
+        if len(current_chunk) + len(sentence) <= max_length:
+            current_chunk += sentence
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = sentence
+
+    if current_chunk:  # 添加最后一个片段
+        chunks.append(current_chunk)
+
+    return chunks
+
+
+# 新的文本分割模型
+def spacy_chinese_text_splitter(text, max_length=400):
+    # 加载spaCy中文模型
+    nlp = spacy.load("zh_core_web_sm")
+    doc = nlp(text)
+
+    chunks = []
+    current_chunk = ""
+    sentence_delimiters = re.compile(r'[。！？!?]')  # 匹配中文和英文的句号、感叹号、问号
+
+    for sent in doc.sents:
+        sentence = sent.text.strip()
+        # 检查句子长度和当前块长度之和是否超过最大长度
+        if len(sentence) + len(current_chunk) > max_length:
+            # 如果当前块不为空，保存当前块，并开始一个新块
+            if current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = ""
+            # 如果句子长度本身超过最大长度，需要进一步分割
+            if len(sentence) > max_length:
+                # 使用正则表达式在句子分隔符处分割
+                sub_sentences = sentence_delimiters.split(sentence)
+                sub_chunk = ""
+                for sub_sentence in sub_sentences:
+                    # 检查分割后的句子是否为空，以避免添加空字符串
+                    if sub_sentence:
+                        # 如果子句子与分隔符一起的长度小于最大长度，添加分隔符
+                        if len(sub_chunk + sub_sentence) + 1 <= max_length:
+                            sub_chunk += sub_sentence + "。"  # 假设句子以句号结束
+                        else:
+                            # 如果子块不为空，保存子块
+                            if sub_chunk:
+                                chunks.append(sub_chunk)
+                            sub_chunk = sub_sentence + "。"  # 开始新的子块
+                # 检查并添加最后的子块
+                if sub_chunk:
+                    chunks.append(sub_chunk)
+            else:
+                # 如果整个句子长度小于最大长度，直接开始新块
+                current_chunk = sentence
+        else:
+            # 如果没有超过最大长度，继续累积句子到当前块
+            current_chunk += sentence
+
+    # 保存最后的块
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return chunks
+
+
+def custom_text_splitter(text, max_length=400,):
+    """
+    自定义文本分割函数，确保在句号后进行分割。
+    """
+    sentences = re.split(r'(?<=。)', text)
+    current_chunk = ""
+    chunks = []
+
+    for sentence in sentences:
+        if not sentence.endswith('。'):
+            sentence += '。'  # 如果句子末尾没有句号，则添加
+        if len(current_chunk) + len(sentence) <= max_length:
+            current_chunk += sentence
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = sentence
+
+    if current_chunk:  # 添加最后一个片段
+        chunks.append(current_chunk)
+
+    return chunks
 
 
 # 读取所有类型文件
@@ -131,11 +237,10 @@ def process_pdf_file(pdf_path):
         logger.info("加载 %d 页，文件源：%s", len(pages), pdf_path)
         logger.info("按页处理开始。。。")
         stopwords = load_stopwords("stopwords.txt")
-        text_splitter = CharacterTextSplitter(chunk_size=400, chunk_overlap=40, separator='\n', length_function=len)
         document_texts = set()
         filtered_texts = set()  # 存储处理后的文本
         for page_index, page in enumerate(pages, start=1):
-            split_text = text_splitter.split_text(page.page_content)
+            split_text = spacy_chinese_text_splitter(page.page_content, max_length=400)
             for text in split_text:
                 if text not in document_texts:
                     document_texts.add(text)
@@ -509,6 +614,61 @@ def get_ans(query, refs):
     return ans
 
 
+# 对PDF进行总结和问题推荐
+@app.route('/api/generate_summary_and_questions', methods=['POST'])
+def generate_summary_and_questions():
+    try:
+        data = request.json
+        file_id = data['file_id']
+        ref_num = data.get('ref_num', 5)  # 默认前5段
+
+        es = Elasticsearch(
+            hosts=[elasticsearch_hosts],
+            verify_certs=False,
+            basic_auth=(basic_auth_username, basic_auth_password)
+        ).options(request_timeout=20, retry_on_timeout=True, ignore_status=[400, 404])
+
+        # 检查是否已有存储的答案
+        existing_answer = es.search(index="answers_index", body={
+            "query": {"term": {"file_id": file_id}}
+        })
+
+        if 'hits' in existing_answer and 'hits' in existing_answer['hits'] and existing_answer['hits']['hits']:
+            print(f"找到了文件ID {file_id} 的存储答案")
+            stored_answer = existing_answer['hits']['hits'][0]['_source']['sum_rec']
+            return jsonify({'answer': stored_answer, 'matches': []}), 200
+
+        print(f"正在查询文件ID {file_id} 的前 {ref_num} 段文本")
+        query = {
+            "query": {
+                "term": {"file_id": file_id}
+            },
+            "size": ref_num,
+            "_source": ["text"]
+        }
+        results = es.search(index='_all', **query)
+
+        if 'hits' in results and 'hits' in results['hits']:
+            ref_list = [hit['_source']['text'] for hit in results['hits']['hits']]
+            prex = f"参考这一篇文章的前{len(ref_list)}段文本，简要的多方面的概括文章提到了哪些内容，并生成3个推荐问题并用序号列出（推荐问题应该能根据文章的内容回答）：\n"
+            for i, ref in enumerate(ref_list):
+                prex += f"{i+1}:{ref}\n"
+            response = requests.post(llm_ans_api, json={'query': prex, 'loratype': 'qa'}).json()
+            ans = response['ans']
+
+            # 存储新生成的答案
+            es.index(index="answers_index", document={"file_id": file_id, "sum_rec": ans})
+        else:
+            print("未找到文件ID {file_id} 的文本段落")
+            ans = "未找到相关信息"
+
+        return jsonify({'answer': ans, 'matches': []}), 200
+
+    except Exception as e:
+        print(f"处理过程中出现错误: {e}")
+        return jsonify({'error': '内部错误，请联系管理员'}), 500
+
+
 @app.route('/api/get_answer', methods=['POST'])
 def answer_question():
     query_body = {}
@@ -663,9 +823,8 @@ def delete_index(index_name):
 
 
 if __name__ == '__main__':
-    # thread_index=threading.Thread(target=_thread_index_func)
-    # thread_index.start()
     threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(2)]
     for t in threads:
         t.start()
+
     app.run(host='0.0.0.0', port=5777, debug=False)

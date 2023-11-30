@@ -11,10 +11,10 @@ def test_build_file_index():
     data = {
         'user_id': 'admin',
         'assistant_id': '0001',
-        'file_id': '2204',
+        'file_id': '2206',
         'tenant_id': '同济',
-        'file_name': '孙家栋.pdf',
-        'download_path': 'http://kmcgpt.sundeinfo.cn/api/dev/file/download?id=1714247829270659074'
+        'file_name': '校园一卡通 使用指南.pdf',
+        'download_path': 'http://172.16.20.154:39250/api/dev/file/download?id=1729738702185443329'
     }
 
     # 创建一个Session对象
@@ -79,7 +79,7 @@ def test_get_answer():
     # 定义要发送的数据，包含 assistant_id、query 等字段
     data = {
         "assistant_id": "0001",
-        "query": '两弹一星',
+        "query": '一卡通的分类和功能',
         "func": "embed",
         "ref_num": 3
     }
@@ -107,7 +107,26 @@ def test_get_open_answer():
 
     # 定义要发送的数据，包含query字段
     data = {
-        "query": '两弹一星是什么？',
+        "query": '一卡通的分类和功能',
+    }
+
+    # 发送POST请求到问答接口
+    response = requests.post(url, json=data)
+    # 解析响应JSON内容
+    try:
+        response_data = response.json()
+        print(response_data)
+    except Exception as e:
+        print(f"获取问答失败: {str(e)}")
+
+
+def test_summary(file_id):
+    # 定义接口的URL
+    url = "http://127.0.0.1:5777/api/generate_summary_and_questions"  # 确保URL是正确的，对应Flask应用的地址
+
+    # 定义要发送的数据，包含query字段
+    data = {
+        "file_id": file_id,
     }
 
     # 发送POST请求到问答接口
@@ -123,7 +142,8 @@ def test_get_open_answer():
 if __name__ == '__main__':
     # test_build_file_index()
     # read_index_content()
-    # test_get_answer()
-    test_get_open_answer()
+    test_get_answer()
+    # test_get_open_answer()
+    test_summary(2206)
     # test_delete_index("0001_2204")
 
