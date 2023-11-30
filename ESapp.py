@@ -51,6 +51,7 @@ log_file = env_config['log_file']
 stop_words = env_config['stopwords']
 history_api_url = env_config['history_api_url']
 model_path = env_config['model_path']
+spacy_model = env_config['spacy_model']
 secret_token = env_config['secret_token']
 llm_ans_api = env_config['external_api']['llm_ans']
 backend_notify_api = env_config['external_api']['backend_notify']
@@ -124,38 +125,8 @@ def load_stopwords(filepath):
 
 # 调用小模型来进行文本分割
 def spacy_chinese_text_splitter(text, max_length=400):
-    """
-    使用spaCy的中文模型分割文本。
-    :param text: 需要分割的文本。
-    :param max_length: 每个文本块的最大长度。
-    :return: 分割后的文本块列表。
-    """
     # 加载spaCy中文模型
-    nlp = spacy.load("zh_core_web_sm")
-    doc = nlp(text)
-
-    current_chunk = ""
-    chunks = []
-
-    for sent in doc.sents:
-        sentence = sent.text.strip()
-        if len(current_chunk) + len(sentence) <= max_length:
-            current_chunk += sentence
-        else:
-            if current_chunk:
-                chunks.append(current_chunk)
-            current_chunk = sentence
-
-    if current_chunk:  # 添加最后一个片段
-        chunks.append(current_chunk)
-
-    return chunks
-
-
-# 新的文本分割模型
-def spacy_chinese_text_splitter(text, max_length=400):
-    # 加载spaCy中文模型
-    nlp = spacy.load("zh_core_web_sm")
+    nlp = spacy.load(spacy_model)
     doc = nlp(text)
 
     chunks = []
