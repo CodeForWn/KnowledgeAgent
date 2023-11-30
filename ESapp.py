@@ -600,17 +600,20 @@ def get_open_ans():
 
 def get_ans(query, refs):
     ref_list = [k['text'] for k in refs]
-    prex = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，请仔细阅读，然后基于这些内容，回答后面的问题：\n"
+    prex = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，然后回答后面的问题：\n"
     for i, ref in enumerate(ref_list):
         prex += f"[{i + 1}]:{ref}\n"
 
     query = extend_query(query)
-    query = f"{prex}\n问题：{query}\n：你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。\n注意：直接输出回答，回答中不要出现”根据上述文本“这样的内容，不要重复。"
+    query = f"{prex}\n你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。问题：{query}\n："
     print("最后的prompt:", query)
     logger.info("prompt: %s", query)
     # print("prompt:", query)
     response = requests.post(llm_ans_api, json={'query': query, 'loratype': 'qa'}).json()
     ans = response['ans']
+    # 检查回答长度是否达到了token限制
+    if len(ans) >= max_length:
+        ans = "没有足够的信息进行推理，很抱歉没有帮助到您。"
     return ans
 
 
