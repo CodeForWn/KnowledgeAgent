@@ -2,12 +2,16 @@ import os
 import logging
 import requests
 import spacy
+import sys
 from langchain.document_loaders import PyPDFLoader
 import jieba.posseg as pseg
-from KMC_config import Config
+from config.KMC_config import Config
 import re
 import logging
 from logging.handlers import RotatingFileHandler
+sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+# config = Config(env='development')
+# config.load_config()  # 指定配置文件的路径
 
 
 class FileManager:
@@ -15,6 +19,7 @@ class FileManager:
         self.file_storage_path = config.file_storage_path
         self.spacy_model = spacy.load(config.spacy_model)
         self.backend_notify_api = config.external_api_backend_notify
+        self.stopwords = config.stopwords
         # 使用全局logger实例
         self.config = config
 
@@ -92,9 +97,8 @@ class FileManager:
         words = pseg.cut(text)
         return ''.join(word for word, flag in words if word not in stopwords)
 
-    @staticmethod
-    def load_stopwords(filepath="stopwords.txt"):
-        with open(filepath, "r", encoding="utf-8") as file:
+    def load_stopwords(self):
+        with open(self.stopwords, "r", encoding="utf-8") as file:
             return set(line.strip() for line in file)
 
     # 调用小模型来进行文本分割

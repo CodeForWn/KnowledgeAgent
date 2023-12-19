@@ -30,7 +30,9 @@ import json
 import queue
 import threading
 import spacy
-from KMC_config import Config
+import sys
+from config.KMC_config import Config
+sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
 
 
 # 处理查询语句类

@@ -49,7 +49,7 @@ def read_index_content():
         )
 
     # 查询索引内容
-    index_name = '0001_2204'
+    index_name = '0001_2206'
     query = {
         "query": {
             "match_all": {}  # 查询所有文档
@@ -80,9 +80,9 @@ def test_get_answer():
     data = {
         "assistant_id": "0001",
         "query": '一卡通的分类和功能',
-        "func": "embed",
+        "func": "bm25",
         "ref_num": 3,
-        "llm": 'chatglm'
+        "llm": 'cutegpt'
     }
 
     # 发送POST请求到问答接口
@@ -144,8 +144,8 @@ def test_summary(file_id):
 if __name__ == '__main__':
     # test_build_file_index()
     # read_index_content()
-    # test_get_answer()
+    test_get_answer()
     # test_get_open_answer()
     # test_summary(1722883635830956034)
-    test_delete_index("0001_2204")
+    # test_delete_index("0001_2204")
 

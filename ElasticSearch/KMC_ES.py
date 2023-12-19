@@ -3,7 +3,6 @@ from flask import Flask, request, jsonify
 import re
 import shutil
 import pickle
-from pdf2markdown import PDF
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch
@@ -13,7 +12,7 @@ import requests
 import jieba.posseg as pseg
 import tempfile
 import os
-from pdf2markdown import *
+from File_manager.pdf2markdown import *
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 import logging
@@ -26,13 +25,17 @@ import elasticsearch.exceptions
 import warnings
 from sentence_transformers import SentenceTransformer
 import json
+import sys
 # from ltp import LTP
 import queue
 import threading
 import spacy
-from KMC_config import Config
+from config.KMC_config import Config
 import logging
 from logging.handlers import RotatingFileHandler
+sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+# config = Config(env='development')
+# config.load_config()  # 指定配置文件的路径
 
 
 class ElasticSearchHandler:

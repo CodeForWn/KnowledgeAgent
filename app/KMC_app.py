@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from KMC_config import Config
-from KMC_ES import ElasticSearchHandler
-from KMC_FileHandler import FileManager
-from KMC_LLM import LargeModelAPIService
-from KMC_Prompt import PromptBuilder
+import sys
+from config.KMC_config import Config
+from ElasticSearch.KMC_ES import ElasticSearchHandler
+from File_manager.KMC_FileHandler import FileManager
+from LLM.KMC_LLM import LargeModelAPIService
+from Prompt.KMC_Prompt import PromptBuilder
 from transformers import AutoTokenizer, AutoModel
 import json
 import threading
 import queue
 import urllib3
 import logging
+import requests
 from logging.handlers import RotatingFileHandler
-
+sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
@@ -21,8 +23,9 @@ CORS(app)
 # 加载配置
 # 使用环境变量指定环境并加载配置
 config = Config(env='development')
-config.load_config('config\\config.json')  # 指定配置文件的路径
+config.load_config()  # 指定配置文件的路径
 logger = config.logger
+backend_notify_api = config.external_api_backend_notify
 # 创建 FileManager 实例
 file_manager = FileManager(config)
 # 创建ElasticSearchHandler实例

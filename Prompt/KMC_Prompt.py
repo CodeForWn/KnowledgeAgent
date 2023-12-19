@@ -3,7 +3,6 @@ from flask import Flask, request, jsonify
 import re
 import shutil
 import pickle
-from pdf2markdown import PDF
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch
@@ -13,7 +12,7 @@ import requests
 import jieba.posseg as pseg
 import tempfile
 import os
-from pdf2markdown import *
+from File_manager.pdf2markdown import *
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 import logging
@@ -30,7 +29,11 @@ import json
 import queue
 import threading
 import spacy
-from KMC_config import Config
+import sys
+from config.KMC_config import Config
+sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+# config = Config(env='development')
+# config.load_config()  # 指定配置文件的路径
 
 
 # prompts类
@@ -75,7 +78,7 @@ class PromptBuilder:
 
     # 构建文档问答prompt
     @staticmethod
-    def generate_answer_prompt(query, refs, max_length=1024):
+    def generate_answer_prompt(query, refs):
         # 构建参考文本部分
         ref_list = [ref['text'] for ref in refs]
         refs_prompt = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，然后回答后面的问题：\n"
@@ -84,11 +87,6 @@ class PromptBuilder:
 
         # 构建最终的prompt
         final_prompt = f"{refs_prompt}\n你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。问题：{query}\n："
-
-        # 检查prompt长度
-        if len(final_prompt) > max_length:
-            print("Prompt超过了最大长度限制")
-            return None
 
         return final_prompt
 

@@ -3,7 +3,7 @@ import re
 import urllib3
 import shutil
 import pickle
-from pdf2markdown import PDF
+from File_manager.pdf2markdown import PDF
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch
@@ -13,7 +13,7 @@ import requests
 import jieba.posseg as pseg
 import tempfile
 import os
-from pdf2markdown import *
+from File_manager.pdf2markdown import *
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 import logging
@@ -34,6 +34,8 @@ import spacy
 import json
 import logging
 from logging.handlers import RotatingFileHandler
+import sys
+sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
 
 
 class Config(object):
@@ -77,7 +79,7 @@ class Config(object):
         if attr in conf:
             self._set(attr, conf[attr])
 
-    def load_config(self, file_path='config\\config.json'):
+    def load_config(self, file_path=r"E:\工作\KmcGPT\KmcGPT\config\config.json"):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 all_conf = json.load(f)
