@@ -55,6 +55,8 @@ class LargeModelAPIService:
         ans = response['ans']
         if len(ans) >= max_length:
             ans = "没有足够的信息进行推理，很抱歉没有帮助到您。"
+
+        self.logger.info(f"Cute-GPT回答: {ans}")
         return ans
 
     def async_invoke_chatglm(self, prompt, top_p=0.7, temperature=0.9):

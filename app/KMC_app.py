@@ -202,6 +202,7 @@ def generate_summary_and_questions():
         if 'hits' in existing_answer and 'hits' in existing_answer['hits'] and existing_answer['hits']['hits']:
             logger.info(f"找到了文件ID {file_id} 的存储答案")
             stored_answer = existing_answer['hits']['hits'][0]['_source']['sum_rec']
+            logger.info(f"存储答案为 {stored_answer}")
             return jsonify({'answer': stored_answer, 'matches': []}), 200
 
         logger.info(f"正在查询文件ID {file_id} 的前 {ref_num} 段文本")
@@ -216,9 +217,9 @@ def generate_summary_and_questions():
             # 存储新生成的答案
             es_handler.index("answers_index", {"file_id": file_id, "sum_rec": ans})
         else:
-            logger.info("未找到文件ID {file_id} 的文本段落")
+            logger.error("未找到文件ID {file_id} 的文本段落")
             ans = "未找到相关信息"
-
+        logger.info(f"总结或推荐问题： {ans}")
         return jsonify({'answer': ans, 'matches': []}), 200
 
     except Exception as e:

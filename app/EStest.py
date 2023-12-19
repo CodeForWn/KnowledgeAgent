@@ -82,7 +82,7 @@ def test_get_answer():
         "query": '一卡通的分类和功能',
         "func": "bm25",
         "ref_num": 3,
-        "llm": 'cutegpt'
+        "llm": 'chatglm'
     }
 
     # 发送POST请求到问答接口
@@ -108,8 +108,8 @@ def test_get_open_answer():
 
     # 定义要发送的数据，包含query字段
     data = {
-        "query": '中国四大名著的作者是谁？',
-        "llm": 'chatglm'
+        "query": '帮我生成一段生病请假的假条',
+        "llm": 'cutegpt'
     }
 
     # 发送POST请求到问答接口
@@ -144,8 +144,8 @@ def test_summary(file_id):
 if __name__ == '__main__':
     # test_build_file_index()
     # read_index_content()
-    test_get_answer()
+    # test_get_answer()
     # test_get_open_answer()
-    # test_summary(1722883635830956034)
-    # test_delete_index("0001_2204")
+    # test_summary(2206)
+    test_delete_index("0001_2206")
 
