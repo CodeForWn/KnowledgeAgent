@@ -34,7 +34,7 @@ import spacy
 from config.KMC_config import Config
 import zhipuai
 import time
-sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
 # 设置您的API密钥
 zhipuai.api_key = "b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA"
 # config = Config(env='development')
