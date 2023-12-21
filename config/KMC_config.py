@@ -35,12 +35,12 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
 
 
 class Config(object):
 
-    def __init__(self, env='development'):
+    def __init__(self, env='testing'):
         self.env = env
         # 设置默认值
         self.threads = 2
@@ -79,7 +79,7 @@ class Config(object):
         if attr in conf:
             self._set(attr, conf[attr])
 
-    def load_config(self, file_path=r"E:\工作\KmcGPT\KmcGPT\config\config.json"):
+    def load_config(self, file_path="/pro_work/docker_home/work/kmc/KmcGPT/config/config.json"):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 all_conf = json.load(f)
