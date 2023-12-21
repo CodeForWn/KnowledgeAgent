@@ -32,7 +32,7 @@ import threading
 import spacy
 import sys
 from config.KMC_config import Config
-sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
 
 
 # 处理查询语句类
