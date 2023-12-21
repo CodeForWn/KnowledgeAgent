@@ -38,7 +38,6 @@ import sys
 sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
 
 
-
 class Config(object):
 
     def __init__(self, env='testing'):
@@ -80,7 +79,7 @@ class Config(object):
         if attr in conf:
             self._set(attr, conf[attr])
 
-    def load_config(self, file_path="/pro_work/docker_home/work/kmc/KmcGPT/config/config.json"):
+    def load_config(self, file_path="/pro_work/docker_home/work/kmc/KmcGPT/KMC/config/config.json"):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 all_conf = json.load(f)
