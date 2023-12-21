@@ -1,12 +1,6 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sys
-from config.KMC_config import Config
-from ElasticSearch.KMC_ES import ElasticSearchHandler
-from File_manager.KMC_FileHandler import FileManager
-from LLM.KMC_LLM import LargeModelAPIService
-from Prompt.KMC_Prompt import PromptBuilder
 from transformers import AutoTokenizer, AutoModel
 import json
 import threading
@@ -15,7 +9,13 @@ import urllib3
 import logging
 import requests
 from logging.handlers import RotatingFileHandler
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
+import sys
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+from config.KMC_config import Config
+from ElasticSearch.KMC_ES import ElasticSearchHandler
+from File_manager.KMC_FileHandler import FileManager
+from LLM.KMC_LLM import LargeModelAPIService
+from Prompt.KMC_Prompt import PromptBuilder
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
