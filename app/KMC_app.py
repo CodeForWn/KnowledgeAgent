@@ -15,14 +15,14 @@ import urllib3
 import logging
 import requests
 from logging.handlers import RotatingFileHandler
-sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
 CORS(app)
 # 加载配置
 # 使用环境变量指定环境并加载配置
-config = Config(env='development')
+config = Config(env='testing')
 config.load_config()  # 指定配置文件的路径
 logger = config.logger
 backend_notify_api = config.external_api_backend_notify
