@@ -35,7 +35,8 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+
 
 
 class Config(object):
