@@ -2,7 +2,6 @@
 from flask import Flask, request, jsonify
 import re
 import shutil
-import sys
 import pickle
 from File_manager.pdf2markdown import PDF
 from flask_cors import CORS
@@ -31,10 +30,11 @@ import json
 import queue
 import threading
 import spacy
-from config.KMC_config import Config
 import zhipuai
 import time
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
+import sys
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+from config.KMC_config import Config
 # 设置您的API密钥
 zhipuai.api_key = "b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA"
 # config = Config(env='development')
