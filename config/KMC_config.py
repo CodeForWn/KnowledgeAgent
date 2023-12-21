@@ -41,6 +41,7 @@ sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
 class Config(object):
 
     def __init__(self, env='testing'):
+        self.predefined_qa = {}
         self.env = env
         # 设置默认值
         self.threads = 2
@@ -108,7 +109,13 @@ class Config(object):
         except Exception as e:
             print(f"Error loading config: {e}")
 
-
+    def load_predefined_qa(self):
+        try:
+            with open("/pro_work/docker_home/work/kmc/KmcGPT/KMC/config/predefined_qa.json", 'r', encoding='utf-8') as file:
+                self.predefined_qa = json.load(file)
+        except Exception as e:
+            self.logger.error(f"无法加载 predefined_qa.json: {e}")
+            self.predefined_qa = {}
 # # 使用环境变量指定环境并加载配置
 # config = Config(env='development')
 # config.load_config('config\\config.json')  # 指定配置文件的路径

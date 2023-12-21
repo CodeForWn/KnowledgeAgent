@@ -25,6 +25,7 @@ CORS(app)
 # 使用环境变量指定环境并加载配置
 config = Config(env='testing')
 config.load_config()  # 指定配置文件的路径
+config.load_predefined_qa()
 logger = config.logger
 backend_notify_api = config.external_api_backend_notify
 # 创建 FileManager 实例
@@ -160,6 +161,12 @@ def answer_question():
 
         if not assistant_id or not query:
             return jsonify({'error': '参数不完整'}), 400
+
+        # 检查问题是否在预定义的问答中
+        predefined_answer = config.predefined_qa.get(query)
+        if predefined_answer:
+            return jsonify({'answer': predefined_answer, 'matches': []}), 200
+
         if func == 'bm25':
             refs = es_handler.search_bm25(assistant_id, query, ref_num)
         if func == 'embed':
