@@ -2,16 +2,14 @@ import os
 import logging
 import requests
 import spacy
-import sys
 from langchain.document_loaders import PyPDFLoader
 import jieba.posseg as pseg
-from config.KMC_config import Config
 import re
 import logging
 from logging.handlers import RotatingFileHandler
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
-# config = Config(env='development')
-# config.load_config()  # 指定配置文件的路径
+import sys
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+from config.KMC_config import Config
 
 
 class FileManager:
