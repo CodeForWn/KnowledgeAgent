@@ -14,6 +14,7 @@ import queue
 import urllib3
 import logging
 import requests
+import re
 from logging.handlers import RotatingFileHandler
 
 sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
@@ -247,6 +248,13 @@ def delete_index_route(index_name):
             logger.error("错误：缺少索引名称参数")
             return jsonify({"code": 500, "msg": "错误：缺少索引名称参数"})
 
+        # 提取file_id
+        file_id_match = re.search(r'_(\w+)$', index_name)
+        if file_id_match:
+            file_id = file_id_match.group(1)
+            # 删除存储答案
+            es_handler.delete_summary_answers(file_id)
+
         # 使用 ElasticSearchHandler 的 delete_index 方法
         if es_handler.delete_index(index_name):
             logger.info(f"成功删除索引 {index_name}")
@@ -254,6 +262,7 @@ def delete_index_route(index_name):
         else:
             logger.error(f"索引 {index_name} 不存在或删除失败")
             return jsonify({"code": 500, "msg": f"索引 {index_name} 不存在或删除失败"})
+
 
     except Exception as e:
         logger.error(f"删除索引 {index_name} 失败，错误信息：{str(e)}")

@@ -158,6 +158,22 @@ class ElasticSearchHandler:
             self.logger.error(f"Error deleting index: {e}")
             return False
 
+    def delete_summary_answers(self, file_id):
+        try:
+            # 构建删除请求的查询
+            query = {
+                "query": {
+                    "term": {"file_id": file_id}
+                }
+            }
+            # 执行删除操作
+            self.es.delete_by_query(index="answers_index", body=query)
+            self.logger.info(f"成功删除文件ID {file_id} 的相关答案")
+            return True
+        except Exception as e:
+            self.logger.info(f"删除文件ID {file_id} 的相关答案失败: {e}")
+            return False
+
     def index(self, index_name, document):
         try:
             self.es.index(index=index_name, document=document)
