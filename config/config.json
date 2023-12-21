@@ -26,7 +26,7 @@
     },
     "log_file": "myapp.log",
     "model_path": "/pro_work/docker_home/work/kmc/kmccode/bge_large_zh/",
-    "spacy_model": "zh_core_web_sm",
+    "spacy_model": "/pro_work/docker_home/work/kmc/kmccode/zh_core_web_sm/zh_core_web_sm-3.5.0/",
     "history_api_url": "http://172.16.20.154:39250/api/client/answerhistory/getOpen?sessionId=",
     "stopwords": "stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
