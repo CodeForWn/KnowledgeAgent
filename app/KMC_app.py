@@ -15,6 +15,7 @@ import urllib3
 import logging
 import requests
 from logging.handlers import RotatingFileHandler
+
 sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -84,7 +85,8 @@ def _process_file_data(data):
                 return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
 
             index_name = f'{assistant_id}_{file_id}'
-            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path)
+            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id,
+                                    download_path)
             es_handler.notify_backend(file_id, "SUCCESS")
         except Exception as e:
             es_handler.notify_backend(file_id, "FAILURE", str(e))

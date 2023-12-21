@@ -114,27 +114,27 @@ class ElasticSearchHandler:
             if self.index_exists(index_name):
                 self.logger.info("索引已存在，删除索引")
                 self.delete_index(index_name)
-                self.logger.info("开始创建索引")
-                self.es.indices.create(index=index_name, body={'mappings': mappings})
-                # 插入文档
-                for item in doc_list:
-                    embed = self.cal_passage_embed(item['text'])
-                    document = {
-                        "user_id": user_id,
-                        "assistant_id": assistant_id,
-                        "file_id": file_id,
-                        "file_name": file_name,
-                        "tenant_id": tenant_id,
-                        "download_path": download_path,
-                        "page": item['page'],
-                        "text": item['text'],
-                        "original_text": item['original_text'],
-                        "embed": embed
-                    }
-                    self.es.index(index=index_name, document=document)
+            self.logger.info("开始创建索引")
+            self.es.indices.create(index=index_name, body={'mappings': mappings})
+            # 插入文档
+            for item in doc_list:
+                embed = self.cal_passage_embed(item['text'])
+                document = {
+                    "user_id": user_id,
+                    "assistant_id": assistant_id,
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "tenant_id": tenant_id,
+                    "download_path": download_path,
+                    "page": item['page'],
+                    "text": item['text'],
+                    "original_text": item['original_text'],
+                    "embed": embed
+                }
+                self.es.index(index=index_name, document=document)
 
-                self.logger.info(f"索引 {index_name} 创建并插入索引成功")
-                return True
+            self.logger.info(f"索引 {index_name} 创建并插入索引成功")
+            return True
         except Exception as e:
             self.logger.error(f"创建索引 {index_name} 或插入索引失败: {e}")
             return False

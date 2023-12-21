@@ -41,6 +41,8 @@ sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
 class Config(object):
 
     def __init__(self, env='development'):
+        self.secret_token = None
+        self.external_api_backend_notify = "http://172.16.20.52:82/sync/syncCallback"
         self.env = env
         # 设置默认值
         self.threads = 2

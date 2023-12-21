@@ -9,7 +9,10 @@ from config.KMC_config import Config
 import re
 import logging
 from logging.handlers import RotatingFileHandler
+
 sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+
+
 # config = Config(env='development')
 # config.load_config()  # 指定配置文件的路径
 
@@ -150,7 +153,6 @@ class FileManager:
             chunks.append(current_chunk)
 
         return chunks
-
 
 # # 加载配置
 # config = Config()

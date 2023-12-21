@@ -5,7 +5,7 @@ import json
 
 # 测试'build_file_index'接口
 def test_build_file_index():
-    url = 'http://localhost:5777/api/build_file_index'
+    url = 'http://172.16.20.154:5777/api/build_file_index'
 
     # 准备测试数据
     data = {
@@ -64,7 +64,7 @@ def read_index_content():
 
 
 def test_delete_index(index_name):
-    url = f'http://localhost:5777/api/delete_index/{index_name}'
+    url = f'http://172.16.20.154:5777/api/delete_index/{index_name}'
     # 发送 POST 请求删除索引
     headers = {'Authorization': 'Sundeinfollm_KmcGPT'}
     response = requests.post(url, headers=headers)
@@ -74,15 +74,15 @@ def test_delete_index(index_name):
 
 def test_get_answer():
     # 定义接口的URL
-    url = "http://127.0.0.1:5777/api/get_answer"  # 替换为你的接口的实际URL
+    url = "http://172.16.20.154:5777/api/get_answer"  # 替换为你的接口的实际URL
 
     # 定义要发送的数据，包含 assistant_id、query 等字段
     data = {
         "assistant_id": "0001",
         "query": '一卡通的分类和功能',
-        "func": "bm25",
+        "func": "embed",
         "ref_num": 3,
-        "llm": 'chatglm'
+        "llm": 'cutegpt'
     }
 
     # 发送POST请求到问答接口
@@ -104,7 +104,7 @@ def test_get_answer():
 
 def test_get_open_answer():
     # 定义接口的URL
-    url = "http://127.0.0.1:5777/api/get_open_ans"  # 确保URL是正确的，对应Flask应用的地址
+    url = "http://172.16.20.154:5777/api/get_open_ans"  # 确保URL是正确的，对应Flask应用的地址
 
     # 定义要发送的数据，包含query字段
     data = {
@@ -124,7 +124,7 @@ def test_get_open_answer():
 
 def test_summary(file_id):
     # 定义接口的URL
-    url = "http://127.0.0.1:5777/api/generate_summary_and_questions"  # 确保URL是正确的，对应Flask应用的地址
+    url = "http://172.16.20.154:5777/api/generate_summary_and_questions"  # 确保URL是正确的，对应Flask应用的地址
 
     # 定义要发送的数据，包含query字段
     data = {
@@ -142,10 +142,10 @@ def test_summary(file_id):
 
 
 if __name__ == '__main__':
-    # test_build_file_index()
+    test_build_file_index()
     # read_index_content()
     # test_get_answer()
     # test_get_open_answer()
     # test_summary(2206)
-    test_delete_index("0001_2206")
+    # test_delete_index("0001_2206")
 
