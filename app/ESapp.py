@@ -33,6 +33,7 @@ import json
 import queue
 import threading
 import spacy
+import re
 file_queue = queue.Queue()
 
 # 读取环境变量

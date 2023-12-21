@@ -216,7 +216,21 @@ class ElasticSearchHandler:
                 }}}
         return self.search(assistant_id, query_body, ref_num)
 
-
+    def delete_summary_answers(self, file_id):
+        try:
+            # 构建删除请求的查询
+            query = {
+                "query": {
+                    "term": {"file_id": file_id}
+                }
+            }
+            # 执行删除操作
+            self.es.delete_by_query(index="answers_index", body=query)
+            self.logger.info(f"成功删除文件ID {file_id} 的相关答案")
+            return True
+        except Exception as e:
+            self.logger.info(f"删除文件ID {file_id} 的相关答案失败: {e}")
+            return False
 # # 加载配置
 # # 使用环境变量指定环境并加载配置
 # config = Config(env='development')

@@ -10,6 +10,7 @@ import logging
 import requests
 from logging.handlers import RotatingFileHandler
 import sys
+import re
 sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
 from config.KMC_config import Config
 from ElasticSearch.KMC_ES import ElasticSearchHandler
@@ -244,6 +245,13 @@ def delete_index_route(index_name):
         if not index_name:
             logger.error("错误：缺少索引名称参数")
             return jsonify({"code": 500, "msg": "错误：缺少索引名称参数"})
+
+        # 提取file_id
+        file_id_match = re.search(r'_(\w+)$', index_name)
+        if file_id_match:
+            file_id = file_id_match.group(1)
+            # 删除存储答案
+            es_handler.delete_summary_answers(file_id)
 
         # 使用 ElasticSearchHandler 的 delete_index 方法
         if es_handler.delete_index(index_name):
