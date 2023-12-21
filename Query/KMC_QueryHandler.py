@@ -31,9 +31,8 @@ import queue
 import threading
 import spacy
 import sys
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
 from config.KMC_config import Config
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
-
 
 # 处理查询语句类
 class QueryProcessor:
