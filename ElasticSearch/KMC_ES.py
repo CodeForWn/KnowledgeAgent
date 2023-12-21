@@ -25,17 +25,14 @@ import elasticsearch.exceptions
 import warnings
 from sentence_transformers import SentenceTransformer
 import json
-import sys
-# from ltp import LTP
 import queue
 import threading
 import spacy
-from config.KMC_config import Config
 import logging
 from logging.handlers import RotatingFileHandler
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/")
-# config = Config(env='development')
-# config.load_config()  # 指定配置文件的路径
+import sys
+sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+from config.KMC_config import Config
 
 
 class ElasticSearchHandler:
