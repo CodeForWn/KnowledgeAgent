@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sys
 import jieba.posseg as pseg
-sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
+sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 from ElasticSearch.KMC_ES import ElasticSearchHandler
 from File_manager.KMC_FileHandler import FileManager
@@ -26,7 +26,7 @@ app = Flask(__name__)
 CORS(app)
 # 加载配置
 # 使用环境变量指定环境并加载配置
-config = Config(env='testing')
+config = Config(env='production')
 config.load_config()  # 指定配置文件的路径
 config.load_predefined_qa()
 logger = config.logger
