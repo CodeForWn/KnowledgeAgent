@@ -8,7 +8,7 @@ import re
 import logging
 from logging.handlers import RotatingFileHandler
 
-sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+sys.path.append("/work/kmc/kmcGPT/KMC/")
 
 
 # config = Config(env='development')
