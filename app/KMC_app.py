@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import sys
+import jieba.posseg as pseg
+sys.path.append("E:\\工作\\KmcGPT\\KmcGPT")
+from config.KMC_config import Config
+from ElasticSearch.KMC_ES import ElasticSearchHandler
+from File_manager.KMC_FileHandler import FileManager
+from LLM.KMC_LLM import LargeModelAPIService
+from Prompt.KMC_Prompt import PromptBuilder
 from transformers import AutoTokenizer, AutoModel
 import json
 import threading
@@ -8,15 +16,10 @@ import queue
 import urllib3
 import logging
 import requests
-from logging.handlers import RotatingFileHandler
-import sys
 import re
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
-from config.KMC_config import Config
-from ElasticSearch.KMC_ES import ElasticSearchHandler
-from File_manager.KMC_FileHandler import FileManager
-from LLM.KMC_LLM import LargeModelAPIService
-from Prompt.KMC_Prompt import PromptBuilder
+import uuid
+from logging.handlers import RotatingFileHandler
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
@@ -37,6 +40,11 @@ prompt_builder = PromptBuilder(config)
 # 创建队列
 file_queue = queue.Queue()
 logger.info('服务启动中。。。')
+
+
+def generate_assistant_id():
+    # 生成一个随机的UUID并转换为字符串
+    return str(uuid.uuid4())
 
 
 def notify_backend(file_id, result, failure_reason=None):
@@ -86,7 +94,8 @@ def _process_file_data(data):
                 return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
 
             index_name = f'{assistant_id}_{file_id}'
-            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path)
+            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id,
+                                    download_path)
             es_handler.notify_backend(file_id, "SUCCESS")
         except Exception as e:
             es_handler.notify_backend(file_id, "FAILURE", str(e))
@@ -181,6 +190,8 @@ def answer_question():
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
             ans = large_model_service.query_async_result_chatglm(task_id)
+        elif llm == 'chatgpt':
+            ans = large_model_service.get_answer_from_chatgpt(prompt)
         else:
             return jsonify({'error': '未知的大模型服务'}), 400
 
@@ -271,6 +282,112 @@ def delete_index_route(index_name):
     except Exception as e:
         logger.error(f"删除索引 {index_name} 失败，错误信息：{str(e)}")
         return jsonify({"code": 500, "msg": f"删除索引 {index_name} 失败，错误信息：{str(e)}"})
+
+
+@app.route('/api/kmc/indexing', methods=['POST'])
+def indexing():
+    try:
+        data = request.json
+        documents = data
+
+        # 随机生成 assistantId
+        assistant_id = generate_assistant_id()
+        doc_list = []  # 初始化空列表以确保在出错时也能返回列表类型
+        for document in documents:
+            doc_id = document['documentId']
+            doc_title = document['documentTitle']
+            doc_content = document['documentContent']
+
+            # 对内容进行分割
+            stopwords = file_manager.load_stopwords()
+            filtered_texts = set()  # 存储处理后的文本
+            split_text = file_manager.spacy_chinese_text_splitter(doc_content, max_length=400)
+            for text in split_text:
+                words = pseg.cut(text)
+                filtered_text = ''.join(word for word, flag in words if word not in stopwords)
+                if filtered_text and filtered_text not in filtered_texts:
+                    filtered_texts.add(filtered_text)
+                    doc_list.append({'text': filtered_text})
+
+        # 创建索引并存储到ES
+        index_name = assistant_id
+        mappings = {
+            "properties": {
+                "text": {"type": "text", "analyzer": "standard"},
+                "embed": {"type": "dense_vector", "dims": 1024},
+                "assistant_id": {"type": "keyword"},
+                "file_id": {"type": "keyword"},
+                "file_name": {"type": "keyword"},
+            }
+        }
+        if es_handler.index_exists(index_name):
+            logger.info("索引已存在，删除索引")
+            es_handler.delete_index(index_name)
+
+        logger.info("开始创建索引")
+        es_handler.es.indices.create(index=index_name, mappings=mappings)
+        # 插入文档
+        for item in doc_list:
+            embed = es_handler.cal_passage_embed(item['text'])
+            document = {
+                "assistant_id": assistant_id,
+                "file_id": doc_id,
+                "file_name": doc_title,
+                "text": item['text'],
+                "embed": embed
+            }
+            es_handler.es.index(index=index_name, document=document)
+
+        logger.info(f"索引 {index_name} 创建并插入索引成功")
+        return jsonify({'status': 'success', 'body': {'assistantId': assistant_id}}), 200
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ST_get_answer', methods=['POST'])
+def ST_answer_question():
+    try:
+        data = request.json
+        assistant_id = data.get('assistant_id')
+        query = data.get('query')
+        func = data.get('func', 'bm25')
+        ref_num = data.get('ref_num', 3)
+        llm = data.get('llm', 'cutegpt').lower()
+
+        if not assistant_id or not query:
+            return jsonify({'error': '参数不完整'}), 400
+        if func == 'bm25':
+            refs = es_handler.ST_search_bm25(assistant_id, query, ref_num)
+        if func == 'embed':
+            refs = es_handler.ST_search_embed(assistant_id, query, ref_num)
+
+        if not refs:
+            return jsonify({'error': '未找到相关文本片段'})
+
+        prompt = prompt_builder.generate_answer_prompt(query, refs)
+        if llm == 'cutegpt':
+            ans = large_model_service.get_answer_from_cute_gpt(prompt)
+        elif llm == 'chatglm':
+            task_id = large_model_service.async_invoke_chatglm(prompt)
+            ans = large_model_service.query_async_result_chatglm(task_id)
+        elif llm == 'chatgpt':
+            ans = large_model_service.get_answer_from_chatgpt(prompt)
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+        log_data = {'question': query,
+                    'answer': ans,
+                    'matches': refs}
+
+        # 记录日志
+        logger.info(f"Query processed: {log_data}")
+
+        return jsonify({'answer': ans, 'matches': refs}), 200
+
+    except Exception as e:
+        logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

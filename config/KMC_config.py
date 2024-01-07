@@ -40,8 +40,9 @@ sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
 
 class Config(object):
 
-    def __init__(self, env='testing'):
-        self.predefined_qa = {}
+    def __init__(self, env='development'):
+        self.secret_token = None
+        self.external_api_backend_notify = "http://172.16.20.52:82/sync/syncCallback"
         self.env = env
         # 设置默认值
         self.threads = 2
@@ -95,6 +96,7 @@ class Config(object):
                 self._read_attr(conf, 'secret_token')
                 self._read_attr(conf, 'file_storage_path')
                 self._read_attr(conf, 'record_path')
+                self._read_attr(conf, 'chatgpt_api')
 
                 # 读取Elasticsearch相关配置
                 es_config = conf.get('elasticsearch', {})

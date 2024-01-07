@@ -7,9 +7,12 @@ import jieba.posseg as pseg
 import re
 import logging
 from logging.handlers import RotatingFileHandler
-import sys
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
-from config.KMC_config import Config
+
+sys.path.append(r"E:\工作\KmcGPT\KmcGPT")
+
+
+# config = Config(env='development')
+# config.load_config()  # 指定配置文件的路径
 
 
 class FileManager:
@@ -148,7 +151,6 @@ class FileManager:
             chunks.append(current_chunk)
 
         return chunks
-
 
 # # 加载配置
 # config = Config()

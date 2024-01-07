@@ -11,8 +11,9 @@
     "history_api_url": "http://172.16.20.52:82/client/answerhistory/getOpen?sessionId=",
     "stopwords": "E:\\工作\\KmcGPT\\KmcGPT\\config\\stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
+    "chatgpt_api": "http://119.8.161.255:50001/chatgpt",
     "external_api": {
-        "llm_ans": "http://106.14.20.122:8086/llm/ans",
+        "llm_ans": "http://kmc.sundeinfo.cn/ans",
         "backend_notify": "http://172.16.20.52:82/sync/syncCallback"
     },
     "file_storage_path": "F:\\testpdf",
@@ -30,8 +31,9 @@
     "history_api_url": "http://172.16.20.154:39250/api/client/answerhistory/getOpen?sessionId=",
     "stopwords": "/pro_work/docker_home/work/kmc/KmcGPT/KMC/config/stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
+    "chatgpt_api": "http://119.8.161.255:50001/chatgpt",
     "external_api": {
-        "llm_ans": "http://106.14.20.122:8086/llm/ans",
+        "llm_ans": "http://kmc.sundeinfo.cn/ans",
         "backend_notify": "http://172.16.20.154:39250/sync/syncCallback"
     },
     "file_storage_path": "/pro_work/docker_home/work/kmc/kmccode/kmctemp/",
@@ -49,8 +51,9 @@
     "history_api_url": "http://119.45.114.43/api/client/answerhistory/getOpen?sessionId=",
     "stopwords": "stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
+    "chatgpt_api": "http://119.8.161.255:50001/chatgpt",
     "external_api": {
-        "llm_ans": "http://106.14.20.122:8086/llm/ans",
+        "llm_ans": "http://kmc.sundeinfo.cn/ans",
         "backend_notify": "http://119.45.114.43/sync/syncCallback"
     },
     "file_storage_path": "/work/kmc/kmcPython/KmcGPT/kmctemp/",
