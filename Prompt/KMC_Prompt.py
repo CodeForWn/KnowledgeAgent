@@ -30,7 +30,7 @@ import queue
 import threading
 import spacy
 import sys
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 
 
