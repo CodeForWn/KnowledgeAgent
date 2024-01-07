@@ -31,7 +31,7 @@ import spacy
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+sys.path.append("/work/kmc/kmcGPT/")
 from config.KMC_config import Config
 
 
