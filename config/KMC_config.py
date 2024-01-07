@@ -35,18 +35,18 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-sys.path.append("/pro_work/docker_home/work/kmc/KmcGPT/KMC")
+sys.path.append("/work/kmc/kmcGPT/KMC")
 
 
 class Config(object):
 
-    def __init__(self, env='development'):
+    def __init__(self, env='production'):
         self.secret_token = None
         self.external_api_backend_notify = "http://172.16.20.52:82/sync/syncCallback"
         self.env = env
         # 设置默认值
         self.threads = 2
-        self.elasticsearch_hosts = 'https://127.0.0.1:9200'
+        self.elasticsearch_hosts = 'http://127.0.0.1:9200'
         # 初始化日志处理器
         self._init_logger()
 
@@ -81,7 +81,7 @@ class Config(object):
         if attr in conf:
             self._set(attr, conf[attr])
 
-    def load_config(self, file_path="/pro_work/docker_home/work/kmc/KmcGPT/KMC/config/config.json"):
+    def load_config(self, file_path="/work/kmc/kmcGPT/KMC/config/config.json"):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 all_conf = json.load(f)
@@ -113,7 +113,7 @@ class Config(object):
 
     def load_predefined_qa(self):
         try:
-            with open("/pro_work/docker_home/work/kmc/KmcGPT/KMC/config/predefined_qa.json", 'r', encoding='utf-8') as file:
+            with open("/work/kmc/kmcGPT/KMC/config/predefined_qa.json", 'r', encoding='utf-8') as file:
                 self.predefined_qa = json.load(file)
         except Exception as e:
             self.logger.error(f"无法加载 predefined_qa.json: {e}")
