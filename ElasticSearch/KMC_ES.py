@@ -115,7 +115,7 @@ class ElasticSearchHandler:
                 self.logger.info("索引已存在，删除索引")
                 self.delete_index(index_name)
             self.logger.info("开始创建索引")
-            self.es.indices.create(index=index_name, body={'mappings': mappings})
+            self.es.indices.create(index=index_name, mappings=mappings)
             # 插入文档
             for item in doc_list:
                 embed = self.cal_passage_embed(item['text'])
@@ -206,6 +206,28 @@ class ElasticSearchHandler:
             self.logger.error(f"Error during search: {e}")
             return []
 
+    def ST_search(self, assistant_id, query_body, ref_num=10):
+        try:
+            # 在所有符合条件的ES索引中查询
+            index_pattern = assistant_id
+            result = self.es.search(index=index_pattern, body=query_body, size=ref_num)
+
+            if 'hits' in result and 'hits' in result['hits']:
+                # 命中结果
+                hits = result['hits']['hits']
+                refs = [{
+                    'text': hit['_source']['text'],
+                    'file_id': hit['_source']['file_id'],
+                    'file_name': hit['_source']['file_name'],
+                    'score': hit['_score'],
+                } for hit in hits]
+                return refs
+
+        except Exception as e:
+            # 如果未找到相关文本片段
+            self.logger.error(f"Error during search: {e}")
+            return []
+
     def search_bm25(self, assistant_id, query, ref_num=10):
         # 使用BM25方法搜索索引
         query_body = {
@@ -234,6 +256,34 @@ class ElasticSearchHandler:
                 }}}
         return self.search(assistant_id, query_body, ref_num)
 
+    def ST_search_bm25(self, assistant_id, query, ref_num=10):
+        # 使用BM25方法搜索特定索引
+        query_body = {
+            "query": {
+                "match": {
+                    "text": query
+                }
+            }
+        }
+        return self.ST_search(assistant_id, query_body, ref_num)
+
+    def ST_search_embed(self, assistant_id, query, ref_num=10):
+        # 使用Embed方法搜索特定索引
+        query_embed = self.cal_query_embed(query)
+        query_body = {
+            "query": {
+                "script_score": {
+                    "query": {
+                        "match_all": {}  # 在整个索引中搜索
+                    },
+                    "script": {
+                        "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
+                        "params": {"query_vector": query_embed}
+                    }
+                }
+            }
+        }
+        return self.ST_search(assistant_id, query_body, ref_num)
 
 # # 加载配置
 # # 使用环境变量指定环境并加载配置

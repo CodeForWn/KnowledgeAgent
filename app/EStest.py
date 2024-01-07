@@ -49,7 +49,7 @@ def read_index_content():
         )
 
     # 查询索引内容
-    index_name = '0001_2206'
+    index_name = 'f0c0ea51-eac1-44c5-83c4-d5cb889686e6'
     query = {
         "query": {
             "match_all": {}  # 查询所有文档
@@ -80,9 +80,9 @@ def test_get_answer():
     data = {
         "assistant_id": "0001",
         "query": '一卡通的分类和功能',
-        "func": "bm25",
+        "func": "embed",
         "ref_num": 3,
-        "llm": 'chatglm'
+        "llm": 'chatgpt'
     }
 
     # 发送POST请求到问答接口
@@ -109,7 +109,7 @@ def test_get_open_answer():
     # 定义要发送的数据，包含query字段
     data = {
         "query": '帮我生成一段生病请假的假条',
-        "llm": 'chatglm'
+        "llm": 'chatgpt'
     }
 
     # 发送POST请求到问答接口
@@ -143,9 +143,9 @@ def test_summary(file_id):
 
 if __name__ == '__main__':
     # test_build_file_index()
-    # read_index_content()
+    read_index_content()
     # test_get_answer()
-    test_get_open_answer()
-    test_summary(2206)
+    # test_get_open_answer()
+    # test_summary(2206)
     # test_delete_index("0001_2206")
 

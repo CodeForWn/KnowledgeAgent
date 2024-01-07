@@ -96,6 +96,7 @@ class Config(object):
                 self._read_attr(conf, 'secret_token')
                 self._read_attr(conf, 'file_storage_path')
                 self._read_attr(conf, 'record_path')
+                self._read_attr(conf, 'chatgpt_api')
 
                 # 读取Elasticsearch相关配置
                 es_config = conf.get('elasticsearch', {})

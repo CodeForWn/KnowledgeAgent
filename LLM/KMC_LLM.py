@@ -46,11 +46,21 @@ class LargeModelAPIService:
     def __init__(self, config):
         self.cute_gpt_api = config.external_api_llm_ans
         self.config = config
-
+        self.chatgpt_api = config.chatgpt_api
         # 使用全局logger实例
         self.logger = self.config.logger
 
-    def get_answer_from_cute_gpt(self, prompt, loratype='qa', max_length=1024):
+    def get_answer_from_chatgpt(self, query):
+        response = requests.post(self.chatgpt_api, json={'query': query})
+        if response.status_code == 200:
+            ans = response.text  # 或者 response.text，取决于响应的内容类型
+            self.logger.info(f"ChatGPT回答: {ans}")
+            return ans
+        else:
+            self.logger.error(f"请求失败，状态码: {response.status_code}")
+            return None
+
+    def get_answer_from_cute_gpt(self, prompt, loratype='qa', max_length=2000):
         response = requests.post(self.cute_gpt_api, json={'query': prompt, 'loratype': loratype}).json()
         ans = response['ans']
         if len(ans) >= max_length:
@@ -110,11 +120,11 @@ class LargeModelAPIService:
 
 # # 首先，创建配置实例并加载配置
 # config = Config()
-# config.load_config('config\\config.json')
+# config.load_config()
 #
 # # 创建LargeModelAPIService实例
 # large_model_service = LargeModelAPIService(config)
-#
+
 # # 使用CuteGPT模型获取答案
 # cute_gpt_prompt = "你是谁？"
 # cute_gpt_answer = large_model_service.get_answer_from_cute_gpt(cute_gpt_prompt)
@@ -123,4 +133,6 @@ class LargeModelAPIService:
 # chat_glm_prompt = "你是谁？"
 # task_id = large_model_service.async_invoke_chatglm(chat_glm_prompt)
 # chat_glm_answer = large_model_service.query_async_result_chatglm(task_id)
-
+#
+# chatgpt_prompt = "你是谁？"
+# chatgpt_answer = large_model_service.get_answer_from_chatgpt(chatgpt_prompt)
