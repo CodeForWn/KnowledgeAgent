@@ -31,16 +31,11 @@ import spacy
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-<<<<<<< Updated upstream
-sys.path.append("/work/kmc/kmcGPT/KMC")
-from config.KMC_config import Config
-=======
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 
 # 全局锁对象
 index_lock = threading.Lock()
->>>>>>> Stashed changes
 
 
 class ElasticSearchHandler:
@@ -113,28 +108,6 @@ class ElasticSearchHandler:
                     }
                 }
             }
-<<<<<<< Updated upstream
-            if self.index_exists(index_name):
-                self.logger.info("索引已存在，删除索引")
-                self.delete_index(index_name)
-
-            self.logger.info("开始创建索引")
-            self.es.indices.create(index=index_name, mappings=mappings)
-            # 插入文档
-            for item in doc_list:
-                embed = self.cal_passage_embed(item['text'])
-                document = {
-                    "user_id": user_id,
-                    "assistant_id": assistant_id,
-                    "file_id": file_id,
-                    "file_name": file_name,
-                    "tenant_id": tenant_id,
-                    "download_path": download_path,
-                    "page": item['page'],
-                    "text": item['text'],
-                    "original_text": item['original_text'],
-                    "embed": embed
-=======
 
             # 创建索引
             if not self.es.indices.exists(index="answers_index"):
@@ -159,7 +132,6 @@ class ElasticSearchHandler:
                         "file_name": {"type": "keyword"},
                         "download_path": {"type": "keyword"}
                     }
->>>>>>> Stashed changes
                 }
                 # 构建查询条件
                 query = {"query": {"term": {"file_id": file_id}}}

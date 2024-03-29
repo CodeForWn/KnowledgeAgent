@@ -46,11 +46,7 @@
         "basic_auth_password": "=3KtbmJug4-Skm2n3oV*"
     },
     "log_file": "myapp.log",
-<<<<<<< Updated upstream
-    "model_path": "bge_large_zh",
-=======
     "model_path": "/work/kmc/kmcPython/KmcGPT/bge_large_zh/",
->>>>>>> Stashed changes
     "spacy_model": "/work/kmc/kmcPython/KmcGPT/zh_core_web_sm/zh_core_web_sm-3.5.0/",
     "history_api_url": "http://119.45.114.43/api/client/answerhistory/getOpen?sessionId=",
     "stopwords": "/work/kmc/kmcGPT/KMC/config/stopwords.txt",

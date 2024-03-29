@@ -1,17 +1,6 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-<<<<<<< Updated upstream
-import sys
-import jieba.posseg as pseg
-sys.path.append("/work/kmc/kmcGPT/KMC/")
-from config.KMC_config import Config
-from ElasticSearch.KMC_ES import ElasticSearchHandler
-from File_manager.KMC_FileHandler import FileManager
-from LLM.KMC_LLM import LargeModelAPIService
-from Prompt.KMC_Prompt import PromptBuilder
-=======
->>>>>>> Stashed changes
 from transformers import AutoTokenizer, AutoModel
 import json
 import threading
@@ -191,9 +180,6 @@ def answer_question():
         # 检查问题是否在预定义的问答中
         predefined_answer = config.predefined_qa.get(query)
         if predefined_answer:
-<<<<<<< Updated upstream
-            return jsonify({'answer': predefined_answer, 'matches': []}), 200
-=======
             # 如果预设的答案是一个字符串，意味着没有匹配信息，返回答案和空的matches列表
             if isinstance(predefined_answer, str):
                 return jsonify({'answer': predefined_answer, 'matches': []}), 200
@@ -204,7 +190,6 @@ def answer_question():
                     'answer': predefined_answer['answer'],
                     'matches': predefined_answer['matches']
                 }), 200
->>>>>>> Stashed changes
 
         if func == 'bm25':
             refs = es_handler.search_bm25(assistant_id, query, ref_num)

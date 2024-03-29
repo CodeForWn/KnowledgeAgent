@@ -32,12 +32,6 @@ import spacy
 import sys
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
-<<<<<<< Updated upstream
-=======
-sys.path.append("/work/kmc/kmcGPT/KMC/")
-# config = Config(env='development')
-# config.load_config()  # 指定配置文件的路径
->>>>>>> Stashed changes
 
 
 # prompts类

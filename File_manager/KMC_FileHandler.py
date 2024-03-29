@@ -7,18 +7,10 @@ import jieba.posseg as pseg
 import re
 import logging
 from logging.handlers import RotatingFileHandler
-<<<<<<< Updated upstream
 
-sys.path.append("/work/kmc/kmcGPT/KMC/")
-
-
-# config = Config(env='development')
-# config.load_config()  # 指定配置文件的路径
-=======
 import sys
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
->>>>>>> Stashed changes
 
 
 class FileManager:
