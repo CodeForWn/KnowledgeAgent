@@ -33,10 +33,19 @@ import spacy
 import zhipuai
 import time
 import sys
+<<<<<<< Updated upstream
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
+=======
+
+sys.path.append("/work/kmc/kmcGPT/KMC/")
+from config.KMC_config import Config
+
+>>>>>>> Stashed changes
 # 设置您的API密钥
 zhipuai.api_key = "b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA"
+
+
 # config = Config(env='development')
 # config.load_config()  # 指定配置文件的路径
 
@@ -52,6 +61,7 @@ class LargeModelAPIService:
 
     def get_answer_from_chatgpt(self, query):
         response = requests.post(self.chatgpt_api, json={'query': query})
+        self.logger.info("正在请求GPT-4>>>>>>>>>>>>>>")
         if response.status_code == 200:
             ans = response.text  # 或者 response.text，取决于响应的内容类型
             self.logger.info(f"ChatGPT回答: {ans}")
@@ -60,8 +70,9 @@ class LargeModelAPIService:
             self.logger.error(f"请求失败，状态码: {response.status_code}")
             return None
 
-    def get_answer_from_cute_gpt(self, prompt, loratype='qa', max_length=2000):
+    def get_answer_from_cute_gpt(self, prompt, loratype='qa', max_length=2048):
         response = requests.post(self.cute_gpt_api, json={'query': prompt, 'loratype': loratype}).json()
+        self.logger.info("正在请求CuteGPT>>>>>>>>>>>>>>")
         ans = response['ans']
         if len(ans) >= max_length:
             ans = "没有足够的信息进行推理，很抱歉没有帮助到您。"
@@ -76,7 +87,7 @@ class LargeModelAPIService:
             top_p=top_p,
             temperature=temperature
         )
-
+        self.logger.info("正在请求Chat-GLM>>>>>>>>>>>>>>")
         if response['code'] == 200 and response['success']:
             task_id = response['data']['task_id']
             self.logger.info(f"任务ID: {task_id}")
@@ -117,22 +128,23 @@ class LargeModelAPIService:
                 self.logger.error(f"查询失败: {result['msg']}")
                 return "查询过程出错"  # 返回错误信息
 
+    def tong_bu(self, query):
+        response = client.chat.completions.create(
+            model="glm-4",  # 填写需要调用的模型名称
+            messages=[{"role": "user", "content": query}],
+        )
+        self.logger.info(f"{response.choices[0].message}")
+        return response.choices[0].message
 
-# # 首先，创建配置实例并加载配置
-# config = Config()
-# config.load_config()
-#
-# # 创建LargeModelAPIService实例
-# large_model_service = LargeModelAPIService(config)
+    def text2image(self, query):
+        response = client.images.generations(
+            model="cogview",  # 填写需要调用的模型名称
+            prompt=query,
+        )
 
-# # 使用CuteGPT模型获取答案
-# cute_gpt_prompt = "你是谁？"
-# cute_gpt_answer = large_model_service.get_answer_from_cute_gpt(cute_gpt_prompt)
-#
-# # 使用ChatGLM模型进行异步调用
-# chat_glm_prompt = "你是谁？"
-# task_id = large_model_service.async_invoke_chatglm(chat_glm_prompt)
-# chat_glm_answer = large_model_service.query_async_result_chatglm(task_id)
-#
-# chatgpt_prompt = "你是谁？"
-# chatgpt_answer = large_model_service.get_answer_from_chatgpt(chatgpt_prompt)
+        # 保存图片到本地
+        img_data = requests.get(response.data[0].url).content
+        with open('ai_pic.jpg', 'wb') as handler:
+            handler.write(img_data)
+        self.logger.info(img_data)
+        return img_data

@@ -31,8 +31,16 @@ import spacy
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
+<<<<<<< Updated upstream
 sys.path.append("/work/kmc/kmcGPT/KMC")
 from config.KMC_config import Config
+=======
+sys.path.append("/work/kmc/kmcGPT/KMC/")
+from config.KMC_config import Config
+
+# 全局锁对象
+index_lock = threading.Lock()
+>>>>>>> Stashed changes
 
 
 class ElasticSearchHandler:
@@ -94,20 +102,18 @@ class ElasticSearchHandler:
         instruction = "为这个句子生成表示以用于检索相关文章："
         return self.cal_passage_embed(instruction + query)
 
-    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path):
+    def create_answers_index(self):
         try:
+            # 定义索引的映射
             mappings = {
-                "properties": {
-                    "text": {"type": "text", "analyzer": "standard"},
-                    "embed": {"type": "dense_vector", "dims": 1024},
-                    "user_id": {"type": "keyword"},
-                    "assistant_id": {"type": "keyword"},
-                    "tenant_id": {"type": "keyword"},
-                    "file_id": {"type": "keyword"},
-                    "file_name": {"type": "keyword"},
-                    "download_path": {"type": "keyword"}
+                "mappings": {
+                    "properties": {
+                        "file_id": {"type": "keyword"},  # file_id字段
+                        "sum_rec": {"type": "text"}  # sum_rec字段，总结后的文本
+                    }
                 }
             }
+<<<<<<< Updated upstream
             if self.index_exists(index_name):
                 self.logger.info("索引已存在，删除索引")
                 self.delete_index(index_name)
@@ -128,13 +134,81 @@ class ElasticSearchHandler:
                     "text": item['text'],
                     "original_text": item['original_text'],
                     "embed": embed
-                }
-                self.es.index(index=index_name, document=document)
+=======
 
-            self.logger.info(f"索引 {index_name} 创建并插入索引成功")
-            return True
+            # 创建索引
+            if not self.es.indices.exists(index="answers_index"):
+                self.es.indices.create(index="answers_index", body=mappings)
+                self.logger.info("索引 'answers_index' 已成功创建")
+            else:
+                self.logger.info("索引 'answers_index' 已经存在")
         except Exception as e:
-            self.logger.error(f"创建索引 {index_name} 或插入索引失败: {e}")
+            self.logger.error(f"创建索引 'answers_index' 失败: {e}")
+
+    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path):
+        with index_lock:
+            try:
+                mappings = {
+                    "properties": {
+                        "text": {"type": "text", "analyzer": "standard"},
+                        "embed": {"type": "dense_vector", "dims": 1024},
+                        "user_id": {"type": "keyword"},
+                        "assistant_id": {"type": "keyword"},
+                        "tenant_id": {"type": "keyword"},
+                        "file_id": {"type": "keyword"},
+                        "file_name": {"type": "keyword"},
+                        "download_path": {"type": "keyword"}
+                    }
+>>>>>>> Stashed changes
+                }
+                # 构建查询条件
+                query = {"query": {"term": {"file_id": file_id}}}
+                if self.index_exists(index_name):
+                    self.logger.info("助手已存在，检查文件片段是否存在。。。")
+                    if self.check_file_id_exists(index_name, file_id):
+                        self.delete_by_query(index_name, query_body=query)
+                else:
+                    self.logger.info("助手不存在，创建助手。。。")
+                    self.es.indices.create(index=index_name, body={'mappings': mappings})
+
+                # 此时无论那种情况都有助手，并没有相关文件的片段，插入文档
+                for item in doc_list:
+                    embed = self.cal_passage_embed(item['text'])
+                    document = {
+                        "user_id": user_id,
+                        "assistant_id": assistant_id,
+                        "file_id": file_id,
+                        "file_name": file_name,
+                        "tenant_id": tenant_id,
+                        "download_path": download_path,
+                        "page": item['page'],
+                        "text": item['text'],
+                        "original_text": item['original_text'],
+                        "embed": embed
+                    }
+                    self.es.index(index=index_name, document=document)
+
+                self.logger.info(f"助手{index_name} 创建并插入文件{file_id}成功")
+                return True
+            except Exception as e:
+                self.logger.error(f"创建助手{index_name} 或插入文件{file_id}失败: {e}")
+                return False
+
+    def check_file_id_exists(self, index_name, file_id):
+        query = {
+            "query": {
+                "term": {
+                    "file_id": {
+                        "value": file_id
+                    }
+                }
+            }
+        }
+        try:
+            result = self.es.search(index=index_name, body=query, size=0)
+            return result['hits']['total']['value'] > 0
+        except Exception as e:
+            self.logger.error(f"检查文件ID失败: {e}")
             return False
 
     def _search_(self, index_pattern, query_body, size=10):
@@ -155,6 +229,14 @@ class ElasticSearchHandler:
         except Exception as e:
             self.logger.error(f"Error deleting index: {e}")
             return False
+
+    def delete_by_query(self, index, query_body):
+        try:
+            response = self.es.delete_by_query(index=index, body=query_body)
+            return response
+        except Exception as e:
+            self.logger.error(f"删除操作失败: {str(e)}")
+            return None
 
     def delete_summary_answers(self, file_id):
         try:
@@ -182,7 +264,7 @@ class ElasticSearchHandler:
     def search(self, assistant_id, query_body, ref_num=10):
         try:
             # 在所有符合条件的ES索引中查询
-            index_pattern = f'{assistant_id}_*'
+            index_pattern = assistant_id
             result = self.es.search(index=index_pattern, body=query_body, size=ref_num)
 
             if 'hits' in result and 'hits' in result['hits']:
@@ -227,31 +309,32 @@ class ElasticSearchHandler:
             return []
 
     def search_bm25(self, assistant_id, query, ref_num=10):
-        # 使用BM25方法搜索索引
+        # 使用BM25方法搜索特定索引
         query_body = {
             "query": {
-                "bool": {
-                    "must": [
-                        {"match": {"text": query}},
-                        {"term": {"assistant_id": assistant_id}}
-                    ]
+                "match": {
+                    "text": query
                 }
             }
         }
         return self.search(assistant_id, query_body, ref_num)
 
     def search_embed(self, assistant_id, query, ref_num=10):
-        # 使用Embed方法搜索索引
+        # 使用Embed方法搜索特定索引
         query_embed = self.cal_query_embed(query)
         query_body = {
             "query": {
                 "script_score": {
-                    "query": {"term": {"assistant_id": assistant_id}},
+                    "query": {
+                        "match_all": {}  # 在整个索引中搜索
+                    },
                     "script": {
                         "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
                         "params": {"query_vector": query_embed}
                     }
-                }}}
+                }
+            }
+        }
         return self.search(assistant_id, query_body, ref_num)
 
     def delete_summary_answers(self, file_id):

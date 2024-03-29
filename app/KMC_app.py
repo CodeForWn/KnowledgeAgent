@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+<<<<<<< Updated upstream
 import sys
 import jieba.posseg as pseg
 sys.path.append("/work/kmc/kmcGPT/KMC/")
@@ -9,6 +10,8 @@ from ElasticSearch.KMC_ES import ElasticSearchHandler
 from File_manager.KMC_FileHandler import FileManager
 from LLM.KMC_LLM import LargeModelAPIService
 from Prompt.KMC_Prompt import PromptBuilder
+=======
+>>>>>>> Stashed changes
 from transformers import AutoTokenizer, AutoModel
 import json
 import threading
@@ -16,9 +19,18 @@ import queue
 import urllib3
 import logging
 import requests
+from logging.handlers import RotatingFileHandler
+import sys
 import re
 import uuid
-from logging.handlers import RotatingFileHandler
+import jieba.posseg as pseg
+
+sys.path.append("/work/kmc/kmcGPT/KMC/")
+from config.KMC_config import Config
+from ElasticSearch.KMC_ES import ElasticSearchHandler
+from File_manager.KMC_FileHandler import FileManager
+from LLM.KMC_LLM import LargeModelAPIService
+from Prompt.KMC_Prompt import PromptBuilder
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -30,6 +42,7 @@ config = Config(env='production')
 config.load_config()  # 指定配置文件的路径
 config.load_predefined_qa()
 logger = config.logger
+record_path = config.record_path
 backend_notify_api = config.external_api_backend_notify
 # 创建 FileManager 实例
 file_manager = FileManager(config)
@@ -39,6 +52,7 @@ large_model_service = LargeModelAPIService(config)
 prompt_builder = PromptBuilder(config)
 # 创建队列
 file_queue = queue.Queue()
+index_lock = threading.Lock()
 logger.info('服务启动中。。。')
 
 
@@ -93,11 +107,11 @@ def _process_file_data(data):
                 logger.error("未能成功处理PDF文件: %s", file_id)
                 return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
 
-            index_name = f'{assistant_id}_{file_id}'
-            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id,
-                                    download_path)
+            index_name = assistant_id
+            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path)
             es_handler.notify_backend(file_id, "SUCCESS")
         except Exception as e:
+            logger.error("处理文件数据失败: {}".format(e))
             es_handler.notify_backend(file_id, "FAILURE", str(e))
 
 
@@ -126,6 +140,8 @@ def _index_func(isFirst):
                 # get failed files from server
                 pass
         return False
+    except Exception as e:
+        logger.error("索引功能异常: {}".format(e))
 
 
 @app.route('/api/build_file_index', methods=['POST'])
@@ -154,7 +170,8 @@ def get_open_ans():
     elif llm.lower() == 'chatglm':
         task_id = large_model_service.async_invoke_chatglm(prompt)
         answer = large_model_service.query_async_result_chatglm(task_id)
-
+    elif llm.lower() == 'chatgpt':
+        answer = large_model_service.get_answer_from_chatgpt(prompt)
     return jsonify({'answer': answer, 'matches': []}), 200
 
 
@@ -174,7 +191,20 @@ def answer_question():
         # 检查问题是否在预定义的问答中
         predefined_answer = config.predefined_qa.get(query)
         if predefined_answer:
+<<<<<<< Updated upstream
             return jsonify({'answer': predefined_answer, 'matches': []}), 200
+=======
+            # 如果预设的答案是一个字符串，意味着没有匹配信息，返回答案和空的matches列表
+            if isinstance(predefined_answer, str):
+                return jsonify({'answer': predefined_answer, 'matches': []}), 200
+            # 如果预设的答案是一个字典，包含'answer'和'matches'键，返回相应的内容
+            elif isinstance(predefined_answer,
+                            dict) and 'answer' in predefined_answer and 'matches' in predefined_answer:
+                return jsonify({
+                    'answer': predefined_answer['answer'],
+                    'matches': predefined_answer['matches']
+                }), 200
+>>>>>>> Stashed changes
 
         if func == 'bm25':
             refs = es_handler.search_bm25(assistant_id, query, ref_num)
@@ -182,7 +212,9 @@ def answer_question():
             refs = es_handler.search_embed(assistant_id, query, ref_num)
 
         if not refs:
-            return jsonify({'error': '未找到相关文本片段'})
+            ans = large_model_service.get_answer_from_cute_gpt(query)
+            ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
+            return jsonify({'answer': ans, 'matches': refs}), 200
 
         prompt = prompt_builder.generate_answer_prompt(query, refs)
         if llm == 'cutegpt':
@@ -201,6 +233,9 @@ def answer_question():
 
         # 记录日志
         logger.info(f"Query processed: {log_data}")
+        # 将回答和匹配文本保存到JSON文件中
+        with open(record_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
 
         return jsonify({'answer': ans, 'matches': refs}), 200
 
@@ -215,29 +250,42 @@ def generate_summary_and_questions():
         data = request.json
         file_id = data['file_id']
         ref_num = data.get('ref_num', 5)
-
+        es_handler.create_answers_index()
         # 检查是否已有存储的答案
         existing_answer = es_handler._search_("answers_index", {"query": {"term": {"file_id": file_id}}})
         if 'hits' in existing_answer and 'hits' in existing_answer['hits'] and existing_answer['hits']['hits']:
             logger.info(f"找到了文件ID {file_id} 的存储答案")
             stored_answer = existing_answer['hits']['hits'][0]['_source']['sum_rec']
+            stored_answer = stored_answer.replace("\n", "<br>")
             logger.info(f"存储答案为 {stored_answer}")
             return jsonify({'answer': stored_answer, 'matches': []}), 200
 
         logger.info(f"正在查询文件ID {file_id} 的前 {ref_num} 段文本")
-        results = es_handler._search_('_all', {"query": {"term": {"file_id": file_id}}}, ref_num)
+        query_body = {
+            "query": {
+                "term": {
+                    "file_id": file_id  # 确保file_id匹配
+                }
+            },
+            "sort": [
+                {"page": {"order": "asc"}}  # 按照page字段升序排序
+            ]
+        }
+        results = es_handler._search_('_all', query_body, ref_num)
 
         if 'hits' in results and 'hits' in results['hits']:
             ref_list = [hit['_source']['text'] for hit in results['hits']['hits']]
             prompt = prompt_builder.generate_summary_and_questions_prompt(ref_list)
             task_id = large_model_service.async_invoke_chatglm(prompt)
             ans = large_model_service.query_async_result_chatglm(task_id)
-
             # 存储新生成的答案
             es_handler.index("answers_index", {"file_id": file_id, "sum_rec": ans})
         else:
             logger.error("未找到文件ID {file_id} 的文本段落")
             ans = "未找到相关信息"
+
+        # 将字符串中的\n替换为<br>
+        ans = ans.replace("\n", "<br>")
         logger.info(f"总结或推荐问题： {ans}")
         return jsonify({'answer': ans, 'matches': []}), 200
 
@@ -257,19 +305,12 @@ def delete_index_route(index_name):
         # 验证token
         if token != SECRET_TOKEN:
             logger.error("token验证失败")
-            return jsonify({"code": 403, "msg": "无权限"}), 403
+            return jsonify({"code": 403, "msg": "无权限"}), 4032
 
         # 验证参数
         if not index_name:
             logger.error("错误：缺少索引名称参数")
             return jsonify({"code": 500, "msg": "错误：缺少索引名称参数"})
-
-        # 提取file_id
-        file_id_match = re.search(r'_(\w+)$', index_name)
-        if file_id_match:
-            file_id = file_id_match.group(1)
-            # 删除存储答案
-            es_handler.delete_summary_answers(file_id)
 
         # 使用 ElasticSearchHandler 的 delete_index 方法
         if es_handler.delete_index(index_name):
@@ -282,6 +323,44 @@ def delete_index_route(index_name):
     except Exception as e:
         logger.error(f"删除索引 {index_name} 失败，错误信息：{str(e)}")
         return jsonify({"code": 500, "msg": f"删除索引 {index_name} 失败，错误信息：{str(e)}"})
+
+
+@app.route('/api/delete_file_index/<assistant_id>/<file_id>', methods=['POST'])
+def delete_file_from_index(assistant_id, file_id):
+    try:
+        # 设置一个静态token
+        SECRET_TOKEN = config.secret_token
+        # 获取请求头中的token
+        token = request.headers.get('Authorization')
+
+        # 验证token
+        if token != SECRET_TOKEN:
+            logger.error("token验证失败")
+            return jsonify({"code": 403, "msg": "无权限"}), 403
+
+        # 验证参数
+        if not assistant_id or not file_id:
+            logger.error("错误：缺少索引名称参数")
+            return jsonify({"code": 500, "msg": "错误：缺少索引名称参数"})
+
+        # 构建查询条件
+        query_body = {"query": {"term": {"file_id": file_id}}}
+
+        # 删除存储答案
+        es_handler.delete_summary_answers(file_id)
+
+        # 执行删除操作
+        response = es_handler.delete_by_query(assistant_id, query_body)
+        if response['deleted'] > 0:
+            logger.info(f"文档 {file_id}片段删除成功")
+            return jsonify({"code": 200, "msg": "文档片段删除成功"})
+        else:
+            logger.error(f"文档 {file_id}删除失败")
+            return jsonify({"code": 500, "msg": "文档片段删除失败"})
+
+    except Exception as e:
+        logger.error(f"删除文档片段失败，错误信息：{str(e)}")
+        return jsonify({"code": 500, "msg": "删除文档片段失败"}), 500
 
 
 @app.route('/api/kmc/indexing', methods=['POST'])
@@ -307,7 +386,11 @@ def indexing():
                 filtered_text = ''.join(word for word, flag in words if word not in stopwords)
                 if filtered_text and filtered_text not in filtered_texts:
                     filtered_texts.add(filtered_text)
-                    doc_list.append({'text': filtered_text})
+                    doc_list.append({
+                        'text': filtered_text,
+                        'file_id': doc_id,
+                        'file_name': doc_title
+                    })
 
         # 创建索引并存储到ES
         index_name = assistant_id
@@ -331,8 +414,8 @@ def indexing():
             embed = es_handler.cal_passage_embed(item['text'])
             document = {
                 "assistant_id": assistant_id,
-                "file_id": doc_id,
-                "file_name": doc_title,
+                "file_id": item['file_id'],
+                "file_name": item['file_name'],
                 "text": item['text'],
                 "embed": embed
             }

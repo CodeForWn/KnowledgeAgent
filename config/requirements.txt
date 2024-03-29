@@ -166,3 +166,4 @@ wget==3.2
 xxhash==3.3.0
 yarg==0.1.9
 yarl==1.9.2
+zhipuai==1.0.7

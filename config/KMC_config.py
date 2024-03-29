@@ -35,14 +35,22 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
+<<<<<<< Updated upstream
 sys.path.append("/work/kmc/kmcGPT/KMC")
+=======
+sys.path.append("/work/kmc/kmcGPT/KMC/")
+>>>>>>> Stashed changes
 
 
 class Config(object):
 
     def __init__(self, env='production'):
+<<<<<<< Updated upstream
+=======
+        self.predefined_qa = {}
+>>>>>>> Stashed changes
         self.secret_token = None
-        self.external_api_backend_notify = "http://172.16.20.52:82/sync/syncCallback"
+        self.external_api_backend_notify = "http://119.45.114.43/sync/syncCallback"
         self.env = env
         # 设置默认值
         self.threads = 2
@@ -97,7 +105,6 @@ class Config(object):
                 self._read_attr(conf, 'file_storage_path')
                 self._read_attr(conf, 'record_path')
                 self._read_attr(conf, 'chatgpt_api')
-
                 # 读取Elasticsearch相关配置
                 es_config = conf.get('elasticsearch', {})
                 for key in ['hosts', 'basic_auth_username', 'basic_auth_password']:
@@ -118,6 +125,11 @@ class Config(object):
         except Exception as e:
             self.logger.error(f"无法加载 predefined_qa.json: {e}")
             self.predefined_qa = {}
+<<<<<<< Updated upstream
+=======
+
+
+>>>>>>> Stashed changes
 # # 使用环境变量指定环境并加载配置
 # config = Config(env='development')
 # config.load_config('config\\config.json')  # 指定配置文件的路径

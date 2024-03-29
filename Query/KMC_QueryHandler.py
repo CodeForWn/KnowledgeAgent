@@ -33,6 +33,11 @@ import spacy
 import sys
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
+<<<<<<< Updated upstream
+=======
+sys.path.append("/work/kmc/kmcGPT/KMC/")
+
+>>>>>>> Stashed changes
 
 # 处理查询语句类
 class QueryProcessor:
