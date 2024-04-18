@@ -35,7 +35,8 @@ import time
 import sys
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
-
+import dashscope
+from http import HTTPStatus
 # 设置您的API密钥
 zhipuai.api_key = "b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA"
 
@@ -50,6 +51,7 @@ class LargeModelAPIService:
         self.cute_gpt_api = config.external_api_llm_ans
         self.config = config
         self.chatgpt_api = config.chatgpt_api
+        self.Tyqwen_api_key = config.Tyqwen_api_key
         # 使用全局logger实例
         self.logger = self.config.logger
 
@@ -73,6 +75,25 @@ class LargeModelAPIService:
 
         self.logger.info(f"Cute-GPT回答: {ans}")
         return ans
+
+    def get_answer_from_Tyqwen(self, prompt):
+        dashscope.api_key = self.Tyqwen_api_key
+        resp = dashscope.Generation.call(
+            model='qwen-14b-chat',
+            prompt=prompt
+        )
+
+        if resp.status_code == HTTPStatus.OK:
+
+            # 提取并返回文本部分
+            text_response = resp.output['text'] if 'text' in resp.output else 'No text available'
+            self.logger.info(text_response)
+            return text_response
+        else:
+            # 记录错误代码和错误消息
+            self.logger.error(resp.code)  # 错误代码
+            self.logger.error(resp.message)  # 错误消息
+            return resp.message  # 返回错误消息
 
     def async_invoke_chatglm(self, prompt, top_p=0.7, temperature=0.9):
         response = zhipuai.model_api.async_invoke(

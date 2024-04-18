@@ -84,10 +84,16 @@ class PromptBuilder:
             refs_prompt += f"[{i + 1}]:{ref}\n"
 
         # 构建最终的prompt
-        final_prompt = f"{refs_prompt}\n你应当尽量用原文回答。若文本中缺乏相关信息，则回答“没有足够信息来回答”。问题：{query}\n："
+        final_prompt = f"{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色，让提问者感到你非常认真地在解决他的问题。问题：{query}\n"
 
         return final_prompt
 
+    @staticmethod
+    def generate_beauty_prompt(query):
+        # 构建最终的prompt
+        beauty_prompt = f"对于回答：{query}，请在不改变原文的基础上，对回答的结构和语言进行美化和完善，使人感到更加回答更加全面和贴切使用者提问的语境，仅输出修改后的回答，不要输出任何其他内容："
+
+        return beauty_prompt
 #
 # # 加载配置
 # # 使用环境变量指定环境并加载配置

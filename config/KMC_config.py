@@ -96,6 +96,7 @@ class Config(object):
                 self._read_attr(conf, 'history_api_url')
                 self._read_attr(conf, 'stopwords')
                 self._read_attr(conf, 'secret_token')
+                self._read_attr(conf, 'Tyqwen_api_key')
                 self._read_attr(conf, 'file_storage_path')
                 self._read_attr(conf, 'record_path')
                 self._read_attr(conf, 'chatgpt_api')

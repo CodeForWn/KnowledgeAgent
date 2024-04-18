@@ -147,7 +147,7 @@ def get_open_ans():
     session_id = data.get('session_id')
     token = data.get('token')
     query = data.get('query')
-    llm = data.get('llm', 'cutegpt')  # 默认使用CuteGPT
+    llm = data.get('llm', 'qwen')  # 默认使用CuteGPT
     # 获取历史对话内容
     history = prompt_builder.get_history(session_id, token)
     # 构建新的prompt
@@ -155,12 +155,14 @@ def get_open_ans():
 
     answer = ''
     if llm.lower() == 'cutegpt':
-        answer = large_model_service.get_answer_from_cute_gpt(prompt)
+        ans = large_model_service.get_answer_from_Tyqwen(prompt)
     elif llm.lower() == 'chatglm':
         task_id = large_model_service.async_invoke_chatglm(prompt)
         answer = large_model_service.query_async_result_chatglm(task_id)
     elif llm.lower() == 'chatgpt':
         answer = large_model_service.get_answer_from_chatgpt(prompt)
+    elif llm.lower() == 'qwen':
+        answer = large_model_service.get_answer_from_Tyqwen(prompt)
     return jsonify({'answer': answer, 'matches': []}), 200
 
 
@@ -172,7 +174,7 @@ def answer_question():
         query = data.get('query')
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 3)
-        llm = data.get('llm', 'cutegpt').lower()
+        llm = data.get('llm', 'qwen').lower()
 
         if not assistant_id or not query:
             return jsonify({'error': '参数不完整'}), 400
@@ -197,18 +199,23 @@ def answer_question():
             refs = es_handler.search_embed(assistant_id, query, ref_num)
 
         if not refs:
-            ans = large_model_service.get_answer_from_cute_gpt(query)
+            ans = large_model_service.get_answer_from_Tyqwen(query)
             ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
             return jsonify({'answer': ans, 'matches': refs}), 200
 
         prompt = prompt_builder.generate_answer_prompt(query, refs)
         if llm == 'cutegpt':
-            ans = large_model_service.get_answer_from_cute_gpt(prompt)
+            # old_answer = large_model_service.get_answer_from_Tyqwen(prompt)
+            # beauty_prompt = prompt_builder.generate_beauty_prompt(old_answer)
+            # ans = large_model_service.get_answer_from_Tyqwen(beauty_prompt)
+            ans = large_model_service.get_answer_from_Tyqwen(prompt)
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
             ans = large_model_service.query_async_result_chatglm(task_id)
         elif llm == 'chatgpt':
             ans = large_model_service.get_answer_from_chatgpt(prompt)
+        elif llm == 'qwen':
+            ans = large_model_service.get_answer_from_Tyqwen(prompt)
         else:
             return jsonify({'error': '未知的大模型服务'}), 400
 
@@ -435,7 +442,7 @@ def ST_answer_question():
 
         prompt = prompt_builder.generate_answer_prompt(query, refs)
         if llm == 'cutegpt':
-            ans = large_model_service.get_answer_from_cute_gpt(prompt)
+            ans = large_model_service.get_answer_from_Tyqwen(prompt)
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
             ans = large_model_service.query_async_result_chatglm(task_id)
