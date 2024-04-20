@@ -208,6 +208,7 @@ def answer_question():
             # old_answer = large_model_service.get_answer_from_Tyqwen(prompt)
             # beauty_prompt = prompt_builder.generate_beauty_prompt(old_answer)
             # ans = large_model_service.get_answer_from_Tyqwen(beauty_prompt)
+            print("input:", prompt)
             ans = large_model_service.get_answer_from_Tyqwen(prompt)
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
@@ -219,6 +220,7 @@ def answer_question():
         else:
             return jsonify({'error': '未知的大模型服务'}), 400
 
+        ans = ans.replace("\n", "<br/>")
         log_data = {'question': query,
                     'answer': ans,
                     'matches': refs}

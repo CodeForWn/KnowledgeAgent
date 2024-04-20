@@ -71,7 +71,8 @@ class FileManager:
             document_texts = set()
             filtered_texts = set()  # 存储处理后的文本
             for page_index, page in enumerate(pages, start=1):
-                split_text = self.spacy_chinese_text_splitter(page.page_content, max_length=400)
+                page_content = page.page_content.replace('\n', '').replace('\r', '')
+                split_text = self.spacy_chinese_text_splitter(page_content, max_length=400)
                 for text in split_text:
                     if text not in document_texts:
                         document_texts.add(text)

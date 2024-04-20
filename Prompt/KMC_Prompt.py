@@ -84,7 +84,7 @@ class PromptBuilder:
             refs_prompt += f"[{i + 1}]:{ref}\n"
 
         # 构建最终的prompt
-        final_prompt = f"{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色，让提问者感到你非常认真地在解决他的问题。问题：{query}\n"
+        final_prompt = f"{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色。问题：{query}\n"
 
         return final_prompt
 
