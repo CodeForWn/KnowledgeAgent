@@ -2,6 +2,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from transformers import AutoTokenizer, AutoModel
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import torch
 import json
 import threading
 import queue
@@ -13,7 +15,7 @@ import sys
 import re
 import uuid
 import jieba.posseg as pseg
-
+from FlagEmbedding import FlagReranker
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 from ElasticSearch.KMC_ES import ElasticSearchHandler
@@ -39,6 +41,8 @@ file_manager = FileManager(config)
 es_handler = ElasticSearchHandler(config)
 large_model_service = LargeModelAPIService(config)
 prompt_builder = PromptBuilder(config)
+model_path = "/work/kmc/kmcGPT/model/bge-reranker-base"
+
 # 创建队列
 file_queue = queue.Queue()
 index_lock = threading.Lock()
@@ -155,7 +159,7 @@ def get_open_ans():
 
     answer = ''
     if llm.lower() == 'cutegpt':
-        ans = large_model_service.get_answer_from_Tyqwen(prompt)
+        answer = large_model_service.get_answer_from_Tyqwen(prompt)
     elif llm.lower() == 'chatglm':
         task_id = large_model_service.async_invoke_chatglm(prompt)
         answer = large_model_service.query_async_result_chatglm(task_id)
@@ -169,11 +173,16 @@ def get_open_ans():
 @app.route('/api/get_answer', methods=['POST'])
 def answer_question():
     try:
+        # 初始化重排模型
+        reranker = FlagReranker(model_path, use_fp16=True)
+        # 收集所有检索到的文本片段
+        all_refs = []
+        # 读取请求参数
         data = request.json
         assistant_id = data.get('assistant_id')
         query = data.get('query')
         func = data.get('func', 'bm25')
-        ref_num = data.get('ref_num', 3)
+        ref_num = data.get('ref_num', 5)
         llm = data.get('llm', 'qwen').lower()
 
         if not assistant_id or not query:
@@ -193,22 +202,32 @@ def answer_question():
                     'matches': predefined_answer['matches']
                 }), 200
 
-        if func == 'bm25':
-            refs = es_handler.search_bm25(assistant_id, query, ref_num)
-        if func == 'embed':
-            refs = es_handler.search_embed(assistant_id, query, ref_num)
+        if func == 'bm25' or 'embed':
+            bm25_refs = es_handler.search_bm25(assistant_id, query, ref_num)
+            embed_refs = es_handler.search_embed(assistant_id, query, ref_num)
+            all_refs = bm25_refs + embed_refs
 
-        if not refs:
+        if not all_refs:
             ans = large_model_service.get_answer_from_Tyqwen(query)
             ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
             return jsonify({'answer': ans, 'matches': refs}), 200
 
-        prompt = prompt_builder.generate_answer_prompt(query, refs)
+        # 使用重排模型进行重排并归一化得分
+        # 提取文本并构造查询-引用对
+        ref_pairs = [[query, ref['text']] for ref in all_refs]  # 为每个参考文档与查询组合成对
+        scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
+        # 根据得分排序，并选择得分最高的引用
+        sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+        # 提取前五个最高的分数
+        top_scores = [score for _, score in sorted_refs[:5]]
+        # 打印出这些分数
+        print("Top 5 scores:", top_scores)
+        top_refs = [ref for ref, score in sorted_refs[:5]]  # 假设您只需要前5个最相关的引用
+        prompt = prompt_builder.generate_answer_prompt(query, top_refs)
         if llm == 'cutegpt':
             # old_answer = large_model_service.get_answer_from_Tyqwen(prompt)
             # beauty_prompt = prompt_builder.generate_beauty_prompt(old_answer)
             # ans = large_model_service.get_answer_from_Tyqwen(beauty_prompt)
-            print("input:", prompt)
             ans = large_model_service.get_answer_from_Tyqwen(prompt)
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
@@ -223,15 +242,21 @@ def answer_question():
         ans = ans.replace("\n", "<br/>")
         log_data = {'question': query,
                     'answer': ans,
-                    'matches': refs}
+                    'matches': [{
+                        'text': ref['text'],
+                        'original_text': ref['original_text'],
+                        'page': ref['page'],
+                        'file_name': ref['file_name'],
+                        'download_path': ref['download_path'],
+                        'score': ref['score']
+                    } for ref in top_refs]}
 
         # 记录日志
-        logger.info(f"Query processed: {log_data}")
+        logger.info(f"问答记录: {log_data}")
         # 将回答和匹配文本保存到JSON文件中
         with open(record_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
-
-        return jsonify({'answer': ans, 'matches': refs}), 200
+        return jsonify({'answer': ans, 'matches': sorted_refs}), 200
 
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
