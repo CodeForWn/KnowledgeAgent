@@ -177,6 +177,6 @@ if __name__ == '__main__':
     # test_get_answer()
     # test_get_open_answer()
     # test_summary(1312)
-    # test_delete_index("20ad830c-bf53-471d-bbdb-ede680dbd38d")
+    test_delete_index("1781319034160123905")
     # test_indexing_api(test_data)
 

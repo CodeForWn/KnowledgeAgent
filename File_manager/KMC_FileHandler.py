@@ -1,9 +1,14 @@
 import os
 import logging
+import subprocess
 import requests
 import spacy
 from langchain.document_loaders import PyPDFLoader
 import jieba.posseg as pseg
+import mimetypes
+import magic
+from fpdf import FPDF
+
 import re
 import logging
 from logging.handlers import RotatingFileHandler
@@ -46,20 +51,101 @@ class FileManager:
             response = requests.get(download_url, headers=headers)
 
             if response.status_code == 200:
-                pdf_path = os.path.join(self.file_storage_path, f"{file_id}.pdf")
-                with open(pdf_path, "wb") as pdf_file:
+                file_path = os.path.join(self.file_storage_path, f"{file_id}")
+                with open(file_path, "wb") as pdf_file:
                     pdf_file.write(response.content)
-                self.logger.info(f"PDF downloaded successfully: {pdf_path}")
-                return pdf_path
+                self.logger.info(f"FILE downloaded successfully: {file_path}")
+                return file_path
             else:
                 self.logger.error(f"下载PDF失败: {download_url}, Status code: {response.status_code}")
                 return None
 
         except Exception as e:
-            self.logger.exception(f"下载PDF失败: {download_url}, Error: {e}")
+            self.logger.exception(f"下载文件失败: {download_url}, Error: {e}")
             return None
 
-    def process_pdf_file(self, pdf_path):
+    def convert_txt_to_pdf(self, txt_path, output_path):
+        self.logger.info(f"开始将文本文件转换为PDF: {txt_path}")
+        pdf = FPDF()
+        pdf.add_page()
+        # 添加字体，确保字体文件在正确的路径
+        pdf.add_font('YaHei', '', "/work/kmc/kmcGPT/model/font/微软雅黑.ttf", uni=True)
+        pdf.set_font('YaHei', '', 12)  # 设置字体为微软雅黑
+
+        try:
+            with open(txt_path, 'r', encoding='utf-8') as file:
+                for line in file:
+                    pdf.cell(200, 10, txt=line, ln=True)
+
+            output_pdf_path = os.path.join(output_path, os.path.splitext(os.path.basename(txt_path))[0] + '.pdf')
+            pdf.output(output_pdf_path)
+            self.logger.info(f"文本文件转换为PDF完成: {output_pdf_path}")
+            return output_pdf_path
+        except Exception as e:
+            self.logger.error(f"转换文本文件到PDF失败: {e}")
+            return None
+
+    def convert_docx_to_pdf(self, input_path, output_path):
+        base_name = os.path.basename(input_path)
+        converted_pdf_path = os.path.join(output_path, os.path.splitext(base_name)[0] + '.pdf')
+        try:
+            # 确保输出目录存在
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+
+            cmd = [
+                '/usr/bin/libreoffice',
+                '--headless',  # 无界面模式
+                '--convert-to', 'pdf:writer_pdf_Export',
+                '--outdir', output_path,
+                input_path
+            ]
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode == 0:
+                self.logger.info(f"转换完成：{converted_pdf_path}")
+                return converted_pdf_path
+            else:
+                self.logger.error(f"转换失败，LibreOffice 错误：{result.stderr.decode()}")
+                converted_pdf_path = None
+                return converted_pdf_path
+
+        except Exception as e:
+            self.logger.error(f"转换失败：{e}")
+            return None
+
+    def process_pdf_file(self, pdf_path, file_name, output_path=None):
+        # 获取文件扩展名
+        _, file_extension = os.path.splitext(file_name)
+        file_extension = file_extension.lower()
+
+        # 检查并设置输出路径
+        if output_path is None:
+            output_path = os.path.dirname(pdf_path)
+
+        # 支持的文件扩展名检查
+        supported_extensions = ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']
+        # 如果文件是.docx格式，首先转换为.pdf
+        if file_extension in supported_extensions:
+            if file_extension in ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx']:
+                self.logger.info(f"检测到{file_extension}文件，转换为PDF...")
+                converted_pdf_path = self.convert_docx_to_pdf(pdf_path, output_path)
+                if converted_pdf_path is not None:
+                    pdf_path = converted_pdf_path
+                else:
+                    self.logger.error(f"{file_extension}转PDF失败，无法继续处理。")
+                    return None
+            elif file_extension == '.txt':
+                converted_pdf_path = self.convert_txt_to_pdf(pdf_path, output_path)
+                if converted_pdf_path is not None:
+                    pdf_path = converted_pdf_path
+                else:
+                    self.logger.error(f"{file_extension}转PDF失败，无法继续处理。")
+                    return None
+
+        elif file_extension != '.pdf':
+            self.logger.error("不支持的文件格式")
+            return None
+
         """处理单个PDF文件"""
         doc_list = []  # 初始化空列表以确保在出错时也能返回列表类型
         try:
@@ -83,7 +169,6 @@ class FileManager:
                             doc_list.append({'page': page_index, 'text': filtered_text, 'original_text': text})
         except Exception as e:
             self.logger.error("PDF文件 %s 处理过程出现错误: %s", pdf_path, str(e))
-            print(f"PDF文件{pdf_path}处理过程出现错误: {str(e)}")
         finally:
             try:
                 os.remove(pdf_path)

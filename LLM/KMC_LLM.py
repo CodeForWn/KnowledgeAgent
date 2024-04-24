@@ -94,6 +94,51 @@ class LargeModelAPIService:
             self.logger.error(resp.code)  # 错误代码
             self.logger.error(resp.message)  # 错误消息
             return resp.message  # 返回错误消息
+    def get_answer_from_Qwen(self, prompt):
+        url = 'http://kmc.sundeinfo.cn/model'
+
+        # 要发送给模型的数据
+        data = {
+            'text': prompt
+        }
+        
+        # 将数据转换为JSON格式
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+        return(response.text)
+        
+        
+        
+    def get_answer_from_Qwen(self, prompt):
+        url = 'http://kmc.sundeinfo.cn/model'
+
+        # 要发送给模型的数据
+        data = {
+            'text': prompt
+        }
+
+        # 将数据转换为JSON格式并设置请求头
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+
+        # 根据响应状态码进行错误处理或数据提取
+        if response.status_code == HTTPStatus.OK:
+            try:
+                # 提取并返回文本部分
+                text_response = response.text
+                self.logger.info(text_response)
+                return text_response
+            except json.JSONDecodeError:
+                error_message = "JSON decoding failed"
+                self.logger.error(error_message)
+                return error_message
+            
+        else:
+            # 记录错误代码和错误消息
+            error_message = f"HTTP error {response.status_code}: {response.text}"
+            self.logger.error(error_message)
+            return error_message
+            
 
     def async_invoke_chatglm(self, prompt, top_p=0.7, temperature=0.9):
         response = zhipuai.model_api.async_invoke(

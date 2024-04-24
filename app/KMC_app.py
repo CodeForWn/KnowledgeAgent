@@ -91,9 +91,9 @@ def _process_file_data(data):
 
         try:
             # 处理文件并创建索引
-            logger.info("开始下载文件并处理: %s", file_name)
-            pdf_path = file_manager.download_pdf(download_path, file_id)
-            doc_list = file_manager.process_pdf_file(pdf_path)
+            logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
+            file_path = file_manager.download_pdf(download_path, file_id)
+            doc_list = file_manager.process_pdf_file(file_path, file_name)
 
             if not doc_list:
                 notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
@@ -154,9 +154,10 @@ def get_open_ans():
     llm = data.get('llm', 'qwen')  # 默认使用CuteGPT
     # 获取历史对话内容
     history = prompt_builder.get_history(session_id, token)
+    logger.info(f"历史对话：{history}")
     # 构建新的prompt
     prompt = prompt_builder.generate_open_answer_prompt(query, history)
-
+    logger.info(f"prompt:{prompt}")
     answer = ''
     if llm.lower() == 'cutegpt':
         answer = large_model_service.get_answer_from_Tyqwen(prompt)
@@ -210,7 +211,7 @@ def answer_question():
         if not all_refs:
             ans = large_model_service.get_answer_from_Tyqwen(query)
             ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
-            return jsonify({'answer': ans, 'matches': refs}), 200
+            return jsonify({'answer': ans, 'matches': all_refs}), 200
 
         # 使用重排模型进行重排并归一化得分
         # 提取文本并构造查询-引用对
@@ -219,6 +220,7 @@ def answer_question():
         # 根据得分排序，并选择得分最高的引用
         sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
         # 提取前五个最高的分数
+        top_list = sorted_refs[:5]
         top_scores = [score for _, score in sorted_refs[:5]]
         # 打印出这些分数
         print("Top 5 scores:", top_scores)
@@ -246,17 +248,19 @@ def answer_question():
                         'text': ref['text'],
                         'original_text': ref['original_text'],
                         'page': ref['page'],
+                        'file_id': ref['file_id'],
                         'file_name': ref['file_name'],
                         'download_path': ref['download_path'],
-                        'score': ref['score']
-                    } for ref in top_refs]}
+                        'score': ref['score'],
+                        'rerank_score': score
+                    } for ref, score in top_list]}
 
         # 记录日志
         logger.info(f"问答记录: {log_data}")
         # 将回答和匹配文本保存到JSON文件中
         with open(record_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
-        return jsonify({'answer': ans, 'matches': sorted_refs}), 200
+        return jsonify({'answer': ans, 'matches': log_data['matches']}), 200
 
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
