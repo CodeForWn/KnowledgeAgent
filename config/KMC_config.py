@@ -38,7 +38,6 @@ import sys
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 
 
-
 class Config(object):
 
     def __init__(self, env='production'):

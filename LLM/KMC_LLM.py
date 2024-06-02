@@ -94,38 +94,47 @@ class LargeModelAPIService:
             self.logger.error(resp.code)  # 错误代码
             self.logger.error(resp.message)  # 错误消息
             return resp.message  # 返回错误消息
+
+    def get_answer_from_Tyqwen_stream(self, prompt):
+        dashscope.api_key = self.Tyqwen_api_key
+        response_generator = dashscope.Generation.call(
+            model='qwen-14b-chat',
+            prompt=prompt,
+            stream=True  # 开启流式输出
+        )
+
+        previous_output = ""
+        for response in response_generator:
+            if response.status_code == HTTPStatus.OK:
+                current_output = response.output['text']
+                if len(current_output) >= len(previous_output):
+                    new_output = current_output[len(previous_output):]
+                else:
+                    # 文本回退的情况
+                    new_output = current_output
+                previous_output = current_output
+                yield new_output
+            else:
+                yield f"Error {response.code}: {response.message}\n"
+
     def get_answer_from_Qwen(self, prompt):
         url = 'http://kmc.sundeinfo.cn/model'
-
+        
         # 要发送给模型的数据
         data = {
             'text': prompt
         }
         
-        # 将数据转换为JSON格式
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(url, headers=headers, data=json.dumps(data))
-        return(response.text)
-        
-        
-        
-    def get_answer_from_Qwen(self, prompt):
-        url = 'http://kmc.sundeinfo.cn/model'
-
-        # 要发送给模型的数据
-        data = {
-            'text': prompt
-        }
-
         # 将数据转换为JSON格式并设置请求头
         headers = {'Content-Type': 'application/json'}
         response = requests.post(url, headers=headers, data=json.dumps(data))
-
+        
         # 根据响应状态码进行错误处理或数据提取
         if response.status_code == HTTPStatus.OK:
             try:
                 # 提取并返回文本部分
-                text_response = response.text
+                response_data = response.json()
+                text_response = response_data['response'] if 'response' in response_data else 'No response available'
                 self.logger.info(text_response)
                 return text_response
             except json.JSONDecodeError:
@@ -138,7 +147,6 @@ class LargeModelAPIService:
             error_message = f"HTTP error {response.status_code}: {response.text}"
             self.logger.error(error_message)
             return error_message
-            
 
     def async_invoke_chatglm(self, prompt, top_p=0.7, temperature=0.9):
         response = zhipuai.model_api.async_invoke(

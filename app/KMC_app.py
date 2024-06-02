@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from transformers import AutoTokenizer, AutoModel
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -22,6 +22,7 @@ from ElasticSearch.KMC_ES import ElasticSearchHandler
 from File_manager.KMC_FileHandler import FileManager
 from LLM.KMC_LLM import LargeModelAPIService
 from Prompt.KMC_Prompt import PromptBuilder
+import types
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -42,7 +43,8 @@ es_handler = ElasticSearchHandler(config)
 large_model_service = LargeModelAPIService(config)
 prompt_builder = PromptBuilder(config)
 model_path = "/work/kmc/kmcGPT/model/bge-reranker-base"
-
+# 定义调用SnoopIE模型的接口地址
+api_url = "http://chat.cheniison.cn/api/chat"
 # 创建队列
 file_queue = queue.Queue()
 index_lock = threading.Lock()
@@ -171,6 +173,235 @@ def get_open_ans():
     return jsonify({'answer': answer, 'matches': []}), 200
 
 
+@app.route('/api/get_open_ans_stream', methods=['POST'])
+def get_open_ans_stream():
+    data = request.json
+    session_id = data.get('session_id')
+    token = data.get('token')
+    query = data.get('query')
+    llm = data.get('llm', 'qwen')  # 默认使用 qwen
+    # 获取历史对话内容
+    history = prompt_builder.get_history(session_id, token)
+    logger.info(f"历史对话：{history}")
+    # 构建新的 prompt
+    prompt = prompt_builder.generate_open_answer_prompt(query, history)
+    logger.info(f"prompt:{prompt}")
+
+    if llm.lower() == 'qwen':
+        response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+        return Response(response_generator, content_type='text/plain; charset=utf-8')
+    else:
+        # 非流式模型或其他模型的处理
+        if llm.lower() == 'cutegpt':
+            answer = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+        elif llm.lower() == 'chatglm':
+            task_id = large_model_service.async_invoke_chatglm(prompt)
+            answer = large_model_service.query_async_result_chatglm(task_id)
+        elif llm.lower() == 'chatgpt':
+            answer = large_model_service.get_answer_from_chatgpt(prompt)
+        else:
+            answer = "Unsupported model"
+
+        return jsonify({'answer': answer, 'matches': []}), 200
+
+
+@app.route('/api/get_answer_stream', methods=['POST'])
+def answer_question_stream():
+    try:
+        # 初始化重排模型
+        reranker = FlagReranker(model_path, use_fp16=True)
+        # 收集所有检索到的文本片段
+        all_refs = []
+        # 读取请求参数
+        data = request.json
+        assistant_id = data.get('assistant_id')
+        query = data.get('query')
+        func = data.get('func', 'bm25')
+        ref_num = data.get('ref_num', 5)
+        llm = data.get('llm', 'qwen').lower()
+
+        if not assistant_id or not query:
+            return jsonify({'error': '参数不完整'}), 400
+
+        # 检查问题是否在预定义的问答中
+        predefined_answer = config.predefined_qa.get(query)
+        if predefined_answer:
+            # 如果预设的答案是一个字符串，意味着没有匹配信息，返回答案和空的matches列表
+            if isinstance(predefined_answer, str):
+                return jsonify({'answer': predefined_answer, 'matches': []}), 200
+            # 如果预设的答案是一个字典，包含'answer'和'matches'键，返回相应的内容
+            elif isinstance(predefined_answer,
+                            dict) and 'answer' in predefined_answer and 'matches' in predefined_answer:
+                return jsonify({
+                    'answer': predefined_answer['answer'],
+                    'matches': predefined_answer['matches']
+                }), 200
+
+        if func == 'bm25' or 'embed':
+            bm25_refs = es_handler.search_bm25(assistant_id, query, ref_num)
+            embed_refs = es_handler.search_embed(assistant_id, query, ref_num)
+            all_refs = bm25_refs + embed_refs
+
+        if not all_refs:
+            ans = large_model_service.get_answer_from_Tyqwen(query)
+            ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
+            return jsonify({'answer': ans, 'matches': all_refs}), 200
+
+        # 使用重排模型进行重排并归一化得分
+        # 提取文本并构造查询-引用对
+        ref_pairs = [[query, ref['text']] for ref in all_refs]  # 为每个参考文档与查询组合成对
+        scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
+        # 根据得分排序，并选择得分最高的引用
+        sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+        # 提取前五个最高的分数
+        top_list = sorted_refs[:5]
+        top_scores = [score for _, score in sorted_refs[:5]]
+        top_refs = [ref for ref, score in sorted_refs[:5]]  # 假设您只需要前5个最相关的引用
+        prompt = prompt_builder.generate_answer_prompt(query, top_refs)
+
+        matches = [{
+            'text': ref['text'],
+            'original_text': ref['original_text'],
+            'page': ref['page'],
+            'file_id': ref['file_id'],
+            'file_name': ref['file_name'],
+            'download_path': ref['download_path'],
+            'score': ref['score'],
+            'rerank_score': score
+        } for ref, score in top_list]
+
+        if llm == 'qwen':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
+        elif llm == 'cutegpt':
+            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+        elif llm == 'chatglm':
+            task_id = large_model_service.async_invoke_chatglm(prompt)
+            ans = large_model_service.query_async_result_chatglm(task_id)
+        elif llm == 'chatgpt':
+            ans = large_model_service.get_answer_from_chatgpt(prompt)
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+        log_data = {'question': query,
+                    'answer': ans,
+                    'matches': matches}
+
+        logger.info(f"问答记录: {log_data}")
+        with open(record_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
+        return jsonify({'answer': ans, 'matches': matches}), 200
+
+    except Exception as e:
+        logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/get_answer_by_file_id', methods=['POST'])
+def answer_question_by_file_id():
+    try:
+        # 初始化重排模型
+        reranker = FlagReranker(model_path, use_fp16=True)
+        # 收集所有检索到的文本片段
+        all_refs = []
+        # 读取请求参数
+        data = request.json
+        assistant_id = data.get('assistant_id')
+        query = data.get('query')
+        file_id_list = data.get('file_id')
+        func = data.get('func', 'bm25')
+        ref_num = data.get('ref_num', 5)
+        llm = data.get('llm', 'qwen').lower()
+
+        if not assistant_id or not query or not file_id_list:
+            return jsonify({'error': '参数不完整'}), 400
+
+        # 检查问题是否在预定义的问答中
+        predefined_answer = config.predefined_qa.get(query)
+        if predefined_answer:
+            if isinstance(predefined_answer, str):
+                return jsonify({'answer': predefined_answer, 'matches': []}), 200
+            elif isinstance(predefined_answer, dict) and 'answer' in predefined_answer and 'matches' in predefined_answer:
+                return jsonify({
+                    'answer': predefined_answer['answer'],
+                    'matches': predefined_answer['matches']
+                }), 200
+
+        # 搜索只在给定的 file_id 的文件内容中进行
+        if func == 'bm25' or func == 'embed':
+            bm25_refs = es_handler.search_bm25(assistant_id, query, ref_num, file_id_list=file_id_list)
+            embed_refs = es_handler.search_embed(assistant_id, query, ref_num, file_id_list=file_id_list)
+            all_refs = bm25_refs + embed_refs
+
+        if not all_refs:
+            ans = large_model_service.get_answer_from_Tyqwen(query)
+            ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
+            return jsonify({'answer': ans, 'matches': all_refs}), 200
+
+        # 使用重排模型进行重排并归一化得分
+        ref_pairs = [[query, ref['text']] for ref in all_refs]
+        scores = reranker.compute_score(ref_pairs, normalize=True)
+        sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+        top_list = sorted_refs[:5]
+        top_scores = [score for _, score in sorted_refs[:5]]
+        print("Top 5 scores:", top_scores)
+        top_refs = [ref for ref, score in sorted_refs[:5]]
+        prompt = prompt_builder.generate_answer_prompt(query, top_refs)
+
+        matches = [{
+            'text': ref['text'],
+            'original_text': ref['original_text'],
+            'page': ref['page'],
+            'file_id': ref['file_id'],
+            'file_name': ref['file_name'],
+            'download_path': ref['download_path'],
+            'score': ref['score'],
+            'rerank_score': score
+        } for ref, score in top_list]
+
+        if llm == 'qwen':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
+        elif llm == 'cutegpt':
+            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+        elif llm == 'chatglm':
+            task_id = large_model_service.async_invoke_chatglm(prompt)
+            ans = large_model_service.query_async_result_chatglm(task_id)
+        elif llm == 'chatgpt':
+            ans = large_model_service.get_answer_from_chatgpt(prompt)
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+        log_data = {'question': query,
+                    'answer': ans,
+                    'matches': matches}
+
+        logger.info(f"问答记录: {log_data}")
+        with open(record_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
+        return jsonify({'answer': ans, 'matches': matches}), 200
+
+    except Exception as e:
+        logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/get_answer', methods=['POST'])
 def answer_question():
     try:
@@ -227,9 +458,9 @@ def answer_question():
         top_refs = [ref for ref, score in sorted_refs[:5]]  # 假设您只需要前5个最相关的引用
         prompt = prompt_builder.generate_answer_prompt(query, top_refs)
         if llm == 'cutegpt':
-            # old_answer = large_model_service.get_answer_from_Tyqwen(prompt)
+            # old_answer = large_model_service.get_answer_from_Qwen(prompt)
             # beauty_prompt = prompt_builder.generate_beauty_prompt(old_answer)
-            # ans = large_model_service.get_answer_from_Tyqwen(beauty_prompt)
+            # ans = large_model_service.get_answer_from_Qwen(beauty_prompt)
             ans = large_model_service.get_answer_from_Tyqwen(prompt)
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
@@ -299,8 +530,7 @@ def generate_summary_and_questions():
         if 'hits' in results and 'hits' in results['hits']:
             ref_list = [hit['_source']['text'] for hit in results['hits']['hits']]
             prompt = prompt_builder.generate_summary_and_questions_prompt(ref_list)
-            task_id = large_model_service.async_invoke_chatglm(prompt)
-            ans = large_model_service.query_async_result_chatglm(task_id)
+            ans = large_model_service.get_answer_from_Tyqwen(prompt)
             # 存储新生成的答案
             es_handler.index("answers_index", {"file_id": file_id, "sum_rec": ans})
         else:
@@ -496,9 +726,72 @@ def ST_answer_question():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/title_rewrite', methods=['POST'])
+def title_generation():
+    data = request.json
+    session_id = data.get('sessionId')
+    question = data.get('question')
+    answer = data.get('answer')
+    try:
+        content = f"问题：{question}\n回答：{answer}\n"
+        final_prompt = prompt_builder.generate_title_prompt(content)
+        print("final prompt:", final_prompt)
+        title = large_model_service.get_answer_from_Tyqwen(final_prompt)
+        logger.info(f"Title generated: {title}")
+        return jsonify({
+            "code": 200,  # 状态码
+            "data": {
+                "label": title
+            }
+        })
+    except Exception as e:
+        logger.error(f'Error in session {session_id} during title_generation: {e}')
+        return jsonify({
+            "code": 500,  # 服务器内部错误状态码
+            "data": {
+                "label": question
+            }
+        })
+
+
+@app.route('/SnoopIE', methods=['POST'])
+def get_snoopIE_ans():
+    data = request.json
+    query = data.get('query')
+    data = {
+        "messages": [
+            {"role": "user", "content": query},
+        ]
+    }
+    # 发送POST请求到接口
+    # 设置请求头
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    # 将数据转换为JSON格式
+    json_data = json.dumps(data)
+
+    # 发送POST请求
+    response = requests.post(api_url, headers=headers, data=json_data)
+    # 检查响应状态码
+    if response.status_code == 200:
+        # 获取响应数据
+        response_data = response.json()
+        # 提取模型回答的content字段
+        result_data = response_data['choices'][0]['message']['content']
+        print(f"模型回答: {result_data}")
+        return result_data
+    else:
+        print(f"请求失败，状态码: {response.status_code}")
+        return None
+
+
 if __name__ == '__main__':
     threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(2)]
     for t in threads:
         t.start()
 
     app.run(host='0.0.0.0', port=5777, debug=False)
+
+

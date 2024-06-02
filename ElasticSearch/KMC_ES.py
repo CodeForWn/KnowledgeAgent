@@ -280,33 +280,51 @@ class ElasticSearchHandler:
             self.logger.error(f"Error during search: {e}")
             return []
 
-    def search_bm25(self, assistant_id, query, ref_num=10):
+    def search_bm25(self, assistant_id, query, ref_num=10, file_id_list=None):
         # 使用BM25方法搜索特定索引
         query_body = {
             "query": {
-                "match": {
-                    "text": query
+                "bool": {
+                    "must": {
+                        "match": {
+                            "text": query
+                        }
+                    },
+                    "filter": []
                 }
             }
         }
+        if file_id_list:
+            for file_id in file_id_list:
+                query_body['query']['bool']['filter'].append({"term": {"file_id": file_id}})
+
         return self.search(assistant_id, query_body, ref_num)
 
-    def search_embed(self, assistant_id, query, ref_num=10):
+    def search_embed(self, assistant_id, query, ref_num=10, file_id_list=None):
         # 使用Embed方法搜索特定索引
         query_embed = self.cal_query_embed(query)
         query_body = {
             "query": {
-                "script_score": {
-                    "query": {
-                        "match_all": {}  # 在整个索引中搜索
+                "bool": {
+                    "must": {
+                        "script_score": {
+                            "query": {
+                                "match_all": {}  # 在整个索引中搜索
+                            },
+                            "script": {
+                                "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
+                                "params": {"query_vector": query_embed}
+                            }
+                        }
                     },
-                    "script": {
-                        "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
-                        "params": {"query_vector": query_embed}
-                    }
+                    "filter": []
                 }
             }
         }
+        if file_id_list:
+            for file_id in file_id_list:
+                query_body['query']['bool']['filter'].append({"term": {"file_id": file_id}})
+
         return self.search(assistant_id, query_body, ref_num)
 
     def delete_summary_answers(self, file_id):

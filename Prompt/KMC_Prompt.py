@@ -55,9 +55,9 @@ class PromptBuilder:
     # 构建开开放式问答prompt
     @staticmethod
     def generate_open_answer_prompt(query, history):
-        overall_instruction = "你是商业AI智能助理。请根据给定任务描述，请给出对应请求的回答。\n"
-        prompt = overall_instruction
-
+        # overall_instruction = "你是AI智能助理。请根据给定问题描述，请给出对应请求的回答。\n"
+        # prompt = overall_instruction
+        prompt = ""
         if history:
             for item in history:
                 if 'question' in item and 'content' in item:
@@ -84,6 +84,20 @@ class PromptBuilder:
             refs_prompt += f"[{i + 1}]:{ref}\n"
 
         # 构建最终的prompt
+        final_prompt = f"{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色，以markdown语言输出，语言风格更加贴合人们之间的日常交流。问题：{query}\n"
+
+        return final_prompt
+
+    # 构建上图问答prompt
+    @staticmethod
+    def generate_ST_answer_prompt(query, refs):
+        # 构建参考文本部分
+        ref_list = [ref['text'] for ref in refs]
+        refs_prompt = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，然后回答后面的问题：\n"
+        for i, ref in enumerate(ref_list):
+            refs_prompt += f"[{i + 1}]:{ref}\n"
+
+        # 构建最终的prompt
         final_prompt = f"{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色。问题：{query}\n"
 
         return final_prompt
@@ -94,6 +108,13 @@ class PromptBuilder:
         beauty_prompt = f"对于回答：{query}，请在不改变原文的基础上，对回答的结构和语言进行美化和完善，使人感到更加回答更加全面和贴切使用者提问的语境，仅输出修改后的回答，不要输出任何其他内容："
 
         return beauty_prompt
+
+    @staticmethod
+    def generate_title_prompt(content):
+        # 构建标题重写prompt
+        title_write_prompt = f"使用以下内容作为标题，并生成一个标题，标题应当简短，能够准确地概括出这次对话的主题，并使用不超过10个字：\n{content}。你的回答仅输出标题即可。"
+
+        return title_write_prompt
 #
 # # 加载配置
 # # 使用环境变量指定环境并加载配置
