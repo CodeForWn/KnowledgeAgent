@@ -90,6 +90,8 @@ def _process_file_data(data):
         file_name = data.get('file_name')
         download_path = data.get('download_path')
         tenant_id = data.get('tenant_id')
+        tag = data.get('tag')
+        createTime = data.get('createTime')
 
         try:
             # 处理文件并创建索引
@@ -103,7 +105,7 @@ def _process_file_data(data):
                 return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
 
             index_name = assistant_id
-            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path)
+            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime)
             es_handler.notify_backend(file_id, "SUCCESS")
         except Exception as e:
             logger.error("处理文件数据失败: {}".format(e))
@@ -143,6 +145,7 @@ def _index_func(isFirst):
 def build_file_index():
     data = request.json
     _push(data)
+    logger.info("文件数据已接收，准备处理: %s", data)
     return jsonify({"status": "success", "message": "文件数据已接收，准备处理"})
 
 
@@ -215,6 +218,8 @@ def answer_question_stream():
         # 读取请求参数
         data = request.json
         assistant_id = data.get('assistant_id')
+        session_id = data.get('session_id')
+        token = data.get('token')
         query = data.get('query')
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 5)
@@ -250,6 +255,8 @@ def answer_question_stream():
         # 使用重排模型进行重排并归一化得分
         # 提取文本并构造查询-引用对
         ref_pairs = [[query, ref['text']] for ref in all_refs]  # 为每个参考文档与查询组合成对
+        logger.info(f"Reference pairs: {ref_pairs}")
+
         scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
         # 根据得分排序，并选择得分最高的引用
         sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
@@ -257,18 +264,27 @@ def answer_question_stream():
         top_list = sorted_refs[:5]
         top_scores = [score for _, score in sorted_refs[:5]]
         top_refs = [ref for ref, score in sorted_refs[:5]]  # 假设您只需要前5个最相关的引用
-        prompt = prompt_builder.generate_answer_prompt(query, top_refs)
+        logger.info(f"重排后最高分：{top_scores}")
+        # 获取历史对话内容
+        history = prompt_builder.get_history(session_id, token)
+        logger.info(f"历史对话：{history}")
 
-        matches = [{
-            'text': ref['text'],
-            'original_text': ref['original_text'],
-            'page': ref['page'],
-            'file_id': ref['file_id'],
-            'file_name': ref['file_name'],
-            'download_path': ref['download_path'],
-            'score': ref['score'],
-            'rerank_score': score
-        } for ref, score in top_list]
+        # 检查最高分数是否低于0.3
+        if top_scores[0] < 0.3:
+            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
+            matches = []
+        else:
+            prompt = prompt_builder.generate_answer_prompt(query, top_refs, history)
+            matches = [{
+                'text': ref['text'],
+                'original_text': ref['original_text'],
+                'page': ref['page'],
+                'file_id': ref['file_id'],
+                'file_name': ref['file_name'],
+                'download_path': ref['download_path'],
+                'score': ref['score'],
+                'rerank_score': score
+            } for ref, score in top_list]
 
         if llm == 'qwen':
             def generate():
@@ -279,6 +295,7 @@ def answer_question_stream():
                     data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
                     yield data_stream + '\n'
 
+            logger.info(f"命中文档：{matches}")
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         elif llm == 'cutegpt':
@@ -315,6 +332,8 @@ def answer_question_by_file_id():
         # 读取请求参数
         data = request.json
         assistant_id = data.get('assistant_id')
+        session_id = data.get('session_id')
+        token = data.get('token')
         query = data.get('query')
         file_id_list = data.get('file_id')
         func = data.get('func', 'bm25')
@@ -352,20 +371,32 @@ def answer_question_by_file_id():
         sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
         top_list = sorted_refs[:5]
         top_scores = [score for _, score in sorted_refs[:5]]
-        print("Top 5 scores:", top_scores)
+        logger.info(f"Top 5 scores: {top_scores}")
         top_refs = [ref for ref, score in sorted_refs[:5]]
-        prompt = prompt_builder.generate_answer_prompt(query, top_refs)
+        # 获取历史对话内容
+        history = prompt_builder.get_history(session_id, token)
+        # 初始化默认的prompt和matches
+        prompt = None
+        matches = []
 
-        matches = [{
-            'text': ref['text'],
-            'original_text': ref['original_text'],
-            'page': ref['page'],
-            'file_id': ref['file_id'],
-            'file_name': ref['file_name'],
-            'download_path': ref['download_path'],
-            'score': ref['score'],
-            'rerank_score': score
-        } for ref, score in top_list]
+        # 检查最高分数是否低于0.3
+        if top_scores[0] < 0.3:
+            logger.info("问题与文档无关")
+            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
+            matches = []
+        else:
+            prompt = prompt_builder.generate_answer_prompt(query, top_refs, history)
+            matches = [{
+                'text': ref['text'],
+                'original_text': ref['original_text'],
+                'page': ref['page'],
+                'file_id': ref['file_id'],
+                'file_name': ref['file_name'],
+                'download_path': ref['download_path'],
+                'score': ref['score'],
+                'rerank_score': score
+            } for ref, score in top_list]
+            logger.info(f"使用了generate_answer_prompt，生成的prompt：{prompt}")
 
         if llm == 'qwen':
             def generate():
@@ -376,6 +407,7 @@ def answer_question_by_file_id():
                     data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
                     yield data_stream + '\n'
 
+            logger.info(f"命中文档：{matches}")
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         elif llm == 'cutegpt':
@@ -616,7 +648,7 @@ def delete_file_from_index(assistant_id, file_id):
         return jsonify({"code": 500, "msg": "删除文档片段失败"}), 500
 
 
-@app.route('/api/kmc/indexing', methods=['POST'])
+@app.route('/api/kmc/ST_indexing', methods=['POST'])
 def indexing():
     try:
         data = request.json
@@ -625,27 +657,26 @@ def indexing():
         # 随机生成 assistantId
         assistant_id = generate_assistant_id()
         doc_list = []  # 初始化空列表以确保在出错时也能返回列表类型
-        for document in documents:
-            doc_id = document['documentId']
-            doc_title = document['documentTitle']
-            doc_content = document['documentContent']
+        stopwords = file_manager.load_stopwords()
 
-            # 对内容进行分割
-            stopwords = file_manager.load_stopwords()
-            filtered_texts = set()  # 存储处理后的文本
-            split_text = file_manager.spacy_chinese_text_splitter(doc_content, max_length=400)
-            for text in split_text:
-                words = pseg.cut(text)
-                filtered_text = ''.join(word for word, flag in words if word not in stopwords)
-                if filtered_text and filtered_text not in filtered_texts:
-                    filtered_texts.add(filtered_text)
-                    doc_list.append({
-                        'text': filtered_text,
-                        'file_id': doc_id,
-                        'file_name': doc_title
-                    })
+        # document索引名称建立
+        metadata_index = 'document_metadata'
 
-        # 创建索引并存储到ES
+        # 文档元数据的mapping
+        metadata_mappings = {
+            "properties": {
+                "file_id": {"type": "keyword"},
+                "title": {"type": "text", "analyzer": "standard"},
+                "abstract": {"type": "text", "analyzer": "standard"},
+                "year": {"type": "keyword"},
+                "publisher": {"type": "keyword"},
+                "author": {"type": "keyword"},
+                "content": {"type": "text", "analyzer": "standard"},
+                "abstract_embed": {"type": "dense_vector", "dims": 1024}
+            }
+        }
+
+        # 文本片段索引mapping
         index_name = assistant_id
         mappings = {
             "properties": {
@@ -656,13 +687,63 @@ def indexing():
                 "file_name": {"type": "keyword"},
             }
         }
+
+        # 建立文档元数据索引
+        if not es_handler.index_exists(metadata_index):
+            logger.info("创建文档元数据索引")
+            es_handler.es.indices.create(index=metadata_index, mappings=metadata_mappings)
+        # 建立文本片段索引
         if es_handler.index_exists(index_name):
             logger.info("索引已存在，删除索引")
             es_handler.delete_index(index_name)
 
         logger.info("开始创建索引")
         es_handler.es.indices.create(index=index_name, mappings=mappings)
-        # 插入文档
+
+        for document in documents:
+            file_id = document['documentId']
+            doc_titles = document.get('TI', [])
+            doc_content = document.get('documentContent', '')
+            doc_abstract = document.get('Abstract_F', '')
+            year = document.get('Year', '')
+            publisher = document.get('LiteratureTitle_F', '')
+            author = document.get('Author_1', '')
+
+            doc_title = ' '.join(doc_titles)
+            logger.info(f"处理文档 {file_id}, 标题: {doc_title}")
+
+            # 生成摘要的嵌入向量
+            abstract_embed = es_handler.cal_passage_embed(doc_abstract)
+
+            # 插入文档元数据
+            metadata_document = {
+                "file_id": file_id,
+                "title": doc_title,
+                "abstract": doc_abstract,
+                "year": year,
+                "publisher": publisher,
+                "author": author,
+                "content": doc_content,
+                "abstract_embed": abstract_embed
+            }
+            es_handler.es.index(index=metadata_index, id=file_id, document=metadata_document)
+            # logger.info(f"插入文档元数据: {metadata_document}")
+
+            # 对内容进行分割
+            filtered_texts = set()  # 存储处理后的文本
+            split_text = file_manager.spacy_chinese_text_splitter(doc_content, max_length=400)
+            for text in split_text:
+                words = pseg.cut(text)
+                filtered_text = ''.join(word for word, flag in words if word not in stopwords)
+                if filtered_text and filtered_text not in filtered_texts:
+                    filtered_texts.add(filtered_text)
+                    doc_list.append({
+                        'text': filtered_text,
+                        'file_id': file_id,
+                        'file_name': doc_title
+                    })
+
+        # 插入文档片段
         for item in doc_list:
             embed = es_handler.cal_passage_embed(item['text'])
             document = {
@@ -686,6 +767,7 @@ def ST_answer_question():
     try:
         data = request.json
         assistant_id = data.get('assistant_id')
+
         query = data.get('query')
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 3)
@@ -694,9 +776,9 @@ def ST_answer_question():
         if not assistant_id or not query:
             return jsonify({'error': '参数不完整'}), 400
         if func == 'bm25':
-            refs = es_handler.ST_search_bm25(assistant_id, query, ref_num)
+            refs = es_handler.ST_search_abstract_bm25(query, ref_num)
         if func == 'embed':
-            refs = es_handler.ST_search_embed(assistant_id, query, ref_num)
+            refs = es_handler.ST_search_abstract_embed(query, ref_num)
 
         if not refs:
             return jsonify({'error': '未找到相关文本片段'})
@@ -724,6 +806,91 @@ def ST_answer_question():
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ST_get_file', methods=['POST'])
+def ST_search_file():
+    try:
+        # 初始化重排模型
+        reranker = FlagReranker(model_path, use_fp16=True)
+        data = request.json
+        query = data.get('query')
+        ref_num = data.get('ref_num', 5)
+
+        if not query:
+            return jsonify({'status': 'error', 'message': '缺少问题'}), 400
+
+        # 在摘要字段中进行BM25和嵌入搜索，获取匹配的文档ID列表
+        bm25_file_ids = es_handler.ST_search_abstract_bm25(query, ref_num)
+        logger.info(f"BM25 file IDs: {bm25_file_ids}")
+        embed_file_ids = es_handler.ST_search_abstract_embed(query, ref_num)
+        logger.info(f"Embed file IDs: {embed_file_ids}")
+
+        all_file_ids = list(set(bm25_file_ids + embed_file_ids))  # 去重
+
+        if not all_file_ids:
+            return jsonify({'file_ids': all_file_ids}), 200
+
+        # 增加日志记录
+        logger.info(f"All file IDs: {all_file_ids}")
+
+        # 获取所有匹配文档的详细信息
+        all_refs = []
+        for file_id in all_file_ids:
+            try:
+                doc = es_handler.es.get(index='document_metadata', id=file_id)
+                if doc and '_source' in doc:
+                    source = doc['_source']
+                    all_refs.append({
+                        'file_id': source.get('file_id', ''),
+                        'title': source.get('title', ''),
+                        'abstract': source.get('abstract', ''),
+                        'year': source.get('year', ''),
+                        'publisher': source.get('publisher', ''),
+                        'author': source.get('author', ''),
+                        'content': source.get('content', '')
+                    })
+                else:
+                    logger.error(f"Document with file_id {file_id} not found in index 'document_metadata'")
+            except Exception as e:
+                logger.error(f"Error retrieving document with file_id {file_id}: {e}")
+
+        if not all_refs:
+            return jsonify({'file_ids': all_file_ids}), 200
+
+        # 如果只有一个引用对，直接返回结果
+        if len(all_refs) == 1:
+            return jsonify({
+                'status': 'success',
+                'file_ids': [all_refs[0]['file_id']],
+                'details': all_refs
+            }), 200
+
+        # 使用重排模型进行重排并归一化得分
+        ref_pairs = [[query, ref['abstract']] for ref in all_refs]  # 为每个参考文档与查询组合成对
+        scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
+        if not isinstance(scores, list):
+            logger.error(f"Scores should be a list but got {type(scores)}: {scores}")
+            return jsonify({'status': 'error', 'message': 'Invalid score format'}), 500
+
+        # 根据得分排序，并选择得分最高的引用
+        sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+        top_refs = [ref for ref, _ in sorted_refs[:ref_num]]  # 假设您只需要前ref_num个最相关的引用
+        top_scores = [score for _, score in sorted_refs[:ref_num]]
+
+        # 打印出这些分数
+        logger.info(f"Top scores: {top_scores}")
+
+        # 返回结果
+        return jsonify({
+            'status': 'success',
+            'file_ids': [ref['file_id'] for ref in top_refs],
+            'details': top_refs
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in ST_search_file: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/api/title_rewrite', methods=['POST'])
@@ -785,6 +952,141 @@ def get_snoopIE_ans():
     else:
         print(f"请求失败，状态码: {response.status_code}")
         return None
+
+
+@app.route('/api/ST_get_answer_by_file_id', methods=['POST'])
+def ST_answer_question_by_file_id():
+    try:
+        # 初始化重排模型
+        reranker = FlagReranker(model_path, use_fp16=True)
+        # 收集所有检索到的文本片段
+        metadata_refs = []
+        all_refs = []
+        # 读取请求参数
+        data = request.json
+        assistant_id = data.get('assistant_id')
+        session_id = data.get('session_id')
+        token = data.get('token')
+        query = data.get('query')
+        file_id_list = data.get('file_id')
+        ref_num = data.get('ref_num', 3)
+        llm = data.get('llm', 'qwen').lower()
+
+        if not assistant_id or not query or not file_id_list:
+            return jsonify({'error': '参数不完整'}), 400
+
+        # 检查问题是否在预定义的问答中
+        predefined_answer = config.predefined_qa.get(query)
+        if predefined_answer:
+            if isinstance(predefined_answer, str):
+                return jsonify({'answer': predefined_answer, 'matches': []}), 200
+            elif isinstance(predefined_answer, dict) and 'answer' in predefined_answer and 'matches' in predefined_answer:
+                return jsonify({
+                    'answer': predefined_answer['answer'],
+                    'matches': predefined_answer['matches']
+                }), 200
+
+        # 搜索只在给定的 file_id 的文件内容中进行
+        bm25_refs = es_handler.ST_search_bm25(assistant_id, query, ref_num, file_id_list=file_id_list)
+        embed_refs = es_handler.ST_search_embed(assistant_id, query, ref_num, file_id_list=file_id_list)
+        all_refs = bm25_refs + embed_refs
+
+        if not all_refs:
+            ans = large_model_service.get_answer_from_Tyqwen(query)
+            ans = "您的问题没有在文献中找到答案，正在使用预训练知识库为您解答：" + ans
+            return jsonify({'answer': ans, 'matches': all_refs}), 200
+
+        # 获取所有匹配文档的详细信息
+        for file_id in file_id_list:
+            try:
+                doc = es_handler.es.get(index='document_metadata', id=file_id)
+                if doc:
+                    source = doc['_source']
+                    metadata_refs.append({
+                        'file_id': str(file_id),
+                        'title': source.get('title', ''),
+                        'year': source.get('year', ''),
+                        'publisher': source.get('publisher', ''),
+                        'author': source.get('author', ''),
+                    })
+            except Exception as e:
+                logger.error(f"没有找到该文献的文本信息 {file_id}: {e}")
+
+        logger.info(f"Metadata references collected: {metadata_refs}")
+
+        # 使用重排模型进行重排并归一化得分
+        ref_pairs = [[query, ref['text']] for ref in all_refs]
+        scores = reranker.compute_score(ref_pairs, normalize=True)
+        sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+        top_list = sorted_refs[:ref_num]
+        top_scores = [score for _, score in sorted_refs[:5]]
+        logger.info(f"Top scores: {top_scores}")
+        top_refs = [ref for ref, score in top_list]
+
+        # 检查 top_refs 中的 file_id
+        for ref in top_refs:
+            if 'file_id' not in ref:
+                logger.error(f"Missing file_id in reference: {ref}")
+
+        # 将元数据与文本片段信息合并
+        merged_refs = []
+        for ref in top_refs:
+            file_id = str(ref.get('file_id'))  # 确保 file_id 是字符串类型
+            if not file_id:
+                logger.error(f"No file_id found in reference: {ref}")
+                continue
+            # 找到对应的元数据
+            metadata = next((metadata for metadata in metadata_refs if metadata['file_id'] == file_id), None)
+            if metadata:
+                # 合并元数据和文本片段信息
+                merged_ref = {**ref, **metadata}
+                merged_refs.append(merged_ref)
+            else:
+                logger.warning(f"No metadata found for file_id {file_id}")
+
+        # 获取历史对话内容
+        history = prompt_builder.get_history(session_id, token)
+        # 初始化默认的prompt和matches
+        prompt = None
+        matches = []
+
+        # 检查最高分数是否低于0.3
+        if top_scores[0] < 0.3:
+            logger.info("问题与文档无关")
+            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
+            matches = []
+        else:
+            prompt = prompt_builder.generate_ST_answer_prompt(query, merged_refs, history)
+            matches = [{
+                'text': ref['text'],
+                'file_id': ref['file_id'],
+                'file_name': ref['file_name'],
+                'score': ref['score'],
+                'rerank_score': score
+            } for ref, score in top_list]
+            logger.info(f"使用了generate_ST_answer_prompt，生成的prompt：{prompt}")
+
+        if llm == 'qwen':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+                logger.info(f"问题：{query}")
+                logger.info(f"生成的答案：{full_answer}")
+
+            logger.info(f"命中文档：{matches}")
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+    except Exception as e:
+        logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

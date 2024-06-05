@@ -77,45 +77,62 @@ class LargeModelAPIService:
         return ans
 
     def get_answer_from_Tyqwen(self, prompt):
-        dashscope.api_key = self.Tyqwen_api_key
-        resp = dashscope.Generation.call(
-            model='qwen-14b-chat',
-            prompt=prompt
-        )
+        try:
+            with requests.Session() as session:
+                session.keep_alive = False  # 每次请求后关闭连接
+                dashscope.api_key = self.Tyqwen_api_key
+                resp = dashscope.Generation.call(
+                    model='qwen-14b-chat',
+                    prompt=prompt
+                )
 
-        if resp.status_code == HTTPStatus.OK:
-
-            # 提取并返回文本部分
-            text_response = resp.output['text'] if 'text' in resp.output else 'No text available'
-            self.logger.info(text_response)
-            return text_response
-        else:
-            # 记录错误代码和错误消息
-            self.logger.error(resp.code)  # 错误代码
-            self.logger.error(resp.message)  # 错误消息
-            return resp.message  # 返回错误消息
+                if resp.status_code == HTTPStatus.OK:
+                    # 提取并返回文本部分
+                    text_response = resp.output['text'] if 'text' in resp.output else 'No text available'
+                    self.logger.info(text_response)
+                    return text_response
+                else:
+                    # 记录错误代码和错误消息
+                    self.logger.error(resp.code)  # 错误代码
+                    self.logger.error(resp.message)  # 错误消息
+                    return resp.message  # 返回错误消息
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Request failed: {e}")
+            return f"Request failed: {e}"
 
     def get_answer_from_Tyqwen_stream(self, prompt):
         dashscope.api_key = self.Tyqwen_api_key
-        response_generator = dashscope.Generation.call(
-            model='qwen-14b-chat',
-            prompt=prompt,
-            stream=True  # 开启流式输出
-        )
+        retry_count = 3
+        for _ in range(retry_count):
+            try:
+                response_generator = dashscope.Generation.call(
+                    model='qwen-14b-chat',
+                    prompt=prompt,
+                    stream=True  # 开启流式输出
+                )
+                previous_output = ""
 
-        previous_output = ""
-        for response in response_generator:
-            if response.status_code == HTTPStatus.OK:
-                current_output = response.output['text']
-                if len(current_output) >= len(previous_output):
-                    new_output = current_output[len(previous_output):]
-                else:
-                    # 文本回退的情况
-                    new_output = current_output
-                previous_output = current_output
-                yield new_output
-            else:
-                yield f"Error {response.code}: {response.message}\n"
+                for response in response_generator:
+                    with requests.Session() as session:
+                        session.keep_alive = False  # 每次请求后关闭连接
+                        if response.status_code == HTTPStatus.OK:
+                            current_output = response.output['text']
+                            if len(current_output) >= len(previous_output):
+                                new_output = current_output[len(previous_output):]
+                            else:
+                                # 文本回退的情况
+                                new_output = current_output
+                            previous_output = current_output
+                            yield new_output
+                        else:
+                            yield f"Error {response.code}: {response.message}\n"
+                break
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"Request failed: {e}. Retrying...")
+                time.sleep(3)
+        else:
+            self.logger.error("Failed to connect to the API after several attempts.")
+            yield "Failed to connect to the API after several attempts."
 
     def get_answer_from_Qwen(self, prompt):
         url = 'http://kmc.sundeinfo.cn/model'

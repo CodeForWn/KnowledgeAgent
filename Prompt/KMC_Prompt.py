@@ -30,6 +30,7 @@ import queue
 import threading
 import spacy
 import sys
+
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 
@@ -69,36 +70,69 @@ class PromptBuilder:
     # 构建总结文本和推荐问题的prompt
     @staticmethod
     def generate_summary_and_questions_prompt(ref_list):
-        prex = f"参考这一篇文章的前{len(ref_list)}段文本，简要地多方面地概括文章提到了哪些内容，并生成3个推荐问题并用序号列出（推荐问题应该能根据文章的内容回答）：\n"
+        prex = ("你是一个总结文章的语言专家。\n\n1.请深入分析这篇文章的开头几段，总结出其覆盖的关键要点，并确保涵盖多个维度。\n"
+                "2.随后，请依据这些要点生成三个推荐问题，每个问题应直接关联文章内容且在文中能找到答案。\n3.请使用序号清晰标注每个问题，输出的格式请用Markdown语言：\n")
         for i, ref in enumerate(ref_list):
-            prex += f"{i+1}:{ref}\n"
+            prex += f"{i + 1}:{ref}\n"
         return prex
 
     # 构建文档问答prompt
     @staticmethod
-    def generate_answer_prompt(query, refs):
+    def generate_answer_prompt(query, refs, history):
         # 构建参考文本部分
         ref_list = [ref['text'] for ref in refs]
-        refs_prompt = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，然后回答后面的问题：\n"
+        refs_prompt = f"参考这一篇文章里与问题相关的以下几段文本，然后回答后面的问题：\n"
         for i, ref in enumerate(ref_list):
             refs_prompt += f"[{i + 1}]:{ref}\n"
 
+        # 构建历史对话部分
+        history_prompt = ""
+        if history:
+            history_prompt = "参考以下历史对话内容：\n"
+            for item in history:
+                if 'question' in item and 'content' in item:
+                    history_prompt += f"用户：{item['question']}\n助手：{item['content']}\n"
+
         # 构建最终的prompt
-        final_prompt = f"{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色，以markdown语言输出，语言风格更加贴合人们之间的日常交流。问题：{query}\n"
+        final_prompt = (f"{history_prompt}\n{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色，以markdown"
+                        f"语言输出，语言风格更加贴合人们之间的日常交流。问题：{query}\n")
+
+        return final_prompt
+
+    @staticmethod
+    def generate_answer_prompt_un_refs(query, history):
+
+        # 构建历史对话部分
+        history_prompt = ""
+        if history:
+            for item in history:
+                if 'question' in item and 'content' in item:
+                    history_prompt += f"用户：{item['question']}\n助手：{item['content']}\n"
+
+        # 构建最终的prompt
+        final_prompt = f"{history_prompt}\n用户：{query}\n助手："
 
         return final_prompt
 
     # 构建上图问答prompt
     @staticmethod
-    def generate_ST_answer_prompt(query, refs):
-        # 构建参考文本部分
-        ref_list = [ref['text'] for ref in refs]
-        refs_prompt = f"参考这一篇文章里与问题相关的以下{len(ref_list)}段文本，然后回答后面的问题：\n"
-        for i, ref in enumerate(ref_list):
-            refs_prompt += f"[{i + 1}]:{ref}\n"
+    def generate_ST_answer_prompt(query, refs, history):
+        # 构建历史对话部分
+        history_prompt = ""
+        if history:
+            for item in history:
+                if 'question' in item and 'content' in item:
+                    history_prompt += f"根据之前的对话记录：\n用户：{item['question']}\n助手：{item['content']}\n"
 
-        # 构建最终的prompt
-        final_prompt = f"{refs_prompt}\n你应当尽量用原文回答，并对回答的结构和内容进行完善和润色。问题：{query}\n"
+        # 构建参考文本部分，包括文档元数据和文本内容
+        refs_prompt = ""
+        for i, ref in enumerate(refs):
+            metadata = f"标题: {ref['title']}，作者: {ref['author']}，年份: {ref['year']}，出版社: {ref['publisher']}\n"
+            ref_text = f"{metadata}{ref['text']}\n"
+            refs_prompt += f"[{i + 1}]: {ref_text}"
+
+        # 构建最终的 prompt
+        final_prompt = f"{history_prompt}然后参考以下文本片段，它们来自不同的文档，请根据这些信息和历史记录回答问题。\n{refs_prompt}\n问题：{query}\n"
 
         return final_prompt
 

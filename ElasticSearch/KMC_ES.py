@@ -118,7 +118,7 @@ class ElasticSearchHandler:
         except Exception as e:
             self.logger.error(f"创建索引 'answers_index' 失败: {e}")
 
-    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path):
+    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, createTime, tag):
         with index_lock:
             try:
                 mappings = {
@@ -130,7 +130,9 @@ class ElasticSearchHandler:
                         "tenant_id": {"type": "keyword"},
                         "file_id": {"type": "keyword"},
                         "file_name": {"type": "keyword"},
-                        "download_path": {"type": "keyword"}
+                        "download_path": {"type": "keyword"},
+                        "tag": {"type": "keyword"},
+                        "createTime": {"type": "date"}
                     }
                 }
                 # 构建查询条件
@@ -138,6 +140,7 @@ class ElasticSearchHandler:
                 if self.index_exists(index_name):
                     self.logger.info("助手已存在，检查文件片段是否存在。。。")
                     if self.check_file_id_exists(index_name, file_id):
+                        self.logger.info(f"文件{file_id}片段已存在，删除旧文档...")
                         self.delete_by_query(index_name, query_body=query)
                 else:
                     self.logger.info("助手不存在，创建助手。。。")
@@ -146,6 +149,12 @@ class ElasticSearchHandler:
                 # 此时无论那种情况都有助手，并没有相关文件的片段，插入文档
                 for item in doc_list:
                     embed = self.cal_passage_embed(item['text'])
+
+                    # # 生成总结和问题推荐
+                    # ref_list = [item['text'] for item in doc_list]
+                    # prompt = prompt_builder.generate_summary_and_questions_prompt(ref_list)
+                    # summary = large_model_service.get_answer_from_Tyqwen(prompt)
+
                     document = {
                         "user_id": user_id,
                         "assistant_id": assistant_id,
@@ -153,6 +162,8 @@ class ElasticSearchHandler:
                         "file_name": file_name,
                         "tenant_id": tenant_id,
                         "download_path": download_path,
+                        "tag": tag,
+                        "createTime": createTime,
                         "page": item['page'],
                         "text": item['text'],
                         "original_text": item['original_text'],
@@ -242,6 +253,7 @@ class ElasticSearchHandler:
             if 'hits' in result and 'hits' in result['hits']:
                 # 命中结果
                 hits = result['hits']['hits']
+                self.logger.info(f"Found {len(hits)} hits")
                 refs = [{
                     'text': hit['_source']['text'],
                     'original_text': hit['_source']['original_text'],
@@ -251,6 +263,7 @@ class ElasticSearchHandler:
                     'score': hit['_score'],
                     'download_path': hit['_source']['download_path']
                 } for hit in hits]
+
                 return refs
 
         except Exception as e:
@@ -261,8 +274,7 @@ class ElasticSearchHandler:
     def ST_search(self, assistant_id, query_body, ref_num=10):
         try:
             # 在所有符合条件的ES索引中查询
-            index_pattern = assistant_id
-            result = self.es.search(index=index_pattern, body=query_body, size=ref_num)
+            result = self.es.search(index=assistant_id, body=query_body, size=ref_num)
 
             if 'hits' in result and 'hits' in result['hits']:
                 # 命中结果
@@ -280,6 +292,26 @@ class ElasticSearchHandler:
             self.logger.error(f"Error during search: {e}")
             return []
 
+    def ST_file_search(self, query_body, ref_num=10):
+        try:
+            # 在所有符合条件的ES索引中查询
+            index_name = 'document_metadata'
+            result = self.es.search(index=index_name, body=query_body, size=ref_num)
+            # self.logger.info(f"Search result: {result}")
+
+            if 'hits' in result and 'hits' in result['hits']:
+                # 命中结果
+                hits = result['hits']['hits']
+                self.logger.info(f"Found {len(hits)} hits")
+                file_ids = [hit['_source']['file_id'] for hit in hits]
+
+                return file_ids
+
+        except Exception as e:
+            # 如果未找到相关文本片段
+            self.logger.error(f"Error during search: {e}")
+            return []
+
     def search_bm25(self, assistant_id, query, ref_num=10, file_id_list=None):
         # 使用BM25方法搜索特定索引
         query_body = {
@@ -290,14 +322,15 @@ class ElasticSearchHandler:
                             "text": query
                         }
                     },
-                    "filter": []
+                    "should": []
                 }
             }
         }
         if file_id_list:
-            for file_id in file_id_list:
-                query_body['query']['bool']['filter'].append({"term": {"file_id": file_id}})
+            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
+            query_body['query']['bool']['minimum_should_match'] = 1  # 至少匹配一个
 
+        # self.logger.info(f"Query Body: {query_body}")
         return self.search(assistant_id, query_body, ref_num)
 
     def search_embed(self, assistant_id, query, ref_num=10, file_id_list=None):
@@ -317,14 +350,15 @@ class ElasticSearchHandler:
                             }
                         }
                     },
-                    "filter": []
+                    "should": []
                 }
             }
         }
         if file_id_list:
-            for file_id in file_id_list:
-                query_body['query']['bool']['filter'].append({"term": {"file_id": file_id}})
+            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
+            query_body['query']['bool']['minimum_should_match'] = 1  # 至少匹配一个
 
+        # self.logger.info(f"Query Body: {query_body}")
         return self.search(assistant_id, query_body, ref_num)
 
     def delete_summary_answers(self, file_id):
@@ -343,19 +377,68 @@ class ElasticSearchHandler:
             self.logger.info(f"删除文件ID {file_id} 的相关答案失败: {e}")
             return False
 
-    def ST_search_bm25(self, assistant_id, query, ref_num=10):
+    def ST_search_bm25(self, assistant_id, query, ref_num=10, file_id_list=None):
         # 使用BM25方法搜索特定索引
         query_body = {
             "query": {
-                "match": {
-                    "text": query
+                "bool": {
+                    "must": {
+                        "match": {
+                            "text": query
+                        }
+                    },
+                    "should": []
                 }
             }
         }
+        if file_id_list:
+            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
+            query_body['query']['bool']['minimum_should_match'] = 1  # 至少匹配一个
+
+        # self.logger.info(f"Query Body: {query_body}")
         return self.ST_search(assistant_id, query_body, ref_num)
 
-    def ST_search_embed(self, assistant_id, query, ref_num=10):
+    def ST_search_embed(self, assistant_id, query, ref_num=10, file_id_list=None):
         # 使用Embed方法搜索特定索引
+        query_embed = self.cal_query_embed(query)
+        query_body = {
+            "query": {
+                "bool": {
+                    "must": {
+                        "script_score": {
+                            "query": {
+                                "match_all": {}  # 在整个索引中搜索
+                            },
+                            "script": {
+                                "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
+                                "params": {"query_vector": query_embed}
+                            }
+                        }
+                    },
+                    "should": []
+                }
+            }
+        }
+        if file_id_list:
+            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
+            query_body['query']['bool']['minimum_should_match'] = 1  # 至少匹配一个
+
+        # self.logger.info(f"Query Body: {query_body}")
+        return self.ST_search(assistant_id, query_body, ref_num)
+
+    def ST_search_abstract_bm25(self, query, ref_num=10):
+        # 使用BM25方法搜索'document_metadata'索引中的abstract字段
+        query_body = {
+            "query": {
+                "match": {
+                    "abstract": query
+                }
+            }
+        }
+        return self.ST_file_search(query_body, ref_num)
+
+    def ST_search_abstract_embed(self, query, ref_num=10):
+        # 使用Embed方法搜索'document_metadata'索引中的abstract字段
         query_embed = self.cal_query_embed(query)
         query_body = {
             "query": {
@@ -364,15 +447,13 @@ class ElasticSearchHandler:
                         "match_all": {}  # 在整个索引中搜索
                     },
                     "script": {
-                        "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
+                        "source": "cosineSimilarity(params.query_vector, 'abstract_embed') + 1.0",
                         "params": {"query_vector": query_embed}
                     }
                 }
             }
         }
-        return self.ST_search(assistant_id, query_body, ref_num)
-
-
+        return self.ST_file_search(query_body, ref_num)
 # # 加载配置
 # # 使用环境变量指定环境并加载配置
 # config = Config(env='development')
