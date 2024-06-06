@@ -32,7 +32,7 @@ def allowed_file(filename):
 
 
 # 设置文件上传的目标文件夹
-UPLOAD_FOLDER = 'E:/工作/同济/同济大学自动化专业相关数据包 20240119/workspace'
+UPLOAD_FOLDER = "/work/kmc/kmcPython/KmcGPT/kmctemp/workspace"
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # 创建 FileManager 实例
@@ -57,8 +57,8 @@ def load_data_from_file(file_path):
 
 
 knowledge_entities_dict = {}  # 全局字典，用于存储PDF路径与知识点实体列表的映射
-# 在Flask应用对象定义之后立即加载数据
-knowledge_entities_dict = load_data_from_file(r"E:\工作\同济\同济大学自动化专业相关数据包 20240119\knowledge_entities_dict.json")
+# 在Flask应用对象定义之后立即加载数据`
+knowledge_entities_dict = load_data_from_file("/work/kmc/kmcPython/KmcGPT/kmctemp/knowledge_entities_dict.json")
 
 
 @app.route('/')
@@ -103,7 +103,7 @@ def save_relationships_to_csv(data_rows, columns, pdf_path):
     :param columns: CSV文件的列名。
     :pdf_path:pdf的路径。
     """
-    csv_dir = r"E:\工作\同济\同济大学自动化专业相关数据包 20240119"
+    csv_dir = "/work/kmc/kmcPython/KmcGPT/kmctemp/"
     # 从PDF路径获取文件名（无扩展名）
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
     # 生成关系CSV文件名
@@ -329,7 +329,7 @@ def upload_file():
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    PROCESSED_FILE_DIR = 'E:/工作/同济/同济大学自动化专业相关数据包 20240119/'
+    PROCESSED_FILE_DIR = "/work/kmc/kmcPython/KmcGPT/kmctemp/"
     file_path = os.path.join(PROCESSED_FILE_DIR, filename)
     return send_file(file_path, as_attachment=True)
 
@@ -379,7 +379,7 @@ def extract_relationships():
             columns, data_rows = get_entities_relationship(knowledge_entities)
             # 创建DataFrame
             df = pd.DataFrame(data_rows, columns=columns)
-            xlsx_dir = r"E:\工作\同济\同济大学自动化专业相关数据包 20240119"
+            xlsx_dir = "/work/kmc/kmcPython/KmcGPT/kmctemp/"
             # 从PDF路径获取文件名（无扩展名）
             base_name = os.path.splitext(os.path.basename(pdf_path))[0]
             # 生成关系CSV文件名
@@ -402,4 +402,4 @@ if __name__ == '__main__':
         app.run(host='0.0.0.0', port=5678, debug=False)
     finally:
         # 服务停止前保存数据到文件
-        save_data_to_file(knowledge_entities_dict, r"E:\工作\同济\同济大学自动化专业相关数据包 20240119\knowledge_entities_dict.json")
+        save_data_to_file(knowledge_entities_dict, "/work/kmc/kmcPython/KmcGPT/kmctemp/knowledge_entities_dict.json")

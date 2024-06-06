@@ -132,7 +132,8 @@ class PromptBuilder:
             refs_prompt += f"[{i + 1}]: {ref_text}"
 
         # 构建最终的 prompt
-        final_prompt = f"{history_prompt}然后参考以下文本片段，它们来自不同的文档，请根据这些信息和历史记录回答问题。\n{refs_prompt}\n问题：{query}\n"
+        final_prompt = f"{history_prompt}参考以下文本片段，它们来自不同的文档，请根据这些信息和历史记录回答问题。\n{refs_prompt}\n问题：{query}\n"
+        print("最终的prompt：", final_prompt)
 
         return final_prompt
 

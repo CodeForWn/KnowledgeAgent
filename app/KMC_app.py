@@ -255,7 +255,6 @@ def answer_question_stream():
         # 使用重排模型进行重排并归一化得分
         # 提取文本并构造查询-引用对
         ref_pairs = [[query, ref['text']] for ref in all_refs]  # 为每个参考文档与查询组合成对
-        logger.info(f"Reference pairs: {ref_pairs}")
 
         scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
         # 根据得分排序，并选择得分最高的引用
@@ -295,7 +294,6 @@ def answer_question_stream():
                     data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
                     yield data_stream + '\n'
 
-            logger.info(f"命中文档：{matches}")
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         elif llm == 'cutegpt':
@@ -1087,6 +1085,12 @@ def ST_answer_question_by_file_id():
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/shutdown', methods=['POST'])
+def shutdown():
+    large_model_service.shutdown()
+    return jsonify({'status': 'success', 'message': 'Service shutdown'})
 
 
 if __name__ == '__main__':

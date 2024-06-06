@@ -55,6 +55,28 @@ class LargeModelAPIService:
         # 使用全局logger实例
         self.logger = self.config.logger
 
+        # 初始化队列和线程
+        self.task_queue = queue.Queue()
+        self.lock = threading.Lock()
+        self.worker_thread = threading.Thread(target=self.worker)
+        self.worker_thread.start()
+
+    def worker(self):
+        while True:
+            task = self.task_queue.get()
+            if task is None:
+                break
+            method, prompt, result_queue = task
+            self.logger.info(f"Processing task: method={method}")
+            if method == 'stream':
+                result = self._get_answer_from_Tyqwen_stream(prompt)
+            else:
+                result = self._get_answer_from_Tyqwen(prompt)
+            result_queue.put(result)
+            self.task_queue.task_done()
+            self.logger.info(f"Task completed: method={method}")
+            time.sleep(3)
+
     def get_answer_from_chatgpt(self, query):
         response = requests.post(self.chatgpt_api, json={'query': query})
         self.logger.info("正在请求GPT-4>>>>>>>>>>>>>>")
@@ -76,7 +98,7 @@ class LargeModelAPIService:
         self.logger.info(f"Cute-GPT回答: {ans}")
         return ans
 
-    def get_answer_from_Tyqwen(self, prompt):
+    def _get_answer_from_Tyqwen(self, prompt):
         try:
             with requests.Session() as session:
                 session.keep_alive = False  # 每次请求后关闭连接
@@ -100,39 +122,49 @@ class LargeModelAPIService:
             self.logger.error(f"Request failed: {e}")
             return f"Request failed: {e}"
 
-    def get_answer_from_Tyqwen_stream(self, prompt):
+    def _get_answer_from_Tyqwen_stream(self, prompt):
         dashscope.api_key = self.Tyqwen_api_key
-        retry_count = 3
-        for _ in range(retry_count):
-            try:
-                response_generator = dashscope.Generation.call(
-                    model='qwen-14b-chat',
-                    prompt=prompt,
-                    stream=True  # 开启流式输出
-                )
-                previous_output = ""
+        try:
+            response_generator = dashscope.Generation.call(
+                model='qwen-14b-chat',
+                prompt=prompt,
+                stream=True  # 开启流式输出
+            )
+            previous_output = ""
 
-                for response in response_generator:
-                    with requests.Session() as session:
-                        session.keep_alive = False  # 每次请求后关闭连接
-                        if response.status_code == HTTPStatus.OK:
-                            current_output = response.output['text']
-                            if len(current_output) >= len(previous_output):
-                                new_output = current_output[len(previous_output):]
-                            else:
-                                # 文本回退的情况
-                                new_output = current_output
-                            previous_output = current_output
-                            yield new_output
+            for response in response_generator:
+                with requests.Session() as session:
+                    session.keep_alive = False  # 每次请求后关闭连接
+                    if response.status_code == HTTPStatus.OK:
+                        current_output = response.output['text']
+                        if len(current_output) >= len(previous_output):
+                            new_output = current_output[len(previous_output):]
                         else:
-                            yield f"Error {response.code}: {response.message}\n"
-                break
-            except requests.exceptions.RequestException as e:
-                self.logger.error(f"Request failed: {e}. Retrying...")
-                time.sleep(3)
-        else:
-            self.logger.error("Failed to connect to the API after several attempts.")
-            yield "Failed to connect to the API after several attempts."
+                            # 文本回退的情况
+                            new_output = current_output
+                        previous_output = current_output
+                        yield new_output
+                    else:
+                        yield f"Error {response.code}: {response.message}\n"
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Streaming request failed for prompt: {prompt}, error: {e}")
+            yield f"Request failed: {e}"
+
+    def get_answer_from_Tyqwen(self, prompt):
+        result_queue = queue.Queue()
+        self.task_queue.put(('non_stream', prompt, result_queue))
+        result = result_queue.get()
+        return result
+
+    def get_answer_from_Tyqwen_stream(self, prompt):
+        result_queue = queue.Queue()
+        self.task_queue.put(('stream', prompt, result_queue))
+        result = result_queue.get()
+        return result
+
+    def shutdown(self):
+        self.task_queue.put(None)
+        self.worker_thread.join()
 
     def get_answer_from_Qwen(self, prompt):
         url = 'http://kmc.sundeinfo.cn/model'
