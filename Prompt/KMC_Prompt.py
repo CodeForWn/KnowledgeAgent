@@ -150,7 +150,55 @@ class PromptBuilder:
         title_write_prompt = f"使用以下内容作为标题，并生成一个标题，标题应当简短，能够准确地概括出这次对话的主题，并使用不超过10个字：\n{content}。你的回答仅输出标题即可。"
 
         return title_write_prompt
-#
+
+    @staticmethod
+    def generate_domain_and_triplets_prompt(doc_list):
+        # 检查doc_list是否至少有一段
+        if not doc_list:
+            return "文档中没有足够的内容以生成领域和三元组示例。"
+
+        # 开始构建prompt
+        prex = ("你是一个专门从文本中识别学科领域并构建知识点三元组的专家。\n\n"
+                "任务：\n"
+                "1. 读取并分析下面的文本段落，确定它们所讨论的主要学科领域（如物理、化学、政治等）。\n"
+                "2. 确定领域后，基于这个领域构造三个示例知识点三元组，每个三元组包括两个知识点和它们之间的关系（如“前置”、“包含”、“相关”）。\n"
+                "3. 回答仅输出结果，并按照下文的格式输出。\n\n"
+                "知识点1, 关系, 知识点2,"
+                "知识点3, 关系, 知识点4,"
+                "文本段落：\n")
+
+        # 如果有至少一段内容，加入到提示中
+        number_of_paragraphs = min(len(doc_list), 2)  # 取前两段或更少
+        for i, paragraph in enumerate(doc_list[:number_of_paragraphs], 1):
+            text_content = paragraph['text']  # 从字典中提取text字段
+            prex += f"{i}. {text_content}\n"
+
+        return prex
+
+    @staticmethod
+    def generate_extract_prompt(domain_example, text_segment):
+        prompt = (
+            f"以下是从某领域的教材中提取的一段信息：{domain_example}。请基于这部分信息抽取提供的文本段落中该领域知识点之间的三元组关系。你需要注意的是：\n"
+            "1. 关系总共有三种：前置，包含与相关。其中包含关系是指某个知识点的内容涵盖了另一个知识点，前置关系是指要想学习某个知识点，要先学会他的前置知识点，相关关系是指这两个知识点之间有联系，但并不是包含关系和前置关系。\n"
+            "2. 同一对知识点之间只能存在一种关系。\n"
+            "3. 你只需要返回json形式的知识点关系，不要有其他的任何文字。\n"
+            "4. 关系数不能少于知识点数。\n"
+            "5. 回答仅输出结果，并务必使用以下的json格式进行输出。\n\n"
+            "{\n"
+            "  \"nodes\": [\n"
+            "    {\"id\": 1, \"name\": \"知识点1\"},\n"
+            "    {\"id\": 2, \"name\": \"知识点2\"}\n"
+            "    // 添加更多知识点\n"
+            "  ],\n"
+            "  \"links\": [\n"
+            "    {\"source\": 1, \"target\": 2, \"name\": \"前置\"}\n"
+            "    // 添加更多关系\n"
+            "  ]\n"
+            "}\n"
+            "提供的文本段落如下：\n"
+            f"{text_segment}\n\n"
+            )
+        return prompt
 # # 加载配置
 # # 使用环境变量指定环境并加载配置
 # config = Config(env='development')

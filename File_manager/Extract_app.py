@@ -2,6 +2,7 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import json
+from collections import defaultdict
 import os
 import sys
 import jieba.posseg as pseg
@@ -13,8 +14,12 @@ sys.stdout.reconfigure(encoding='utf-8')
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 from File_manager.KMC_FileHandler import FileManager
+from Prompt.KMC_Prompt import PromptBuilder
+from LLM.KMC_LLM import LargeModelAPIService
 import csv
 import re
+import time
+from tqdm import tqdm
 
 app = Flask(__name__)
 CORS(app)
@@ -37,6 +42,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # 创建 FileManager 实例
 file_manager = FileManager(config)
+prompt_builder = PromptBuilder(config)
+large_model_service = LargeModelAPIService(config)
 # 定义调用SnoopIE模型的接口地址
 api_url = "http://chat.cheniison.cn/api/chat"
 
@@ -343,7 +350,7 @@ def extract_entities():
     pdf_path = data.get('storage_path')
     try:
         # 处理PDF文件并返回知识点实体列表
-        knowledge_entities = get_knowledge_entities(pdf_path)  # 你需要实现这个函数
+        knowledge_entities = get_knowledge_entities(pdf_path)
         if knowledge_entities:
             # 使用PDF文件的名称或路径作为键，保存知识点实体列表到全局字典中
             knowledge_entities_dict[pdf_path] = knowledge_entities
@@ -397,9 +404,148 @@ def extract_relationships():
         return jsonify({'error': '没有找到这个pdf的实体表'}), 404
 
 
-if __name__ == '__main__':
+def generate_file_id_with_timestamp(url):
+    base_name = url.split('/')[-1].split('?')[0]  # 获取基础文件名，去除查询参数
+    timestamp = int(time.time())  # 获取当前时间戳
+    return f"{timestamp}_{base_name}"
+
+
+def extract_json_from_output(output):
     try:
-        app.run(host='0.0.0.0', port=5678, debug=False)
-    finally:
-        # 服务停止前保存数据到文件
-        save_data_to_file(knowledge_entities_dict, "/work/kmc/kmcPython/KmcGPT/kmctemp/knowledge_entities_dict.json")
+        # 找到第一个 '{' 和最后一个 '}'
+        start_index = output.index('{')
+        end_index = output.rindex('}') + 1
+        json_str = output[start_index:end_index]
+        # 尝试解析 JSON
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        logger.error(f"解析JSON时出错：{e}")
+        return None
+    except ValueError as e:
+        # 如果找不到 '{' 或 '}' 或 JSON 解析失败
+        logger.error(f"从输出中提取JSON时出错：{e}")
+        return None
+
+
+def clean_and_merge_json_results(results):
+    # 使用字典来存储节点和连接，确保唯一性
+    all_nodes = []
+    all_links = []
+
+    for result in results:
+        if isinstance(result, str):
+            try:
+                # 将 JSON 字符串解析为字典
+                result = json.loads(result)
+            except json.JSONDecodeError as e:
+                logger.error(f"解析 JSON 失败: {e}")
+                continue  # 如果解析失败，则跳过此结果
+
+        # 现在 'result' 应该是一个字典
+        all_nodes.extend(result['nodes'])
+        all_links.extend(result['links'])
+
+        # 进一步处理以合并和去重节点和链接
+    unique_nodes = {frozenset(node.items()): node for node in all_nodes}
+    unique_links = {frozenset(link.items()): link for link in all_links}
+
+    return json.dumps({'nodes': list(unique_nodes.values()), 'links': list(unique_links.values())}, indent=2)
+
+
+@app.route('/extract-all', methods=['POST'])
+def process_file():
+    data = request.get_json()
+    download_urls = data.get('downloadUrls')
+
+    if not download_urls or not isinstance(download_urls, list):  # 检查download_urls是否为空或不是列表
+        return jsonify({'error': '无效的downloadUrls，需要一个非空列表'}), 400
+
+    results = []
+
+    for download_url in tqdm(download_urls, desc="下载和处理文件中。。。"):
+        file_id = generate_file_id_with_timestamp(download_url)
+
+        # 下载文件
+        file_path = file_manager.download_pdf(download_url, file_id)
+        if not file_path:
+            logger.error(f"下载文件失败 {file_id}")
+            continue  # 处理下一个文件而不是停止整个请求
+
+        # 处理PDF文件
+        doc_list = file_manager.process_canvas_file(file_path)
+        if doc_list is None:
+            logger.error(f"文件处理失败 {file_id}")
+            continue
+
+        # 可以在这里添加进一步的处理，比如调用其他方法分析文本和抽取知识点
+        example_prompt = prompt_builder.generate_domain_and_triplets_prompt(doc_list)
+        examples = large_model_service.get_answer_from_Tyqwen(example_prompt)
+
+        for segment in tqdm(doc_list, desc=f"抽取教材{file_id}段落中。。。 "):
+            text = segment['text']
+            extract_prompt = prompt_builder.generate_extract_prompt(examples, text)
+            output = large_model_service.get_answer_from_Tyqwen(extract_prompt)
+            result = extract_json_from_output(output)
+            results.append(result)
+
+        # 处理并合并结果
+        final_output = clean_and_merge_json_results(results)
+
+    # 返回处理结果
+    return jsonify({'message': '文件处理成功', 'data': json.loads(final_output)}), 200
+
+
+def test_extract_json_from_output():
+    # 示例使用
+    output = '''
+    Here is some text before the JSON.
+    {
+      "nodes": [
+        {"id": 1, "name": "Node1"},
+        {"id": 2, "name": "Node2"}
+      ],
+      "links": [
+        {"source": 1, "target": 2, "name": "Link1"}
+      ]
+    }
+    Here is some text after the JSON.
+    '''
+    extracted_data = extract_json_from_output(output)
+    if extracted_data:
+        print(json.dumps(extracted_data, indent=2))
+    else:
+        print("未找到有效的JSON数据")
+
+
+def test_clean_and_merge_json_results():
+    # 正常情况，不同的节点和链接
+    results = [
+        '{"nodes": [{"id": 1, "name": "Node1"}], "links": [{"source": 1, "target": 2, "name": "Link1"}]}',
+        '{"nodes": [{"id": 2, "name": "Node2"}], "links": [{"source": 2, "target": 3, "name": "Link2"}]}'
+    ]
+    merged_json = clean_and_merge_json_results(results)
+    assert len(json.loads(merged_json)['nodes']) == 2, "测试失败：节点数量不正确。"
+    assert len(json.loads(merged_json)['links']) == 2, "测试失败：链接数量不正确。"
+
+    # 包含重复节点和链接的情况
+    results_with_duplicates = [
+        '{"nodes": [{"id": 1, "name": "Node1"}], "links": [{"source": 1, "target": 2, "name": "Link1"}]}',
+        '{"nodes": [{"id": 1, "name": "Node1"}], "links": [{"source": 1, "target": 2, "name": "Link1"}]}'
+    ]
+    merged_json_duplicates = clean_and_merge_json_results(results_with_duplicates)
+    assert len(json.loads(merged_json_duplicates)['nodes']) == 1, "测试失败：应当合并重复的节点。"
+    assert len(json.loads(merged_json_duplicates)['links']) == 1, "测试失败：应当合并重复的链接。"
+
+    print("所有测试通过！")
+
+
+def run_tests():
+    test_extract_json_from_output()
+    test_clean_and_merge_json_results()
+    print("所有测试完成。")
+
+
+if __name__ == '__main__':
+    # 在应用启动前运行测试
+    # run_tests()
+    app.run(host='0.0.0.0', port=5678, debug=False)

@@ -177,6 +177,59 @@ class FileManager:
                 self.logger.error("删除文件失败：%s，错误：%s", pdf_path, str(e))
         return doc_list
 
+    def process_canvas_file(self, file_path, output_path=None):
+        # 使用 magic 库检测文件类型
+        file_mime_type = magic.from_file(file_path, mime=True)
+
+        # 检查并设置输出路径
+        if output_path is None:
+            output_path = os.path.dirname(file_path)
+
+        # 根据MIME类型决定如何处理文件
+        if file_mime_type == 'application/pdf':
+            pdf_path = file_path  # PDF 文件不需要转换
+        elif file_mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            self.logger.info("检测到DOCX文件，转换为PDF...")
+            pdf_path = self.convert_docx_to_pdf(file_path, output_path)
+            if pdf_path is None:
+                self.logger.error("DOCX转PDF失败，无法继续处理。")
+                return
+        else:
+            self.logger.error(f"不支持的文件类型: {file_mime_type}")
+            return
+
+        """处理PDF文件的流程"""
+        doc_list = []  # 初始化空列表以确保在出错时也能返回列表类型
+        try:
+            loader = PyPDFLoader(pdf_path)
+            pages = loader.load_and_split()
+            self.logger.info("加载 %d 页，文件源：%s", len(pages), pdf_path)
+            self.logger.info("按页处理开始。。。")
+            stopwords = self.load_stopwords()
+            document_texts = set()
+            filtered_texts = set()  # 存储处理后的文本
+            for page_index, page in enumerate(pages, start=1):
+                split_text = self.spacy_chinese_text_splitter(page.page_content, max_length=400)
+                for text in split_text:
+                    if text not in document_texts:
+                        document_texts.add(text)
+                        words = pseg.cut(text)
+                        filtered_text = ''.join(word for word, flag in words if word not in stopwords)
+                        if filtered_text not in filtered_texts:
+                            filtered_texts.add(filtered_text)
+                            doc_list.append({'page': page_index, 'text': filtered_text, 'original_text': text})
+        except Exception as e:
+            self.logger.error("PDF文件 %s 处理过程出现错误: %s", pdf_path, str(e))
+            print(f"PDF文件{pdf_path}处理过程出现错误: {str(e)}")
+        finally:
+            try:
+                os.remove(pdf_path)
+                self.logger.info("成功删除文件：%s", pdf_path)
+            except OSError as e:
+                self.logger.error("删除文件失败：%s，错误：%s", pdf_path, str(e))
+
+        return doc_list
+
     def filter_text(self, text):
         stopwords = self.load_stopwords()
         words = pseg.cut(text)
