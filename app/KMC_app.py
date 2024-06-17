@@ -98,6 +98,7 @@ def _process_file_data(data):
             logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
             file_path = file_manager.download_pdf(download_path, file_id)
             doc_list = file_manager.process_pdf_file(file_path, file_name)
+            logger.info("分段完成，开始创建索引: %s", doc_list)
 
             if not doc_list:
                 notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
@@ -105,7 +106,15 @@ def _process_file_data(data):
                 return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
 
             index_name = assistant_id
-            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime)
+            # 转换 createTime 为整数格式的 Unix 时间戳
+            try:
+                createTime_int = int(createTime)
+            except ValueError as ve:
+                logger.error(f"Invalid createTime value: {createTime}. Error: {ve}")
+                es_handler.notify_backend(file_id, "FAILURE", f"Invalid createTime value: {createTime}")
+                return jsonify({"status": "error", "message": f"Invalid createTime value: {createTime}"})
+
+            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime_int)
             es_handler.notify_backend(file_id, "SUCCESS")
         except Exception as e:
             logger.error("处理文件数据失败: {}".format(e))
@@ -248,9 +257,15 @@ def answer_question_stream():
             all_refs = bm25_refs + embed_refs
 
         if not all_refs:
-            ans = large_model_service.get_answer_from_Tyqwen(query)
-            ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
-            return jsonify({'answer': ans, 'matches': all_refs}), 200
+            def generate():
+                full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         # 使用重排模型进行重排并归一化得分
         # 提取文本并构造查询-引用对
@@ -359,9 +374,15 @@ def answer_question_by_file_id():
             all_refs = bm25_refs + embed_refs
 
         if not all_refs:
-            ans = large_model_service.get_answer_from_Tyqwen(query)
-            ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
-            return jsonify({'answer': ans, 'matches': all_refs}), 200
+            def generate():
+                full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         # 使用重排模型进行重排并归一化得分
         ref_pairs = [[query, ref['text']] for ref in all_refs]
@@ -470,7 +491,7 @@ def answer_question():
             all_refs = bm25_refs + embed_refs
 
         if not all_refs:
-            ans = large_model_service.get_answer_from_Tyqwen(query)
+            ans = large_model_service.get_answer_from_Tyqwen_stream(query)
             ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
             return jsonify({'answer': ans, 'matches': all_refs}), 200
 
@@ -560,6 +581,7 @@ def generate_summary_and_questions():
         if 'hits' in results and 'hits' in results['hits']:
             ref_list = [hit['_source']['text'] for hit in results['hits']['hits']]
             prompt = prompt_builder.generate_summary_and_questions_prompt(ref_list)
+            logger.info(f"生成的总结prompt为 {prompt}")
             ans = large_model_service.get_answer_from_Tyqwen(prompt)
             # 存储新生成的答案
             es_handler.index("answers_index", {"file_id": file_id, "sum_rec": ans})
@@ -703,6 +725,18 @@ def indexing():
             doc_titles = document.get('TI', [])
             doc_content = document.get('documentContent', '')
             doc_abstract = document.get('Abstract_F', '')
+            split_text = file_manager.spacy_chinese_text_splitter(doc_content, max_length=600)
+            # 如果摘要为空，从文件的前两段和后两段生成摘要
+            if not doc_abstract:
+                logger.info("摘要为空，生成摘要")
+                if len(split_text) >= 4:
+                    ref_list = split_text[:2] + split_text[-2:]
+                else:
+                    ref_list = [doc_content]  # 不足四段使用全文
+
+                abstract_prompt = prompt_builder.generate_abstract_prompt(ref_list)
+                doc_abstract = large_model_service.get_answer_from_Tyqwen(abstract_prompt)  # 使用大模型生成摘要
+                logger.info(f"生成摘要成功，文档ID: {file_id}, 摘要: {doc_abstract}")
             year = document.get('Year', '')
             publisher = document.get('LiteratureTitle_F', '')
             author = document.get('Author_1', '')
@@ -729,7 +763,7 @@ def indexing():
 
             # 对内容进行分割
             filtered_texts = set()  # 存储处理后的文本
-            split_text = file_manager.spacy_chinese_text_splitter(doc_content, max_length=400)
+
             for text in split_text:
                 words = pseg.cut(text)
                 filtered_text = ''.join(word for word, flag in words if word not in stopwords)
@@ -900,7 +934,6 @@ def title_generation():
     try:
         content = f"问题：{question}\n回答：{answer}\n"
         final_prompt = prompt_builder.generate_title_prompt(content)
-        print("final prompt:", final_prompt)
         title = large_model_service.get_answer_from_Tyqwen(final_prompt)
         logger.info(f"Title generated: {title}")
         return jsonify({

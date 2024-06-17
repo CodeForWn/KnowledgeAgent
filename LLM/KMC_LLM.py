@@ -38,6 +38,7 @@ from config.KMC_config import Config
 import dashscope
 from dashscope import Generation
 from http import HTTPStatus
+import random
 # 设置您的API密钥
 zhipuai.api_key = "b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA"
 
@@ -76,7 +77,7 @@ class LargeModelAPIService:
             result_queue.put(result)
             self.task_queue.task_done()
             self.logger.info(f"Task completed: method={method}")
-            time.sleep(3)
+            time.sleep(5)
 
     def get_answer_from_chatgpt(self, query):
         response = requests.post(self.chatgpt_api, json={'query': query})
@@ -106,19 +107,18 @@ class LargeModelAPIService:
                 dashscope.api_key = self.Tyqwen_api_key
                 resp = dashscope.Generation.call(
                     model='qwen-14b-chat',
-                    prompt=prompt
-                )
+                    messages=prompt,
+                    # 设置随机数种子seed，如果没有设置，则随机数种子默认为1234
+                    seed=random.randint(1, 10000),
+                    # 将输出设置为"message"格式
+                    result_format='message')
 
                 if resp.status_code == HTTPStatus.OK:
-                    # 提取并返回文本部分
-                    text_response = resp.output['text'] if 'text' in resp.output else 'No text available'
-                    self.logger.info(text_response)
-                    return text_response
+                    return resp["output"]["choices"][0]["message"]["content"]
                 else:
-                    # 记录错误代码和错误消息
-                    self.logger.error(resp.code)  # 错误代码
-                    self.logger.error(resp.message)  # 错误消息
-                    return resp.message  # 返回错误消息
+                    self.logger.error(
+                        f"Request id: {resp.request_id}, Status code: {resp.status_code}, Error code: {resp.code}, Error message: {resp.message}")
+                    return None  # 如果请求失败，返回 None
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Request failed: {e}")
             return f"Request failed: {e}"

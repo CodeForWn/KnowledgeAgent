@@ -56,9 +56,8 @@ class PromptBuilder:
     # 构建开开放式问答prompt
     @staticmethod
     def generate_open_answer_prompt(query, history):
-        # overall_instruction = "你是AI智能助理。请根据给定问题描述，请给出对应请求的回答。\n"
-        # prompt = overall_instruction
-        prompt = ""
+        overall_instruction = "你是同济大学AI智能助理小舟。请根据给定问题描述，给出答案并以Markdown形式输出。\n"
+        prompt = overall_instruction
         if history:
             for item in history:
                 if 'question' in item and 'content' in item:
@@ -69,11 +68,27 @@ class PromptBuilder:
 
     # 构建总结文本和推荐问题的prompt
     @staticmethod
-    def generate_summary_and_questions_prompt(ref_list):
-        prex = ("你是一个总结文章的语言专家。\n\n1.请深入分析这篇文章的开头几段，总结出其覆盖的关键要点，并确保涵盖多个维度。\n"
-                "2.随后，请依据这些要点生成三个推荐问题，每个问题应直接关联文章内容且在文中能找到答案。\n3.请使用序号清晰标注每个问题，输出的格式请用Markdown语言：\n")
+    def generate_abstract_prompt(ref_list):
+        content = "1.请根据提供的文本片段（文档的前两段和后两段）生成一个综合摘要，强调其核心要点和主要主题。\n\n" \
+                  "3.仅输出摘要即可，请采用Markdown语言格式化您的回答：\n\n"
         for i, ref in enumerate(ref_list):
-            prex += f"{i + 1}:{ref}\n"
+            content += f"{i + 1}:{ref}\n\n"
+
+        prex = [{'role': 'system', 'content': "你是一个擅长总结文章摘要的语言专家。"},
+                {'role': 'user', 'content': content}]
+        return prex
+
+    # 构建总结文本和推荐问题的prompt
+    @staticmethod
+    def generate_summary_and_questions_prompt(ref_list):
+        content = "1.请深入分析这篇文章的开头几段，总结出其覆盖的关键要点，并确保涵盖多个维度。\n\n" \
+                  "2.随后，请依据这些要点生成三个推荐问题，每个问题应直接关联文章内容且在文中能找到答案。\n\n" \
+                  "3.仅输出总结和推荐问题即可，并使用序号清晰标注每个问题，输出的格式请用Markdown语言：\n\n"
+        for i, ref in enumerate(ref_list):
+            content += f"{i + 1}:{ref}\n\n"
+
+        prex = [{'role': 'system', 'content': "你是一个总结文章的语言专家。"},
+                {'role': 'user', 'content': content}]
         return prex
 
     # 构建文档问答prompt
@@ -147,9 +162,12 @@ class PromptBuilder:
     @staticmethod
     def generate_title_prompt(content):
         # 构建标题重写prompt
-        title_write_prompt = f"使用以下内容作为标题，并生成一个标题，标题应当简短，能够准确地概括出这次对话的主题，并使用不超过10个字：\n{content}。你的回答仅输出标题即可。"
-
-        return title_write_prompt
+        prex = [
+            {'role': 'system', 'content': "你是一个擅长为对话生成标题的语言专家。"},
+            {'role': 'user',
+             'content': f"请根据下述内容生成一个标题，标题应简洁、准确地反映对话主题，且不超过10个字：\n{content}\n请直接输出标题。"}
+        ]
+        return prex
 
     @staticmethod
     def generate_domain_and_triplets_prompt(doc_list):

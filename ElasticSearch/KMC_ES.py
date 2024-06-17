@@ -5,7 +5,7 @@ import shutil
 import pickle
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, helpers
 from transformers import AutoTokenizer, AutoModel
 import torch
 import requests
@@ -31,6 +31,7 @@ import spacy
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
+import datetime
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 
@@ -118,7 +119,7 @@ class ElasticSearchHandler:
         except Exception as e:
             self.logger.error(f"创建索引 'answers_index' 失败: {e}")
 
-    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, createTime, tag):
+    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime):
         with index_lock:
             try:
                 mappings = {
@@ -132,7 +133,10 @@ class ElasticSearchHandler:
                         "file_name": {"type": "keyword"},
                         "download_path": {"type": "keyword"},
                         "tag": {"type": "keyword"},
-                        "createTime": {"type": "date"}
+                        "createTime": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis"
+                        }
                     }
                 }
                 # 构建查询条件

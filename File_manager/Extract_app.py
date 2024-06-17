@@ -455,6 +455,7 @@ def clean_and_merge_json_results(results):
 @app.route('/extract-all', methods=['POST'])
 def process_file():
     data = request.get_json()
+    logger.info(f"接收到数据: {data}")
     download_urls = data.get('downloadUrls')
 
     if not download_urls or not isinstance(download_urls, list):  # 检查download_urls是否为空或不是列表
