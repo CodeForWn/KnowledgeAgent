@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import json
@@ -410,46 +410,57 @@ def generate_file_id_with_timestamp(url):
     return f"{timestamp}_{base_name}"
 
 
-def extract_json_from_output(output):
+def extract_and_parse_model_outputs(output):
+    # 寻找 JSON 对象的开始和结束位置，并正确处理它们
     try:
-        # 找到第一个 '{' 和最后一个 '}'
-        start_index = output.index('{')
-        end_index = output.rindex('}') + 1
-        json_str = output[start_index:end_index]
-        # 尝试解析 JSON
-        return json.loads(json_str)
+        results = []
+        # 尝试找到所有 JSON 对象
+        json_objects = re.findall(r'\{.*?\}', output, re.DOTALL)
+        for json_str in json_objects:
+            results.append(json.loads(json_str))
+        return results
     except json.JSONDecodeError as e:
         logger.error(f"解析JSON时出错：{e}")
         return None
     except ValueError as e:
-        # 如果找不到 '{' 或 '}' 或 JSON 解析失败
         logger.error(f"从输出中提取JSON时出错：{e}")
         return None
 
 
 def clean_and_merge_json_results(results):
-    # 使用字典来存储节点和连接，确保唯一性
     all_nodes = []
     all_links = []
+    node_map = {}  # 存储节点名称到ID的映射
 
+    # 处理每一个解析结果
     for result in results:
-        if isinstance(result, str):
-            try:
-                # 将 JSON 字符串解析为字典
-                result = json.loads(result)
-            except json.JSONDecodeError as e:
-                logger.error(f"解析 JSON 失败: {e}")
-                continue  # 如果解析失败，则跳过此结果
+        for item in result:
+            source_name = item['s']
+            target_name = item['o']
+            relation_name = item['p']
 
-        # 现在 'result' 应该是一个字典
-        all_nodes.extend(result['nodes'])
-        all_links.extend(result['links'])
+            # 为源节点分配ID
+            if source_name not in node_map:
+                node_map[source_name] = len(all_nodes) + 1
+                all_nodes.append({"id": node_map[source_name], "name": source_name})
 
-        # 进一步处理以合并和去重节点和链接
-    unique_nodes = {frozenset(node.items()): node for node in all_nodes}
-    unique_links = {frozenset(link.items()): link for link in all_links}
+            # 为目标节点分配ID
+            if target_name not in node_map:
+                node_map[target_name] = len(all_nodes) + 1
+                all_nodes.append({"id": node_map[target_name], "name": target_name})
 
-    return json.dumps({'nodes': list(unique_nodes.values()), 'links': list(unique_links.values())}, indent=2)
+            # 添加关系链接
+            link = {
+                "source": node_map[source_name],
+                "target": node_map[target_name],
+                "name": relation_name
+            }
+            # 确保不重复添加相同的链接
+            if link not in all_links:
+                all_links.append(link)
+
+    # 返回结构化的节点和链接数据
+    return json.dumps({"nodes": all_nodes, "links": all_links}, indent=2)
 
 
 @app.route('/extract-all', methods=['POST'])
@@ -462,6 +473,7 @@ def process_file():
         return jsonify({'error': '无效的downloadUrls，需要一个非空列表'}), 400
 
     results = []
+    errors = []
 
     for download_url in tqdm(download_urls, desc="下载和处理文件中。。。"):
         file_id = generate_file_id_with_timestamp(download_url)
@@ -476,24 +488,33 @@ def process_file():
         doc_list = file_manager.process_canvas_file(file_path)
         if doc_list is None:
             logger.error(f"文件处理失败 {file_id}")
+            errors.append(f"文件处理失败: {file_path}")
             continue
 
         # 可以在这里添加进一步的处理，比如调用其他方法分析文本和抽取知识点
         example_prompt = prompt_builder.generate_domain_and_triplets_prompt(doc_list)
         examples = large_model_service.get_answer_from_Tyqwen(example_prompt)
+        # logger.info(f"示例：{examples}")
 
         for segment in tqdm(doc_list, desc=f"抽取教材{file_id}段落中。。。 "):
             text = segment['text']
             extract_prompt = prompt_builder.generate_extract_prompt(examples, text)
             output = large_model_service.get_answer_from_Tyqwen(extract_prompt)
-            result = extract_json_from_output(output)
-            results.append(result)
+            logger.info(f"抽取结果：{output}")
+            parsed_data = extract_and_parse_model_outputs(output)
+            if parsed_data is None:
+                errors.append(f"无法解析模型输出为有效的 JSON: {output}")
+                continue
 
-        # 处理并合并结果
-        final_output = clean_and_merge_json_results(results)
+            logger.info(f"解析结果：{parsed_data}")
+            results.append(parsed_data)
+
+    # 处理并合并结果
+    final_json = clean_and_merge_json_results(results)
 
     # 返回处理结果
-    return jsonify({'message': '文件处理成功', 'data': json.loads(final_output)}), 200
+    logger.info(f"最终结果：{final_json}")
+    return jsonify({'data': final_json}), 200
 
 
 def test_extract_json_from_output():

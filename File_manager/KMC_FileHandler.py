@@ -8,11 +8,9 @@ import jieba.posseg as pseg
 import mimetypes
 import magic
 from fpdf import FPDF
-
 import re
 import logging
 from logging.handlers import RotatingFileHandler
-
 import sys
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config

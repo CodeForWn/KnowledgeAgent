@@ -56,6 +56,11 @@ def generate_assistant_id():
     return str(uuid.uuid4())
 
 
+@app.route('/')
+def hello_world():
+    return 'Hello, World!'
+
+
 def notify_backend(file_id, result, failure_reason=None):
     """通知后端接口处理结果"""
     url = backend_notify_api  # 更新后的后端接口URL
@@ -98,7 +103,7 @@ def _process_file_data(data):
             logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
             file_path = file_manager.download_pdf(download_path, file_id)
             doc_list = file_manager.process_pdf_file(file_path, file_name)
-            logger.info("分段完成，开始创建索引: %s", doc_list)
+            # logger.info("分段完成，开始创建索引: %s", doc_list)
 
             if not doc_list:
                 notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
@@ -192,6 +197,8 @@ def get_open_ans_stream():
     token = data.get('token')
     query = data.get('query')
     llm = data.get('llm', 'qwen')  # 默认使用 qwen
+    top_p = data.get('top_p', 0.8)
+    temperature = data.get('temperature', 0)
     # 获取历史对话内容
     history = prompt_builder.get_history(session_id, token)
     logger.info(f"历史对话：{history}")
@@ -200,12 +207,12 @@ def get_open_ans_stream():
     logger.info(f"prompt:{prompt}")
 
     if llm.lower() == 'qwen':
-        response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+        response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
         return Response(response_generator, content_type='text/plain; charset=utf-8')
     else:
         # 非流式模型或其他模型的处理
         if llm.lower() == 'cutegpt':
-            answer = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+            answer = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
         elif llm.lower() == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
             answer = large_model_service.query_async_result_chatglm(task_id)
@@ -233,7 +240,8 @@ def answer_question_stream():
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 5)
         llm = data.get('llm', 'qwen').lower()
-
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
         if not assistant_id or not query:
             return jsonify({'error': '参数不完整'}), 400
 
@@ -259,7 +267,7 @@ def answer_question_stream():
         if not all_refs:
             def generate():
                 full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query)
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
@@ -303,7 +311,7 @@ def answer_question_stream():
         if llm == 'qwen':
             def generate():
                 full_answer = ""
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
@@ -312,7 +320,7 @@ def answer_question_stream():
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         elif llm == 'cutegpt':
-            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
             ans = large_model_service.query_async_result_chatglm(task_id)
@@ -352,7 +360,8 @@ def answer_question_by_file_id():
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 5)
         llm = data.get('llm', 'qwen').lower()
-
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
         if not assistant_id or not query or not file_id_list:
             return jsonify({'error': '参数不完整'}), 400
 
@@ -376,7 +385,7 @@ def answer_question_by_file_id():
         if not all_refs:
             def generate():
                 full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query)
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
@@ -398,21 +407,52 @@ def answer_question_by_file_id():
         prompt = None
         matches = []
 
+        # 获取之前的查询和对应的结果
+        previous_queries = []
+        if history:
+            for item in history:
+                if 'question' in item and 'documents' in item:
+                    previous_queries.append((item['question'], item['documents']))
+
         # 检查最高分数是否低于0.3
         if top_scores[0] < 0.3:
             logger.info("问题与文档无关")
-            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
-            matches = []
+            last_query = None
+            last_matches = []
+
+            # 找到与当前问题相关的上一次有效查询
+            if previous_queries:
+                for prev_query, prev_matches in reversed(previous_queries):
+                    if prev_matches:
+                        last_query = prev_query
+                        last_matches = prev_matches
+                        break
+
+            if last_query and last_matches:
+                prompt = prompt_builder.generate_answer_prompt(query, last_matches, history)
+                matches = [{
+                    'text': doc.get('text', '无内容'),
+                    'original_text': doc.get('original_text', '无内容'),
+                    'page': doc.get('page', '未知'),
+                    'file_id': doc.get('file_id', '未知'),
+                    'file_name': doc.get('file_name', '未知'),
+                    'download_path': doc.get('download_path', '未知'),
+                    'score': doc.get('score', 0)
+                } for doc in last_matches]
+                logger.info(f"使用了generate_ST_answer_prompt，生成的prompt：{prompt}")
+            else:
+                prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
+                matches = []
         else:
             prompt = prompt_builder.generate_answer_prompt(query, top_refs, history)
             matches = [{
-                'text': ref['text'],
-                'original_text': ref['original_text'],
-                'page': ref['page'],
-                'file_id': ref['file_id'],
-                'file_name': ref['file_name'],
-                'download_path': ref['download_path'],
-                'score': ref['score'],
+                'text': ref.get('text', '无内容'),
+                'original_text': ref.get('original_text', '无内容'),
+                'page': ref.get('page', '未知'),
+                'file_id': ref.get('file_id', '未知'),
+                'file_name': ref.get('file_name', '未知'),
+                'download_path': ref.get('download_path', '未知'),
+                'score': ref.get('score', 0),
                 'rerank_score': score
             } for ref, score in top_list]
             logger.info(f"使用了generate_answer_prompt，生成的prompt：{prompt}")
@@ -420,7 +460,7 @@ def answer_question_by_file_id():
         if llm == 'qwen':
             def generate():
                 full_answer = ""
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
@@ -430,7 +470,7 @@ def answer_question_by_file_id():
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         elif llm == 'cutegpt':
-            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
         elif llm == 'chatglm':
             task_id = large_model_service.async_invoke_chatglm(prompt)
             ans = large_model_service.query_async_result_chatglm(task_id)
@@ -467,6 +507,8 @@ def answer_question():
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 5)
         llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
 
         if not assistant_id or not query:
             return jsonify({'error': '参数不完整'}), 400
@@ -491,7 +533,7 @@ def answer_question():
             all_refs = bm25_refs + embed_refs
 
         if not all_refs:
-            ans = large_model_service.get_answer_from_Tyqwen_stream(query)
+            ans = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
             ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
             return jsonify({'answer': ans, 'matches': all_refs}), 200
 
@@ -666,6 +708,132 @@ def delete_file_from_index(assistant_id, file_id):
     except Exception as e:
         logger.error(f"删除文档片段失败，错误信息：{str(e)}")
         return jsonify({"code": 500, "msg": "删除文档片段失败"}), 500
+
+
+@app.route('/api/kmc/ST_indexing_by_step', methods=['POST'])
+def indexing_by_step():
+    try:
+        data = request.json
+        documents = data.get('documents', [])
+        assistant_id = data.get('assistantId')
+
+        # 检查是否传入了 assistantId，如果没有则生成一个新的
+        if not assistant_id:
+            assistant_id = generate_assistant_id()
+
+            # 创建新的索引
+            index_name = assistant_id
+            mappings = {
+                "properties": {
+                    "text": {"type": "text", "analyzer": "standard"},
+                    "embed": {"type": "dense_vector", "dims": 1024},
+                    "assistant_id": {"type": "keyword"},
+                    "file_id": {"type": "keyword"},
+                    "file_name": {"type": "keyword"},
+                }
+            }
+            # 检查索引是否存在
+            if not es_handler.index_exists(index_name):
+                logger.info("开始创建索引")
+                es_handler.es.indices.create(index=index_name, mappings=mappings)
+        else:
+            index_name = assistant_id
+
+        doc_list = []  # 初始化空列表以确保在出错时也能返回列表类型
+        stopwords = file_manager.load_stopwords()
+
+        # 文档元数据的mapping
+        metadata_index = 'document_metadata'
+        metadata_mappings = {
+            "properties": {
+                "file_id": {"type": "keyword"},
+                "title": {"type": "text", "analyzer": "standard"},
+                "abstract": {"type": "text", "analyzer": "standard"},
+                "year": {"type": "keyword"},
+                "publisher": {"type": "keyword"},
+                "author": {"type": "keyword"},
+                "content": {"type": "text", "analyzer": "standard"},
+                "abstract_embed": {"type": "dense_vector", "dims": 1024}
+            }
+        }
+
+        # 建立文档元数据索引
+        if not es_handler.index_exists(metadata_index):
+            logger.info("创建文档元数据索引")
+            es_handler.es.indices.create(index=metadata_index, mappings=metadata_mappings)
+
+        for document in documents:
+            file_id = document['documentId']
+            doc_titles = document.get('TI', [])
+            doc_content = document.get('documentContent', '')
+            doc_abstract = document.get('Abstract_F', '')
+            split_text = file_manager.spacy_chinese_text_splitter(doc_content, max_length=600)
+            # 如果摘要为空，从文件的前两段和后两段生成摘要
+            if not doc_abstract:
+                logger.info("摘要为空，生成摘要")
+                if len(split_text) >= 4:
+                    ref_list = split_text[:2] + split_text[-2:]
+                else:
+                    ref_list = [doc_content]  # 不足四段使用全文
+
+                abstract_prompt = prompt_builder.generate_abstract_prompt(ref_list)
+                doc_abstract = large_model_service.get_answer_from_Tyqwen(abstract_prompt)  # 使用大模型生成摘要
+                logger.info(f"生成摘要成功，文档ID: {file_id}, 摘要: {doc_abstract}")
+            year = document.get('Year', '')
+            publisher = document.get('LiteratureTitle_F', '')
+            author = document.get('Author_1', '')
+
+            doc_title = ' '.join(doc_titles)
+            logger.info(f"处理文档 {file_id}, 标题: {doc_title}")
+
+            # 生成摘要的嵌入向量
+            abstract_embed = es_handler.cal_passage_embed(doc_abstract)
+
+            # 插入文档元数据
+            metadata_document = {
+                "file_id": file_id,
+                "title": doc_title,
+                "abstract": doc_abstract,
+                "year": year,
+                "publisher": publisher,
+                "author": author,
+                "content": doc_content,
+                "abstract_embed": abstract_embed
+            }
+            es_handler.es.index(index=metadata_index, id=file_id, document=metadata_document)
+            # logger.info(f"插入文档元数据: {metadata_document}")
+
+            # 对内容进行分割
+            filtered_texts = set()  # 存储处理后的文本
+
+            for text in split_text:
+                words = pseg.cut(text)
+                filtered_text = ''.join(word for word, flag in words if word not in stopwords)
+                if filtered_text and filtered_text not in filtered_texts:
+                    filtered_texts.add(filtered_text)
+                    doc_list.append({
+                        'text': filtered_text,
+                        'file_id': file_id,
+                        'file_name': doc_title
+                    })
+
+        # 插入文档片段
+        for item in doc_list:
+            embed = es_handler.cal_passage_embed(item['text'])
+            document = {
+                "assistant_id": assistant_id,
+                "file_id": item['file_id'],
+                "file_name": item['file_name'],
+                "text": item['text'],
+                "embed": embed
+            }
+            es_handler.es.index(index=index_name, document=document)
+
+        logger.info(f"索引 {index_name} 插入文档成功")
+        return jsonify({'status': 'success', 'body': {'assistantId': assistant_id}}), 200
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/api/kmc/ST_indexing', methods=['POST'])
@@ -1002,6 +1170,8 @@ def ST_answer_question_by_file_id():
         file_id_list = data.get('file_id')
         ref_num = data.get('ref_num', 3)
         llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
 
         if not assistant_id or not query or not file_id_list:
             return jsonify({'error': '参数不完整'}), 400
@@ -1023,9 +1193,15 @@ def ST_answer_question_by_file_id():
         all_refs = bm25_refs + embed_refs
 
         if not all_refs:
-            ans = large_model_service.get_answer_from_Tyqwen(query)
-            ans = "您的问题没有在文献中找到答案，正在使用预训练知识库为您解答：" + ans
-            return jsonify({'answer': ans, 'matches': all_refs}), 200
+            def generate():
+                full_answer = "您的问题没有在文献资料中找到答案，正在使用预训练知识库为您解答："
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         # 获取所有匹配文档的详细信息
         for file_id in file_id_list:
@@ -1077,15 +1253,46 @@ def ST_answer_question_by_file_id():
 
         # 获取历史对话内容
         history = prompt_builder.get_history(session_id, token)
+        # logger.info(f"Session ID: {session_id}")
+        # logger.info(f"Token: {token}")
+        logger.info(f"History: {history}")
         # 初始化默认的prompt和matches
         prompt = None
         matches = []
 
+        # 获取之前的查询和对应的结果
+        previous_queries = []
+        if history:
+            for item in history:
+                if 'question' in item and 'documents' in item:
+                    previous_queries.append((item['question'], item['documents']))
+
         # 检查最高分数是否低于0.3
         if top_scores[0] < 0.3:
-            logger.info("问题与文档无关")
-            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
-            matches = []
+            logger.info("问题与查询文献无关，属于继续提问")
+            last_query = None
+            last_matches = []
+
+            # 找到与当前问题相关的上一次有效查询
+            if previous_queries:
+                for prev_query, prev_matches in reversed(previous_queries):
+                    if prev_matches:
+                        last_query = prev_query
+                        last_matches = prev_matches
+                        break
+
+            if last_query and last_matches:
+                prompt = prompt_builder.generate_ST_answer_prompt(query, last_matches, history)
+                matches = [{
+                    'text': doc['text'],
+                    'file_id': doc['file_id'],
+                    'file_name': doc.get('file_name', ''),
+                    'score': doc.get('score', 0)
+                } for doc in last_matches]
+                logger.info(f"使用了generate_ST_answer_prompt，生成的prompt：{prompt}")
+            else:
+                prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
+                matches = []
         else:
             prompt = prompt_builder.generate_ST_answer_prompt(query, merged_refs, history)
             matches = [{
@@ -1100,7 +1307,7 @@ def ST_answer_question_by_file_id():
         if llm == 'qwen':
             def generate():
                 full_answer = ""
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt)
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
@@ -1109,7 +1316,7 @@ def ST_answer_question_by_file_id():
                 logger.info(f"问题：{query}")
                 logger.info(f"生成的答案：{full_answer}")
 
-            logger.info(f"命中文档：{matches}")
+            # logger.info(f"命中文档：{matches}")
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         else:

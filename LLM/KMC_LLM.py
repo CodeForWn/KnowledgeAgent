@@ -68,15 +68,19 @@ class LargeModelAPIService:
             task = self.task_queue.get()
             if task is None:
                 break
-            method, prompt, result_queue = task
-            self.logger.info(f"Processing task: method={method}")
+            method, prompt, result_queue, *optional_params = task
+            if len(optional_params) == 2:
+                top_p, temperature = optional_params
+            else:
+                top_p, temperature = 0.8, 0  # 默认值
+            # self.logger.info(f"Processing task: method={method}")
             if method == 'stream':
-                result = self._get_answer_from_Tyqwen_stream(prompt)
+                result = self._get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
             else:
                 result = self._get_answer_from_Tyqwen(prompt)
             result_queue.put(result)
             self.task_queue.task_done()
-            self.logger.info(f"Task completed: method={method}")
+            # self.logger.info(f"Task completed: method={method}")
             time.sleep(5)
 
     def get_answer_from_chatgpt(self, query):
@@ -117,18 +121,22 @@ class LargeModelAPIService:
                     return resp["output"]["choices"][0]["message"]["content"]
                 else:
                     self.logger.error(
-                        f"Request id: {resp.request_id}, Status code: {resp.status_code}, Error code: {resp.code}, Error message: {resp.message}")
+                        f"Request id: {resp.request_id}, Status code: {resp.status_code}, Error code: {resp.code}, "
+                        f"Error message: {resp.message}")
                     return None  # 如果请求失败，返回 None
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Request failed: {e}")
-            return f"Request failed: {e}"
+            self.logger.error(f"请求失败: {e}")
+            return f"请求失败: {e}"
 
-    def _get_answer_from_Tyqwen_stream(self, prompt):
+    def _get_answer_from_Tyqwen_stream(self, prompt, top_p=0.8, temperature=0):
         dashscope.api_key = self.Tyqwen_api_key
         try:
             response_generator = dashscope.Generation.call(
                 model='qwen-14b-chat',
-                prompt=prompt,
+                top_p=top_p,
+                temperature=temperature,
+                messages=prompt,
+                result_format='message',  # 设置输出为 'message' 格式
                 stream=True  # 开启流式输出
             )
             previous_output = ""
@@ -137,7 +145,7 @@ class LargeModelAPIService:
                 with requests.Session() as session:
                     session.keep_alive = False  # 每次请求后关闭连接
                     if response.status_code == HTTPStatus.OK:
-                        current_output = response.output['text']
+                        current_output = response.output.choices[0]['message']['content']
                         if len(current_output) >= len(previous_output):
                             new_output = current_output[len(previous_output):]
                         else:
@@ -148,8 +156,8 @@ class LargeModelAPIService:
                     else:
                         yield f"Error {response.code}: {response.message}\n"
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Streaming request failed for prompt: {prompt}, error: {e}")
-            yield f"Request failed: {e}"
+            self.logger.error(f"大模型流式输出失败: {prompt}, error: {e}")
+            yield f"请求模型失败: {e}"
 
     def get_answer_from_Tyqwen(self, prompt):
         result_queue = queue.Queue()
@@ -157,9 +165,9 @@ class LargeModelAPIService:
         result = result_queue.get()
         return result
 
-    def get_answer_from_Tyqwen_stream(self, prompt):
+    def get_answer_from_Tyqwen_stream(self, prompt, top_p=0.8, temperature=0):
         result_queue = queue.Queue()
-        self.task_queue.put(('stream', prompt, result_queue))
+        self.task_queue.put(('stream', prompt, result_queue, top_p, temperature))
         result = result_queue.get()
         return result
 
