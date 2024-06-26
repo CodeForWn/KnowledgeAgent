@@ -119,7 +119,8 @@ class ElasticSearchHandler:
         except Exception as e:
             self.logger.error(f"创建索引 'answers_index' 失败: {e}")
 
-    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime):
+    def create_index(self, index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path,
+                     tag, createTime):
         with index_lock:
             try:
                 mappings = {
