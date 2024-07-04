@@ -110,7 +110,7 @@ class LargeModelAPIService:
                 session.keep_alive = False  # 每次请求后关闭连接
                 dashscope.api_key = self.Tyqwen_api_key
                 resp = dashscope.Generation.call(
-                    model='qwen-14b-chat',
+                    model='qwen-long',
                     messages=prompt,
                     # 设置随机数种子seed，如果没有设置，则随机数种子默认为1234
                     seed=random.randint(1, 10000),
@@ -132,7 +132,7 @@ class LargeModelAPIService:
         dashscope.api_key = self.Tyqwen_api_key
         try:
             response_generator = dashscope.Generation.call(
-                model='qwen-14b-chat',
+                model='qwen-long',
                 top_p=top_p,
                 temperature=temperature,
                 messages=prompt,

@@ -439,7 +439,7 @@ def answer_question_by_file_id():
                     'download_path': doc.get('download_path', '未知'),
                     'score': doc.get('score', 0)
                 } for doc in last_matches]
-                logger.info(f"使用了generate_ST_answer_prompt，生成的prompt：{prompt}")
+                logger.info(f"使用了generate_answer_prompt，生成的prompt：{prompt}")
             else:
                 prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
                 matches = []
