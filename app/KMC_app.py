@@ -242,6 +242,7 @@ def answer_question_stream():
         llm = data.get('llm', 'qwen').lower()
         top_p = data.get('top_p', 0.8)
         temperature = data.get('temperature', 0)
+        logger.info(f"Received query:{query}")
         if not assistant_id or not query:
             return jsonify({'error': '参数不完整'}), 400
 
@@ -362,6 +363,7 @@ def answer_question_by_file_id():
         llm = data.get('llm', 'qwen').lower()
         top_p = data.get('top_p', 0.8)
         temperature = data.get('temperature', 0)
+        memory_time = data.get('memory_time', 3)  # 新增参数
         if not assistant_id or not query or not file_id_list:
             return jsonify({'error': '参数不完整'}), 400
 
@@ -403,6 +405,9 @@ def answer_question_by_file_id():
         top_refs = [ref for ref, score in sorted_refs[:5]]
         # 获取历史对话内容
         history = prompt_builder.get_history(session_id, token)
+        # 计算当前对话轮数
+        current_round = len(history) + 1
+        logger.info(f"当前对话轮数: {current_round}")
         # 初始化默认的prompt和matches
         prompt = None
         matches = []
@@ -444,7 +449,13 @@ def answer_question_by_file_id():
                 prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
                 matches = []
         else:
-            prompt = prompt_builder.generate_answer_prompt(query, top_refs, history)
+            # 根据memory_time参数决定是否使用历史记录生成prompt
+            if len(history) > memory_time:
+                trimmed_history = history[-memory_time:]
+                prompt = prompt_builder.generate_answer_prompt(query, top_refs, trimmed_history)
+            else:
+                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history)
+
             matches = [{
                 'text': ref.get('text', '无内容'),
                 'original_text': ref.get('original_text', '无内容'),
