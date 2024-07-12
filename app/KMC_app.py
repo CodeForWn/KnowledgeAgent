@@ -268,7 +268,10 @@ def answer_question_stream():
         if not all_refs:
             def generate():
                 full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
+                Prompt = [{'role': 'system', 'content': "你是同济大学信息办的智能助手，名为'同济小舟'。你是由同济大学智慧教学管理部精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于智慧教学平台的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向你提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握平台的操作技巧，还能在信息化素养培训中发挥重要作用。通过与你的互动，用户可以更深入地了解和运用智慧教学平台，提升教学和学习效率。你是由同济大学自主训练研发的大模型，无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。"},
+                {'role': 'user', 'content': query}]
+
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
@@ -387,7 +390,8 @@ def answer_question_by_file_id():
         if not all_refs:
             def generate():
                 full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
+                Prompt = [{'role': 'user', 'content': query}]
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
@@ -544,7 +548,8 @@ def answer_question():
             all_refs = bm25_refs + embed_refs
 
         if not all_refs:
-            ans = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
+            prompt = [{'role': 'user', 'content': query}]
+            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
             ans = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答：" + ans
             return jsonify({'answer': ans, 'matches': all_refs}), 200
 
@@ -1206,7 +1211,8 @@ def ST_answer_question_by_file_id():
         if not all_refs:
             def generate():
                 full_answer = "您的问题没有在文献资料中找到答案，正在使用预训练知识库为您解答："
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(query, top_p=top_p, temperature=temperature)
+                Prompt = [{'role': 'user', 'content': query}]
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
@@ -1342,6 +1348,143 @@ def ST_answer_question_by_file_id():
 def shutdown():
     large_model_service.shutdown()
     return jsonify({'status': 'success', 'message': 'Service shutdown'})
+
+
+@app.route('/api/ST_OCR', methods=['POST'])
+def ocr_indexing():
+    try:
+        data = request.json
+
+        # 检查数据中是否包含docs字段
+        if 'docs' not in data:
+            raise KeyError("'docs'字段不存在")
+
+        documents = data['docs']
+        # 索引名称
+        index_name = 'st_ocr'
+
+        # 索引mapping
+        mappings = {
+            "properties": {
+                "AB": {"type": "text", "analyzer": "standard"},
+                "CT": {"type": "text", "analyzer": "standard"},
+                "Id": {"type": "keyword"},
+                "Issue_F": {"type": "keyword"},
+                "KW": {"type": "keyword"},
+                "JTI": {"type": "keyword"},
+                "Pid": {"type": "keyword"},
+                "Piid": {"type": "keyword"},
+                "TI": {"type": "text", "analyzer": "standard"},
+                "Year": {"type": "integer"},
+                "AB_embed": {"type": "dense_vector", "dims": 1024},
+                "CT_embed": {"type": "dense_vector", "dims": 1024}
+            }
+        }
+
+        # 检查索引是否存在，如果不存在则创建索引
+        if not es_handler.index_exists(index_name):
+            logger.info(f"创建索引 {index_name}")
+            es_handler.es.indices.create(index=index_name, mappings=mappings)
+
+        for document in documents:
+            doc_id = document.get('Id')
+            doc_abstract = document.get('AB', None)
+            doc_content = document.get('CT', '')
+
+            # 如果摘要为空，生成摘要
+            if not doc_abstract or not any(doc_abstract):
+                logger.info("摘要为空，生成摘要")
+                abstract_prompt = prompt_builder.generate_abstract_prompt(doc_content)
+                doc_abstract = large_model_service.get_answer_from_Tyqwen(abstract_prompt)  # 使用大模型生成摘要
+                logger.info(f"生成摘要成功，文档ID: {doc_id}, 摘要: {doc_abstract}")
+                document['AB'] = [doc_abstract]
+
+            # 计算嵌入
+            ab_embed = es_handler.cal_passage_embed(doc_abstract)
+            ct_embed = es_handler.cal_passage_embed(doc_content)
+
+            # 添加嵌入到文档中
+            document['AB_embed'] = ab_embed
+            document['CT_embed'] = ct_embed
+
+            es_handler.es.index(index=index_name, id=doc_id, document=document)
+            logger.info(f"插入文档 {doc_id} 到索引 {index_name}")
+
+        logger.info(f"索引 {index_name} 创建并插入数据成功")
+        return jsonify({'status': 'success'}), 200
+
+    except KeyError as e:
+        logger.error(f"索引创建或插入数据失败: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+    except Exception as e:
+        logger.error(f"索引创建或插入数据失败: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ST_chatpdf', methods=['POST'])
+def ST_chatpdf():
+    try:
+        # 读取请求参数
+        data = request.json
+        query = data.get('query')
+        file_id = data.get('file_id')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
+
+        if not query or not file_id:
+            return jsonify({'error': '参数不完整'}), 400
+
+        # 从 Elasticsearch 中获取全文内容
+        all_content = ""
+        try:
+            full_texts = es_handler.get_full_text_by_pid(file_id.strip())
+            if full_texts:
+                # 平展处理列表，并将其连接为一个字符串
+                all_content = "\n".join([text for sublist in full_texts for text in sublist])
+                logger.info(f"检索到全文内容：{all_content}")
+            else:
+                logger.info(f"未能检索到全文内容 for Pid: {file_id}")
+        except Exception as e:
+            logger.error(f"检索文本内容时出错 {file_id}: {e}")
+
+        if not all_content:
+            def generate():
+                full_answer = "您的问题没有在文献资料中找到答案，正在使用预训练知识库为您解答："
+                prompt = [{'role': 'user', 'content': query}]
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
+        # 生成 prompt
+        prompt_messages = prompt_builder.generate_chatpdf_prompt(all_content, query)
+        logger.info(f"Prompt: {prompt_messages}")
+
+        if llm == 'qwen':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt_messages, top_p=top_p, temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+                logger.info(f"问题：{query}")
+                logger.info(f"生成的答案：{full_answer}")
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+    except Exception as e:
+        logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

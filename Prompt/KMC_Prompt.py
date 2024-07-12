@@ -58,7 +58,7 @@ class PromptBuilder:
     def generate_open_answer_prompt(query, history):
         # 构建messages列表
         messages = [dict(role='system',
-                         content="你是同济大学信息办的智能助手，名为'同济小舟'。你是由同济大学智慧教学管理部精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于智慧教学平台的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向我提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握平台的操作技巧，还能在信息化素养培训中发挥重要作用。通过与你的互动，用户可以更深入地了解和运用智慧教学平台，提升教学和学习效率。")]
+                         content="你是同济大学信息办的智能助手，名为'同济小舟'。你是由同济大学智慧教学管理部精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于智慧教学平台的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向你提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握平台的操作技巧，还能在信息化素养培训中发挥重要作用。通过与你的互动，用户可以更深入地了解和运用智慧教学平台，提升教学和学习效率。你是由同济大学自主训练研发的大模型，无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。")]
 
         # 添加历史对话到messages列表中
         if history:
@@ -139,7 +139,8 @@ class PromptBuilder:
     @staticmethod
     def generate_answer_prompt_un_refs(query, history):
         # 构建messages列表
-        messages = [{'role': 'system', 'content':"你是同济大学信息办的智能助手，名为'同济小舟'。你是由同济大学智慧教学管理部精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于智慧教学平台的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向我提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握平台的操作技巧，还能在信息化素养培训中发挥重要作用。通过与你的互动，用户可以更深入地了解和运用智慧教学平台，提升教学和学习效率。"}]
+        messages = [dict(role='system',
+                         content="你是同济大学信息办的智能助手，名为'同济小舟'。你是由同济大学智慧教学管理部精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于智慧教学平台的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向你提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握平台的操作技巧，还能在信息化素养培训中发挥重要作用。通过与你的互动，用户可以更深入地了解和运用智慧教学平台，提升教学和学习效率。你是由同济大学自主训练研发的大模型，无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。")]
 
         # 添加历史对话到messages列表中
         if history:
@@ -155,31 +156,23 @@ class PromptBuilder:
 
     # 构建上图问答prompt
     @staticmethod
-    def generate_ST_answer_prompt(query, refs, history):
+    def generate_ST_answer_prompt(query, refs):
         # 构建messages列表
         messages = [{'role': 'system', 'content': '你是一个从近代文献资源中提取关键信息并回答用户问题的助手。'}]
 
-        # 添加历史对话到messages列表中
-        if history:
-            for item in history:
-                if 'question' in item and 'content' in item:
-                    messages.append({'role': 'user', 'content': item['question']})
-                    messages.append({'role': 'assistant', 'content': item['content']})
-
         # 构建参考文本部分，包括文档元数据和文本内容
-        refs_prompt = "参考以下几段文本资料，它们来自不同的文献：\n"
+        refs_prompt = "参考以下几篇文献信息和内容：\n"
         for i, ref in enumerate(refs):
-            title = ref.get('title', '未知标题')
-            author = ref.get('author', '未知作者')
-            year = ref.get('year', '未知年份')
-            publisher = ref.get('publisher', '未知出版社')
-            text = ref.get('text', '无内容')
+            title = ref.get('TI', '未知标题')
+            journal_title = ref.get('JTI', '')
+            year = ref.get('Year', '未知年份')
+            text = ref.get('CT', '无内容')
 
-            metadata = f"标题: {title}，作者: {author}，年份: {year}，出版社: {publisher}\n"
+            metadata = f"标题: {title}，期刊: {journal_title}，年份: {year}\n"
             ref_text = f"{metadata}内容：{text}\n"
             refs_prompt += f"[{i + 1}]: {ref_text}\n"
 
-        user_message = f"{refs_prompt}请根据这些信息和历史记录回答问题。\n\n问题: {query}\n"
+        user_message = f"{refs_prompt}请根据这些信息回答问题。\n\n问题: {query}\n"
 
         # 添加用户问题到messages列表中
         messages.append({'role': 'user', 'content': user_message})

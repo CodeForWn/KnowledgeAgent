@@ -382,28 +382,26 @@ class ElasticSearchHandler:
             self.logger.info(f"删除文件ID {file_id} 的相关答案失败: {e}")
             return False
 
-    def ST_search_bm25(self, assistant_id, query, ref_num=10, file_id_list=None):
+    def ST_search_bm25(self, query, ref_num=10):
         # 使用BM25方法搜索特定索引
         query_body = {
             "query": {
                 "bool": {
                     "must": {
-                        "match": {
-                            "text": query
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["CT"]  # 全文字段
                         }
                     },
                     "should": []
                 }
-            }
+            },
+            "size": ref_num
         }
-        if file_id_list:
-            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
-            query_body['query']['bool']['minimum_should_match'] = 1  # 至少匹配一个
 
-        # self.logger.info(f"Query Body: {query_body}")
-        return self.ST_search(assistant_id, query_body, ref_num)
+        return self.ST_Search(query_body)
 
-    def ST_search_embed(self, assistant_id, query, ref_num=10, file_id_list=None):
+    def ST_search_embed(self, query, ref_num=10):
         # 使用Embed方法搜索特定索引
         query_embed = self.cal_query_embed(query)
         query_body = {
@@ -415,21 +413,32 @@ class ElasticSearchHandler:
                                 "match_all": {}  # 在整个索引中搜索
                             },
                             "script": {
-                                "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
+                                "source": "cosineSimilarity(params.query_vector, 'CT_embed') + 1.0",
                                 "params": {"query_vector": query_embed}
                             }
                         }
                     },
                     "should": []
                 }
-            }
+            },
+            "size": ref_num
         }
-        if file_id_list:
-            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
-            query_body['query']['bool']['minimum_should_match'] = 1  # 至少匹配一个
 
-        # self.logger.info(f"Query Body: {query_body}")
-        return self.ST_search(assistant_id, query_body, ref_num)
+        return self.ST_Search(query_body)
+
+    def ST_Search(self, query_body):
+        # 执行Elasticsearch查询
+        response = self.es.search(index='st_ocr', body=query_body)
+        if response['hits']['total']['value'] > 0:
+            hits = response['hits']['hits']
+            return [{
+                'CT': hit['_source']['CT'],
+                'Pid': hit['_source']['Pid'],
+                'TI': hit['_source'].get('TI', '无标题'),
+                'score': hit['_score']
+            } for hit in hits]
+        else:
+            return []
 
     def ST_search_abstract_bm25(self, query, ref_num=10):
         # 使用BM25方法搜索'document_metadata'索引中的abstract字段
@@ -459,6 +468,22 @@ class ElasticSearchHandler:
             }
         }
         return self.ST_file_search(query_body, ref_num)
+
+    def get_full_text_by_pid(self, pid):
+        query = {
+            "query": {
+                "term": {
+                    "Pid": pid
+                }
+            }
+        }
+        response = self.es.search(index="st_ocr", body=query)
+        if response['hits']['total']['value'] > 0:
+            return [hit['_source']['CT'] for hit in response['hits']['hits']]
+        else:
+            return None
+
+#
 # # 加载配置
 # # 使用环境变量指定环境并加载配置
 # config = Config(env='development')
@@ -466,3 +491,11 @@ class ElasticSearchHandler:
 #
 # # 创建ElasticSearchHandler实例
 # es_handler = ElasticSearchHandler(config)
+# # 查询特定的文档
+# result = es_handler.es.search(index="st_ocr", body={
+#     "query": {
+#         "term": {
+#             "Pid.keyword": "O_10407610003"
+#         }
+#     }
+# })
