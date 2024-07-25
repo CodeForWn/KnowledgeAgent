@@ -205,7 +205,7 @@ class PromptBuilder:
         # 构建messages列表
         messages = [
             {'role': 'system',
-             'content': '你是一个能够从单篇PDF的内容中找到和用户提问内容相关的部分并根据这部分内容回答用户问题的专家。'},
+             'content': '你是一个能够从PDF内容中找到和用户提问内容相关的部分并根据这部分内容回答用户问题的专家。'},
             {'role': 'user',
              'content': f"用户提问：{query}\n\n使用以下PDF内容来回答用户问题：\n\n{content}。"}
         ]

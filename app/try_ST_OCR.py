@@ -1,35 +1,30 @@
-import requests
-import json
+import re
 import logging
-import os
 
+# 配置日志
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('test')
+logger = logging.getLogger('myapp')
 
 
-def try_indexing(json_file_path):
-    url = "http://localhost:5555/api/ST_OCR"
-    headers = {'Content-Type': 'application/json'}
+def process_solr_query(solr_query):
+    # 使用正则表达式识别并处理TI, JTI, AU字段
+    def add_or_all(match):
+        field = match.group(1)
+        value = match.group(2)
+        return f'{field}:"{value}" OR ALL:"{value}"'
 
-    # 检查文件是否存在
-    if not os.path.exists(json_file_path):
-        logger.error(f"文件不存在: {json_file_path}")
-        return
-
-    # 读取 JSON 文件
-    with open(json_file_path, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-
-    # 发送 POST 请求
-    response = requests.post(url, headers=headers, json=data)
-    print(f"状态码: {response.status_code}")
-    print(f"响应: {response.json()}")
+    # 匹配TI、JTI、AU字段并添加OR ALL
+    processed_query = re.sub(r'(TI|JTI|AU):"([^"]+)"', add_or_all, solr_query)
+    logger.info(f"Processed solr_query: {processed_query}")
+    return processed_query
 
 
-if __name__ == '__main__':
-    # JSON 文件路径
-    json_file_path = "/work/kmc/kmcGPT/model/16000ocr.json"
+# 示例Solr查询字符串
+solr_query = r'JTI:"社会日报" AND TI:"啼笑因缘" AND AU:"何可人"'
 
-    # 调用测试函数
-    try_indexing(json_file_path)
+# 处理Solr查询字符串
+processed_solr_query = process_solr_query(solr_query)
+
+# 输出处理后的结果
+print(processed_solr_query)
 

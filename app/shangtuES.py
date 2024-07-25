@@ -17,6 +17,7 @@ import uuid
 import jieba.posseg as pseg
 from FlagEmbedding import FlagReranker
 sys.path.append("/work/kmc/kmcGPT/KMC/")
+from app.SecurityUtility import SecurityUtility
 from config.KMC_config import Config
 from ElasticSearch.KMC_ES import ElasticSearchHandler
 from File_manager.KMC_FileHandler import FileManager
@@ -162,13 +163,14 @@ def ocr_indexing():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-@app.route('/api/ST_chatpdf', methods=['POST'])
+@app.route('/ST_chatpdf', methods=['POST'])
 def ST_chatpdf():
     try:
         # 读取请求参数
         data = request.json
         query = data.get('query')
-        file_id = data.get('file_id')
+        file_id_ = data.get('file_id')
+        file_id = SecurityUtility.decrypt(file_id_)
         llm = data.get('llm', 'qwen').lower()
         top_p = data.get('top_p', 0.8)
         temperature = data.get('temperature', 0)
@@ -179,13 +181,13 @@ def ST_chatpdf():
         # 从 Elasticsearch 中获取全文内容
         all_content = ""
         try:
-            full_texts = es_handler.get_full_text_by_pid(file_id.strip())
+            full_texts = es_handler.get_full_text_by_Id(file_id.strip())
             if full_texts:
                 # 平展处理列表，并将其连接为一个字符串
                 all_content = "\n".join([text for sublist in full_texts for text in sublist])
                 logger.info(f"检索到全文内容：{all_content}")
             else:
-                logger.info(f"未能检索到全文内容 for Pid: {file_id}")
+                logger.info(f"未能检索到全文内容 for Id: {file_id}")
         except Exception as e:
             logger.error(f"检索文本内容时出错 {file_id}: {e}")
 
@@ -227,7 +229,76 @@ def ST_chatpdf():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/ST_Get_Answer', methods=['POST'])
+@app.route('/ST_Get_Answer_by_file_id', methods=['POST'])
+def ST_get_answer_by_file_id():
+    try:
+        # 读取请求参数
+        data = request.json
+        query = data.get('query')
+        file_ids = data.get('file_ids')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
+
+        if not query or not file_ids:
+            return jsonify({'error': '参数不完整'}), 400
+
+        # 从 Elasticsearch 中获取全文内容
+        all_content = ""
+        try:
+            for idx, file_id in enumerate(file_ids, 1):
+                file_id = SecurityUtility.decrypt(file_id)
+                full_texts = es_handler.get_full_text_by_Id(file_id.strip())
+                if full_texts:
+                    # 平展处理列表，并将其连接为一个字符串，并添加序号
+                    content_with_index = f"[{idx}]:" + "\n".join([text for sublist in full_texts for text in sublist])
+                    all_content += content_with_index + "\n\n"
+                    logger.info(f"检索到全文内容 for Id: {file_id}")
+                else:
+                    logger.info(f"未能检索到全文内容 for Id: {file_id}")
+        except Exception as e:
+            logger.error(f"检索文本内容时出错 {file_id}: {e}")
+
+        if not all_content:
+            def generate():
+                full_answer = "您的问题没有在文献资料中找到答案，正在使用预训练知识库为您解答："
+                prompt = [{'role': 'user', 'content': query}]
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
+        # 生成 prompt
+        prompt_messages = prompt_builder.generate_chatpdf_prompt(all_content, query)
+        logger.info(f"Prompt: {prompt_messages}")
+
+        if llm == 'qwen':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt_messages, top_p=top_p,
+                                                                                  temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+                logger.info(f"问题：{query}")
+                logger.info(f"生成的答案：{full_answer}")
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+    except Exception as e:
+        logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/ST_Get_Answer', methods=['POST'])
 def ST_Get_Answer():
     try:
         # 初始化重排模型
@@ -274,18 +345,19 @@ def ST_Get_Answer():
         logger.info(f"Prompt: {prompt_messages}")
 
         matches = [{
-            'CT': ref['CT'],
+            # 'CT': ref['CT'],
             'Pid': ref['Pid'],
             'TI': ref.get('TI', '无标题'),
             'score': ref['score'],
             'rerank_score': score,
-            'AB': ref.get('AB', ''),
-            'Id': ref.get('Id', ''),
-            'Issue_F': ref.get('Issue_F', ''),
-            'KW': ref.get('KW', ''),
-            'JTI': ref.get('JTI', ''),
-            'Piid': ref.get('Piid', ''),
-            'Year': ref.get('Year', '')
+            # 'AB': ref.get('AB', ''),
+            'Id': ref['Id'],
+            'Id_': SecurityUtility.encrypt(ref['Id'])  # 对Id字段进行加密
+            # 'Issue_F': ref.get('Issue_F', ''),
+            # 'KW': ref.get('KW', ''),
+            # 'JTI': ref.get('JTI', ''),
+            # 'Piid': ref.get('Piid', ''),
+            # 'Year': ref.get('Year', '')
         } for ref, score in top_list]
 
         if llm == 'qwen':
@@ -305,6 +377,130 @@ def ST_Get_Answer():
     except Exception as e:
         logger.error(f"Error in get_answer_stream: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+def gpt_4o(prompt):
+    data = {
+        "model": "gpt-4o",
+        "temperature": 0,
+        "messages": [
+            {"role": "user", "content": prompt},
+        ]
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    json_data = json.dumps(data)
+    response = requests.post(api_url, headers=headers, data=json_data)
+    if response.status_code == 200:
+        response_data = response.json()
+        result_data = response_data['choices'][0]['message']['content']
+        result_data = json.loads(json.dumps(result_data, ensure_ascii=False))
+        logger.info(f"GPT-4o response: {result_data}")
+        return result_data
+    else:
+        print(f"请求失败，状态码: {response.status_code}")
+        return None
+
+
+def process_solr_query(solr_query):
+    logger.info(f"原始Solr查询: {solr_query}")
+
+    # 使用正则表达式识别并处理TI, JTI, AU字段
+    def add_or_all(match):
+        field = match.group(1)
+        value = match.group(2)
+        return f'{field}:"{value}" OR All:"{value}"'
+
+    # 处理字符串中的转义字符
+    solr_query = solr_query.replace('\\"', '"')
+    # 匹配TI、JTI、AU字段并添加OR ALL
+    processed_query = re.sub(r'(TI|JTI|AU):(\([^)]+\)|"[^"]+")', add_or_all, solr_query)
+    return processed_query
+
+
+def generate_all_query(query):
+    words = pseg.cut(query)
+    nouns = [word for word, flag in words if flag.startswith('n')]  # 只取名词
+    if not nouns:
+        return None
+    all_query = ' AND '.join([f'All:"{noun}"' for noun in nouns])
+    logger.info(f"Generated All query: {all_query}")
+    return all_query
+
+
+def is_valid_solr_query(solr_query):
+    # 判断是否是有效的solr查询字段
+    return bool(re.search(r'\b(TI|JTI|AU|All|Year):', solr_query))
+
+
+def natural_language_to_solr_query(natural_language_query):
+    # 构建GPT-4的请求消息，包含上下文示例
+    messages = [
+        {'role': 'system',
+         'content': "你是一个能将自然语言转换为solr查询字段的专家，你只需要从一个问题中提取关键词，最后形成一个solr的检索语句，不要回答或解释问题。关键词分为4类：标题关键词（对应solr字段为TI"
+                    "）、文献来源关键词（对应solr字段为JTI）、年份关键词（对应solr资源为Year）、作者关键词（对应solr字段为AU）。"
+                    "对于相同类型的关键词用OR连接，对于不同类的关键词请用AND连接，（例如TI:(机器学习 OR Machine Learning) AND Year:[2023 TO *] "
+                    "）。请你注意要区分好人名的用法，有时候人名是标题关键词（蒋介石在西安的谈话显示出他怎样的态度，这里的蒋介石需要在TI"
+                    "中检索），有时候人名是作者关键词（请找到三十年代蒋介石发表的文章）。请你注意要区分好历史时期的用法，有时候历史时期是标题关键词（第一次世界大战使用的武器有哪些，这里的第一次世界大战需要在TI"
+                    "中检索），有时候历史时期是年份关键词（在第一次世界大战期间，美国对德国的态度是怎样的？。这里的第一次世界大战需要在Year中检索）。一般来说一个关键词只能使用一次，不要在TI、AU "
+                    "、Year中重复使用。"},
+        {'role': 'assistant', 'content': "好的"},
+        {'role': 'user', 'content': "请说明中法战争期间《申报》的舆论导向有何变化？并说明这种变化的原因。"},
+        {'role': 'assistant',
+         'content': "JTI:\"申报\" AND Year:[1881 TO 1886] AND TI:('中法战争' OR 'Sino-French War')"},
+        {'role': 'user',
+         'content': "1945年8月6日和9日，美国先后向日本广岛和长崎各投下一颗原子弹，各大报纸争相报道，延安《解放日报》也不例外。请总结一下这一时期《解放日报》对原子弹的报道有哪些变化？这些变化与毛泽东有何关联？"},
+        {'role': 'assistant',
+         'content': "TI:('广岛' OR '长崎' OR '原子弹' OR '毛泽东') AND JTI:\"解放日报\" AND Year:1945"},
+        {'role': 'user', 'content': "请介绍一下鲁迅在四十年代代发表在野草期刊上的文章有哪些？"},
+        {'role': 'assistant', 'content': "JTI:\"野草\" AND Year:[1940 TO 1949] AND AU:\"鲁迅\""},
+        {'role': 'user', 'content': "最新关于GPT方面的文章有哪些？请说明最近机器学习的方向在哪里？"},
+        {'role': 'assistant', 'content': "TI:('GPT' OR '机器学习') AND Year:[2023 TO *]"},
+        {'role': 'user', 'content': "知识图谱在信息安全领域有哪些突破和进步？"},
+        {'role': 'assistant',
+         'content': "TI:('知识图谱' OR 'Knowledge Graph') AND TI:('信息安全' OR '信息保障' OR 'Cybersecurity') AND Year:[2023 TO *]"},
+        {'role': 'user', 'content': "第二次世界大战期间，美国对日本的态度有哪些变化？分为几个阶段？"},
+        {'role': 'assistant',
+         'content': "TI:('美国' OR 'United States') AND TI:('日本' OR 'Japan') AND Year:[1939 TO 1945]"},
+        {'role': 'user', 'content': natural_language_query}
+    ]
+    # 将消息内容转换为字符串
+    prompt = json.dumps(messages, ensure_ascii=False)
+
+    # 调用gpt_4函数并返回结果
+    solr_query = gpt_4o(prompt)
+    if solr_query:
+        if is_valid_solr_query(solr_query):
+            # 对结果进行处理，增加OR All字段
+            processed_solr_query = process_solr_query(solr_query)
+            logger.info(f"Processed solr_query: {processed_solr_query}")
+            return processed_solr_query
+        else:
+            logger.warning("转换失败，自动分词")
+            all_query = generate_all_query(natural_language_query)
+            logger.info(f"分词结果: {all_query}")
+            if all_query:
+                return all_query
+            else:
+                return "对不起，无法生成有效的Solr查询语句。"
+    else:
+        return "对不起，生成Solr查询语句失败。"
+
+
+@app.route('/convert_query', methods=['POST'])
+def convert_query():
+    data = request.json
+    query = data.get('query', '')
+    if not query:
+        return jsonify({'error': 'Query is required'}), 400
+
+    solr_query = natural_language_to_solr_query(query)
+    if solr_query:
+        logger.info(f"转换结果: {solr_query}")
+        return jsonify({'solr_query': solr_query})
+    else:
+        return jsonify({'error': 'Failed to generate solr query'}), 500
 
 
 if __name__ == '__main__':

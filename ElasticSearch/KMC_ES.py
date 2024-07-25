@@ -435,6 +435,7 @@ class ElasticSearchHandler:
                 'CT': hit['_source']['CT'],
                 'Pid': hit['_source']['Pid'],
                 'TI': hit['_source'].get('TI', '无标题'),
+                'Id': hit['_source']['Id'],
                 'score': hit['_score']
             } for hit in hits]
         else:
@@ -469,11 +470,11 @@ class ElasticSearchHandler:
         }
         return self.ST_file_search(query_body, ref_num)
 
-    def get_full_text_by_pid(self, pid):
+    def get_full_text_by_Id(self, Id):
         query = {
             "query": {
                 "term": {
-                    "Pid": pid
+                    "Id": Id
                 }
             }
         }
