@@ -110,7 +110,7 @@ ChatGPT、GLM等生成式人工智能在文本生成、文本到图像生成等�
 4. 创建Conda环境并安装必要的软件包：
     ```bash
     ~/miniconda3/bin/conda create -n kmccode_env python=3.10
-    git clone -b production https://github.com/StickPromise/KMC.git .
+    git clone -b production https://github.com/StickPromise/KMC.git . #克隆仓库的production分支：
     cd KMC.config
     while read requirement; do conda install --yes $requirement || pip install $requirement; done < requirements.txt
     pip install pdf2text
@@ -125,10 +125,6 @@ ChatGPT、GLM等生成式人工智能在文本生成、文本到图像生成等�
     chmod u+w /home/user/work/kmc/
     ```
 
-6. 克隆仓库的production分支：
-    ```bash
-    git clone -b production https://github.com/StickPromise/KMC.git .
-    ```
 
 这些步骤将帮助您快速配置开发环境并开始使用KmcGPT。🌟
 
