@@ -410,7 +410,7 @@ class ElasticSearchHandler:
                     "must": {
                         "script_score": {
                             "query": {
-                                "match_all": {}  # 在整个索引中搜索
+                                "match_all": {}
                             },
                             "script": {
                                 "source": "cosineSimilarity(params.query_vector, 'CT_embed') + 1.0",
@@ -426,16 +426,31 @@ class ElasticSearchHandler:
 
         return self.ST_Search(query_body)
 
+
+    def _process_field(self, field):
+        # 处理字段，确保返回字符串
+        if isinstance(field, list):
+            return '，'.join(map(str, field))  # 将列表中的元素拼接成字符串
+        return str(field)  # 如果是单一值，直接转换为字符串
+
+
     def ST_Search(self, query_body):
         # 执行Elasticsearch查询
         response = self.es.search(index='st_ocr', body=query_body)
         if response['hits']['total']['value'] > 0:
             hits = response['hits']['hits']
             return [{
-                'CT': hit['_source']['CT'],
-                'Pid': hit['_source']['Pid'],
-                'TI': hit['_source'].get('TI', '无标题'),
-                'Id': hit['_source']['Id'],
+                'AB': self._process_field(hit['_source'].get('AB', '无摘要')),
+                'AU': self._process_field(hit['_source'].get('AU', '未知作者')),
+                'CT': self._process_field(hit['_source'].get('CT', '无内容')),
+                'Id': hit['_source'].get('Id', ''),
+                'Issue_F': self._process_field(hit['_source'].get('Issue_F', '')),
+                'JTI': self._process_field(hit['_source'].get('JTI', '未知期刊')),
+                'KW': self._process_field(hit['_source'].get('KW', '')),
+                'Pid': hit['_source'].get('Pid', ''),
+                'Piid': hit['_source'].get('Piid', ''),
+                'TI': self._process_field(hit['_source'].get('TI', '无标题')),
+                'Year': str(hit['_source'].get('Year', '未知年份')),
                 'score': hit['_score']
             } for hit in hits]
         else:
@@ -470,19 +485,21 @@ class ElasticSearchHandler:
         }
         return self.ST_file_search(query_body, ref_num)
 
-    def get_full_text_by_Id(self, Id):
+    def get_full_text_by_Id(self, ids):
+        # 如果 ids 是单个字符串，将其转换为列表以统一处理
+        if isinstance(ids, str):
+            ids = [ids]
+
+        # 构建查询，支持多个 Id 的查询
         query = {
             "query": {
-                "term": {
-                    "Id": Id
+                "terms": {
+                    "Id": ids
                 }
             }
         }
-        response = self.es.search(index="st_ocr", body=query)
-        if response['hits']['total']['value'] > 0:
-            return [hit['_source']['CT'] for hit in response['hits']['hits']]
-        else:
-            return None
+
+        return self.ST_Search(query)
 
 #
 # # 加载配置

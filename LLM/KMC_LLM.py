@@ -3,6 +3,8 @@ from flask import Flask, request, jsonify
 import re
 import shutil
 import pickle
+import sys
+sys.path.append("/work/kmc/kmcGPT/KMC/")
 from File_manager.pdf2markdown import PDF
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
@@ -30,21 +32,17 @@ import json
 import queue
 import threading
 import spacy
-import zhipuai
 import time
-import sys
-sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 import dashscope
 from dashscope import Generation
 from http import HTTPStatus
 import random
 # 设置您的API密钥
-zhipuai.api_key = "b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA"
+from zhipuai import ZhipuAI
+client = ZhipuAI(api_key="b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA") # 填写您自己的APIKey
 
 
-# config = Config(env='development')
-# config.load_config()  # 指定配置文件的路径
 
 
 # LLMs 类
@@ -132,10 +130,11 @@ class LargeModelAPIService:
         dashscope.api_key = self.Tyqwen_api_key
         try:
             response_generator = dashscope.Generation.call(
-                model='qwen-long',
+                model='qwen-max',
                 top_p=top_p,
                 temperature=temperature,
                 messages=prompt,
+                enable_search=True,
                 result_format='message',  # 设置输出为 'message' 格式
                 stream=True  # 开启流式输出
             )
@@ -274,3 +273,10 @@ class LargeModelAPIService:
             handler.write(img_data)
         self.logger.info(img_data)
         return img_data
+
+config = Config(env='production')
+config.load_config("/work/kmc/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
+
+# 创建ElasticSearchHandler实例
+llm_builder = LargeModelAPIService(config)
+llm_builder.tong_bu("请帮我调研一下关于function calling的最新进展")

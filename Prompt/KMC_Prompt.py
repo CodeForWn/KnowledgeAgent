@@ -157,24 +157,33 @@ class PromptBuilder:
     # 构建上图问答prompt
     @staticmethod
     def generate_ST_answer_prompt(query, refs):
-        # 构建messages列表
+        # 构建 messages 列表
         messages = [{'role': 'system', 'content': '你是一个从近代文献资源中提取关键信息并回答用户问题的助手。'}]
 
         # 构建参考文本部分，包括文档元数据和文本内容
-        refs_prompt = "参考以下几篇文献信息和内容：\n"
+        refs_prompt = "参考以下几篇文献的信息和内容：\n"
         for i, ref in enumerate(refs):
-            title = ref.get('TI', '未知标题')
-            journal_title = ref.get('JTI', '')
-            year = ref.get('Year', '未知年份')
-            text = ref.get('CT', '无内容')
+            # 自动判断并处理字段
+            def get_value(field, default='未知'):
+                value = ref.get(field, default)
+                if isinstance(value, list):
+                    return '，'.join(map(str, value))  # 如果是列表，拼接成字符串
+                return str(value)  # 如果是单一值，直接返回字符串
 
-            metadata = f"标题: {title}，期刊: {journal_title}，年份: {year}\n"
-            ref_text = f"{metadata}内容：{text}\n"
+            # 使用自动判断处理字段
+            title = get_value('TI', '未知标题')
+            journal_title = get_value('JTI', '未知期刊')
+            year = get_value('Year', '未知年份')
+            text = get_value('CT', '无内容')
+
+            # 构建元数据部分
+            metadata = f"这是一篇标题为: {title}，来源期刊是: {journal_title}，年份是: {year}\n"
+            ref_text = f"{metadata},正文内容是：{text}\n"
             refs_prompt += f"[{i + 1}]: {ref_text}\n"
 
         user_message = f"{refs_prompt}请根据这些信息回答问题。\n\n问题: {query}\n"
 
-        # 添加用户问题到messages列表中
+        # 添加用户问题到 messages 列表中
         messages.append({'role': 'user', 'content': user_message})
 
         return messages

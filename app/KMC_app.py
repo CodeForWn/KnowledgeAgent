@@ -1488,7 +1488,7 @@ def ST_chatpdf():
 
 
 if __name__ == '__main__':
-    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(2)]
+    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(4)]
     for t in threads:
         t.start()
 

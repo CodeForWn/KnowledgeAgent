@@ -9,6 +9,7 @@ import threading
 import queue
 import urllib3
 import logging
+import time
 import requests
 from logging.handlers import RotatingFileHandler
 import sys
@@ -44,6 +45,8 @@ es_handler = ElasticSearchHandler(config)
 large_model_service = LargeModelAPIService(config)
 prompt_builder = PromptBuilder(config)
 model_path = "/work/kmc/kmcGPT/model/bge-reranker-base"
+# 初始化重排模型
+reranker = FlagReranker(model_path, use_fp16=True)
 # 定义调用SnoopIE模型的接口地址
 api_url = "http://chat.cheniison.cn/api/chat"
 # 创建队列
@@ -181,13 +184,8 @@ def ST_chatpdf():
         # 从 Elasticsearch 中获取全文内容
         all_content = ""
         try:
-            full_texts = es_handler.get_full_text_by_Id(file_id.strip())
-            if full_texts:
-                # 平展处理列表，并将其连接为一个字符串
-                all_content = "\n".join([text for sublist in full_texts for text in sublist])
-                logger.info(f"检索到全文内容：{all_content}")
-            else:
-                logger.info(f"未能检索到全文内容 for Id: {file_id}")
+            all_content = es_handler.get_full_text_by_Id(file_id.strip())
+
         except Exception as e:
             logger.error(f"检索文本内容时出错 {file_id}: {e}")
 
@@ -245,19 +243,11 @@ def ST_get_answer_by_file_id():
 
         # 从 Elasticsearch 中获取全文内容
         all_content = ""
-        try:
-            for idx, file_id in enumerate(file_ids, 1):
-                file_id = SecurityUtility.decrypt(file_id)
-                full_texts = es_handler.get_full_text_by_Id(file_id.strip())
-                if full_texts:
-                    # 平展处理列表，并将其连接为一个字符串，并添加序号
-                    content_with_index = f"[{idx}]:" + "\n".join([text for sublist in full_texts for text in sublist])
-                    all_content += content_with_index + "\n\n"
-                    logger.info(f"检索到全文内容 for Id: {file_id}")
-                else:
-                    logger.info(f"未能检索到全文内容 for Id: {file_id}")
-        except Exception as e:
-            logger.error(f"检索文本内容时出错 {file_id}: {e}")
+        max_chars = 5000
+        current_chars_count = 0
+
+        all_content = es_handler.get_full_text_by_Id(
+            [SecurityUtility.decrypt(file_id.strip()) for file_id in file_ids])
 
         if not all_content:
             def generate():
@@ -272,7 +262,7 @@ def ST_get_answer_by_file_id():
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         # 生成 prompt
-        prompt_messages = prompt_builder.generate_chatpdf_prompt(all_content, query)
+        prompt_messages = prompt_builder.generate_ST_answer_prompt(query, all_content)
         logger.info(f"Prompt: {prompt_messages}")
 
         if llm == 'qwen':
@@ -289,10 +279,8 @@ def ST_get_answer_by_file_id():
                 logger.info(f"生成的答案：{full_answer}")
 
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
-
         else:
             return jsonify({'error': '未知的大模型服务'}), 400
-
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
         return jsonify({'error': str(e)}), 500
@@ -301,8 +289,7 @@ def ST_get_answer_by_file_id():
 @app.route('/ST_Get_Answer', methods=['POST'])
 def ST_Get_Answer():
     try:
-        # 初始化重排模型
-        reranker = FlagReranker(model_path, use_fp16=True)
+        start_time = time.time()
         # 读取请求参数
         data = request.json
         query = data.get('query')
@@ -315,9 +302,33 @@ def ST_Get_Answer():
             return jsonify({'error': '参数不完整'}), 400
 
         # 执行混合检索
+        # 执行BM25检索
+        bm25_start_time = time.time()
         bm25_refs = es_handler.ST_search_bm25(query, ref_num)
+        bm25_end_time = time.time()
+        logger.info(f"BM25检索用时: {bm25_end_time - bm25_start_time:.2f} seconds")
+
+        # 执行嵌入检索
+        embed_start_time = time.time()
         embed_refs = es_handler.ST_search_embed(query, ref_num)
-        all_refs = bm25_refs + embed_refs
+        embed_end_time = time.time()
+        logger.info(f"嵌入检索用时: {embed_end_time - embed_start_time:.2f} seconds")
+
+        # 记录检索后的时间
+        after_search_time = time.time()
+        logger.info(f"BM25和嵌入检索总用时: {after_search_time - bm25_start_time:.2f} seconds")
+
+        # 合并结果
+        merge_start_time = time.time()
+        combined_refs = bm25_refs + embed_refs
+        unique_refs = {ref['Id']: ref for ref in combined_refs}.values()
+        all_refs = list(unique_refs)
+        merge_end_time = time.time()
+        logger.info(f"合并结果用时: {merge_end_time - merge_start_time:.2f} seconds")
+        logger.info(f"合并后all_refs长度: {len(all_refs)}")
+
+        find_refs_time = time.time()
+        logger.info(f"总检索用时: {find_refs_time - start_time:.2f} seconds")
 
         if not all_refs:
             def generate():
@@ -325,6 +336,10 @@ def ST_Get_Answer():
                 Prompt = [{'role': 'system', 'content': "你是一个近代历史文献研究专家"},
                           {'role': 'user', 'content': query}]
                 ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
+
+                model_output_start_time = time.time()
+                logger.info(f"模型开始输出用时（未检索到）: {model_output_start_time - start_time:.2f} seconds")
+
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
@@ -333,17 +348,31 @@ def ST_Get_Answer():
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         # 使用重排模型进行重排并归一化得分
+        rerank_start_time = time.time()
         ref_pairs = [[query, str(ref['CT'])] for ref in all_refs]  # 为每个参考文档与查询组合成对
         scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
+        rerank_end_time = time.time()
+        logger.info(f"重排计算用时: {rerank_end_time - rerank_start_time:.2f} seconds")
+
+        # 排序结果
+        sort_start_time = time.time()
         sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+        sort_end_time = time.time()
+        logger.info(f"排序用时: {sort_end_time - sort_start_time:.2f} seconds")
         top_list = sorted_refs[:3]
         top_scores = [score for _, score in top_list]
         top_refs = [ref for ref, _ in top_list]
         logger.info(f"重排后最高分：{top_scores}")
 
+        # 生成Prompt
+        prompt_start_time = time.time()
         prompt_messages = PromptBuilder.generate_ST_answer_prompt(query, top_refs)
-        logger.info(f"Prompt: {prompt_messages}")
+        logger.info(f"生成Prompt: {prompt_messages}")
+        prompt_end_time = time.time()
+        logger.info(f"生成Prompt用时: {prompt_end_time - prompt_start_time:.2f} seconds")
 
+        # 构建返回的匹配结果
+        matches_start_time = time.time()
         matches = [{
             # 'CT': ref['CT'],
             'Pid': ref['Pid'],
@@ -359,11 +388,17 @@ def ST_Get_Answer():
             # 'Piid': ref.get('Piid', ''),
             # 'Year': ref.get('Year', '')
         } for ref, score in top_list]
+        matches_end_time = time.time()
+        logger.info(f"构建匹配结果用时: {matches_end_time - matches_start_time:.2f} seconds")
 
         if llm == 'qwen':
             def generate():
                 full_answer = ""
                 ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt_messages, top_p=top_p, temperature=temperature)
+
+                model_output_start_time = time.time()
+                logger.info(f"模型开始输出用时: {model_output_start_time - start_time:.2f} seconds")
+
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
@@ -403,35 +438,48 @@ def gpt_4o(prompt):
         return None
 
 
-def process_solr_query(solr_query):
-    logger.info(f"原始Solr查询: {solr_query}")
+def escape_solr_query(value):
+    special_chars = r'+-&&||!(){}[]^"~*?:\\/'
+    escaped_value = ''
+    for char in value:
+        if char in special_chars:
+            escaped_value += '\\' + char
+        else:
+            escaped_value += char
+    return escaped_value
 
-    # 使用正则表达式识别并处理TI, JTI, AU字段
+
+def process_solr_query(solr_query):
     def add_or_all(match):
         field = match.group(1)
         value = match.group(2)
-        return f'{field}:"{value}" OR All:"{value}"'
+        if value.startswith('(') and value.endswith(')'):
+            value = value[1:-1]
+        value = value.strip('"\'')
+        value_escaped = escape_solr_query(value)
+        logger.info(f"Matched field: {field}, value: {value}")
+        return f'({field}:"{value_escaped}" OR All:"{value_escaped}")'
 
-    # 处理字符串中的转义字符
+    logger.info(f"Before processing: {solr_query}")
     solr_query = solr_query.replace('\\"', '"')
-    # 匹配TI、JTI、AU字段并添加OR ALL
-    processed_query = re.sub(r'(TI|JTI|AU):(\([^)]+\)|"[^"]+")', add_or_all, solr_query)
+    processed_query = re.sub(r'(TI|JTI|AU):(\(.*?\)|".*?")', add_or_all, solr_query)
+    processed_query = processed_query.replace("'", '"')  # Ensure all quotes are double quotes
+    logger.info(f"After processing: {processed_query}")
     return processed_query
 
 
 def generate_all_query(query):
     words = pseg.cut(query)
-    nouns = [word for word, flag in words if flag.startswith('n')]  # 只取名词
+    nouns = [word for word, flag in words if flag.startswith('n')]
     if not nouns:
         return None
-    all_query = ' AND '.join([f'All:"{noun}"' for noun in nouns])
+    all_query = ' AND '.join([f'All:"{escape_solr_query(noun)}"' for noun in nouns])
     logger.info(f"Generated All query: {all_query}")
     return all_query
 
 
 def is_valid_solr_query(solr_query):
-    # 判断是否是有效的solr查询字段
-    return bool(re.search(r'\b(TI|JTI|AU|All|Year):', solr_query))
+    return bool(re.search(r'\b(TI|JTI|AU):', solr_query))
 
 
 def natural_language_to_solr_query(natural_language_query):
@@ -504,7 +552,7 @@ def convert_query():
 
 
 if __name__ == '__main__':
-    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(2)]
+    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(4)]
     for t in threads:
         t.start()
 
