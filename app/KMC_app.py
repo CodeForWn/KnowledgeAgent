@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, request, jsonify, Response, stream_with_context
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from transformers import AutoTokenizer, AutoModel
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -23,6 +23,8 @@ from File_manager.KMC_FileHandler import FileManager
 from LLM.KMC_LLM import LargeModelAPIService
 from Prompt.KMC_Prompt import PromptBuilder
 import types
+import time
+import os
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -49,6 +51,58 @@ api_url = "http://chat.cheniison.cn/api/chat"
 file_queue = queue.Queue()
 index_lock = threading.Lock()
 logger.info('服务启动中。。。')
+
+# 初始化请求状态字典
+request_status = {}
+request_lock = threading.Lock()
+
+
+@app.before_request
+def before_request():
+    request_id = str(uuid.uuid4())  # 生成唯一请求ID
+    request.environ['REQUEST_ID'] = request_id  # 将请求ID存储在请求环境中
+    with request_lock:
+        request_status[request_id] = {
+            "start_time": time.time(),
+            "status": "processing",
+            "url": request.url
+        }
+    logger.info(f"开始处理请求: {request_id} for {request.url}")
+
+@app.after_request
+def after_request(response):
+    request_id = request.environ.get('REQUEST_ID')
+    with request_lock:
+        if request_id in request_status:
+            request_status[request_id]["end_time"] = time.time()
+            request_status[request_id]["status"] = "completed"
+            logger.info(f"完成请求: {request_id} for {request.url}")
+    return response
+
+@app.teardown_request
+def teardown_request(exception):
+    request_id = request.environ.get('REQUEST_ID')
+    with request_lock:
+        if request_id in request_status and request_status[request_id]["status"] != "completed":
+            request_status[request_id]["end_time"] = time.time()
+            request_status[request_id]["status"] = "failed" if exception else "completed"
+            logger.info(f"请求失败: {request_id} for {request.url} due to {exception}")
+
+
+@app.route('/api/request_status', methods=['GET'])
+def get_request_status():
+    with request_lock:
+        active_requests = {k: v for k, v in request_status.items() if v['status'] == 'processing'}
+        completed_requests = {k: v for k, v in request_status.items() if v['status'] == 'completed'}
+    return jsonify({
+        'active_requests': active_requests,
+        'completed_requests': completed_requests
+    }), 200
+
+
+@app.route('/api/monitor')
+def serve_monitor_page():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'request_monitor.html')
 
 
 def generate_assistant_id():
@@ -1487,8 +1541,23 @@ def ST_chatpdf():
         return jsonify({'error': str(e)}), 500
 
 
+# 定义 Flask 路由
+@app.route('/api/web_search', methods=['POST'])
+def web_search():
+    data = request.json
+    query = data.get('query')
+
+    if not query:
+        return jsonify({"error": "Query is required"}), 400
+
+    # 调用 large_model_service 的方法
+    result = large_model_service.web_search_glm4(query)
+
+    return jsonify(result)
+
+
 if __name__ == '__main__':
-    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(4)]
+    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(6)]
     for t in threads:
         t.start()
 

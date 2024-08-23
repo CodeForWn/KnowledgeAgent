@@ -274,9 +274,55 @@ class LargeModelAPIService:
         self.logger.info(img_data)
         return img_data
 
-config = Config(env='production')
-config.load_config("/work/kmc/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
+    def web_search_glm4(self, query):
+        tools = [{
+            "type": "web_search",
+            "web_search": {
+                "enable": True,  # 禁用：False，启用：True，默认为 True。
+                "search_result": True  # 禁用：False，启用：True，默认为禁用
+            }
+        }]
 
-# 创建ElasticSearchHandler实例
-llm_builder = LargeModelAPIService(config)
-llm_builder.tong_bu("请帮我调研一下关于function calling的最新进展")
+        response = client.chat.completions.create(
+            model="glm-4-air",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant.\n\nCurrent Date: 2024-07-11"},
+                {"role": "user", "content": query}
+            ],
+            top_p=0.7,
+            temperature=0.3,
+            tools=tools
+        )
+
+        # 初始化结果字典
+        result = {
+            "model_response": None,
+            "web_search_results": []
+        }
+
+        # 处理模型的回答
+        if response.choices:
+            model_response = response.choices[0].message.content
+            result["model_response"] = model_response
+            self.logger.info(f"模型回答: {model_response}")
+
+            # 处理 web_search 结果（仅当存在时）
+        if hasattr(response, 'web_search') and response.web_search:
+            for search_result in response.web_search:
+                search_response = {
+                    "title": search_result['title'],
+                    "content": search_result['content'],
+                    "link": search_result.get('link', '')
+                }
+                result["web_search_results"].append(search_response)
+                self.logger.info(f"网络搜索结果: {search_response}")
+        else:
+            self.logger.warning("没有找到 web_search 结果或 web_search 属性不存在")
+
+        return result
+
+# config = Config(env='production')
+# config.load_config("/work/kmc/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
+# # 创建ElasticSearchHandler实例
+# llm_builder = LargeModelAPIService(config)
+# llm_builder.web_search_glm4("联网搜索，新冠肺炎疫情期间，福建省商务厅(口岸办)采取了哪些措施来保障口岸的安全与稳定?")

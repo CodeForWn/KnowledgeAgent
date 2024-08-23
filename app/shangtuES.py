@@ -359,7 +359,7 @@ def ST_Get_Answer():
         sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
         sort_end_time = time.time()
         logger.info(f"排序用时: {sort_end_time - sort_start_time:.2f} seconds")
-        top_list = sorted_refs[:3]
+        top_list = sorted_refs[:5]
         top_scores = [score for _, score in top_list]
         top_refs = [ref for ref, _ in top_list]
         logger.info(f"重排后最高分：{top_scores}")

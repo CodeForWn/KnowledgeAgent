@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Request Monitor</h1>
+    <canvas id="requestChart" width="800" height="400"></canvas>
+
+    <script>
+        const ctx = document.getElementById('requestChart').getContext('2d');
+        const requestChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Processing Time (s)',
+                    data: [],
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        function updateChart() {
+            fetch('/api/request_status')
+                .then(response => response.json())
+                .then(data => {
+                    const labels = [];
+                    const processingTimes = [];
+                    
+                    // 处理活动请求
+                    for (const [key, value] of Object.entries(data.active_requests)) {
+                        labels.push(key);
+                        processingTimes.push((Date.now() / 1000) - value.start_time);
+                    }
+                    
+                    // 处理已完成请求
+                    for (const [key, value] of Object.entries(data.completed_requests)) {
+                        labels.push(key);
+                        if (value.end_time) {
+                            processingTimes.push(value.end_time - value.start_time);
+                        }
+                    }
+
+                    requestChart.data.labels = labels;
+                    requestChart.data.datasets[0].data = processingTimes;
+                    requestChart.update();
+                });
+        }
+
+        setInterval(updateChart, 1000);  // 每秒更新一次
+    </script>
+</body>
+</html>
+
