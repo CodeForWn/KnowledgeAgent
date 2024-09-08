@@ -38,6 +38,11 @@ import sys
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 
 
+class NoRequestStatusFilter(logging.Filter):
+    def filter(self, record):
+        return "/api/request_status" not in record.getMessage()
+
+
 class Config(object):
 
     def __init__(self, env='production'):
@@ -69,8 +74,15 @@ class Config(object):
         file_handler = RotatingFileHandler(log_file, maxBytes=1 * 1024 * 1024 * 1024, backupCount=20)
         file_handler.setLevel(logging.INFO)
 
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
+
+        # 添加过滤器以过滤掉 /api/request_status 的日志
+        no_request_status_filter = NoRequestStatusFilter()
+        self.logger.addFilter(no_request_status_filter)
+
+        # 为所有处理器添加过滤器
+        stream_handler.addFilter(no_request_status_filter)
+        file_handler.addFilter(no_request_status_filter)
 
         self.logger.addHandler(file_handler)
 

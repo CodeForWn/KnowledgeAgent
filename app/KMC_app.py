@@ -27,6 +27,16 @@ import time
 import os
 
 
+class NoRequestStatusFilter(logging.Filter):
+    def filter(self, record):
+        return "/api/request_status" not in record.getMessage()
+
+
+# 为 werkzeug 添加过滤器
+werkzeug_log = logging.getLogger('werkzeug')
+werkzeug_log.addFilter(NoRequestStatusFilter())
+
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
 CORS(app)
@@ -57,8 +67,17 @@ request_status = {}
 request_lock = threading.Lock()
 
 
+def cleanup_request_status():
+    with request_lock:
+        current_time = time.time()
+        for req_id in list(request_status.keys()):
+            if current_time - request_status[req_id]['start_time'] > 120:  # 超过一小时的记录
+                del request_status[req_id]
+
+
 @app.before_request
 def before_request():
+    cleanup_request_status()
     request_id = str(uuid.uuid4())  # 生成唯一请求ID
     request.environ['REQUEST_ID'] = request_id  # 将请求ID存储在请求环境中
     with request_lock:
@@ -67,33 +86,47 @@ def before_request():
             "status": "processing",
             "url": request.url
         }
-    logger.info(f"开始处理请求: {request_id} for {request.url}")
+    # logger.info(f"开始处理请求: {request_id} for {request.url}")
+
 
 @app.after_request
 def after_request(response):
     request_id = request.environ.get('REQUEST_ID')
     with request_lock:
         if request_id in request_status:
-            request_status[request_id]["end_time"] = time.time()
-            request_status[request_id]["status"] = "completed"
-            logger.info(f"完成请求: {request_id} for {request.url}")
+            # 如果请求仍然处于 "processing" 状态，则将其更新为 "completed"
+            if request_status[request_id]["status"] == "processing":
+                request_status[request_id]["end_time"] = time.time()
+                request_status[request_id]["status"] = "completed"
+                # 日志记录（可选）
+                # logger.info(f"完成请求: {request_id} for {request.url}")
     return response
+
 
 @app.teardown_request
 def teardown_request(exception):
     request_id = request.environ.get('REQUEST_ID')
     with request_lock:
-        if request_id in request_status and request_status[request_id]["status"] != "completed":
+        # 检查请求状态是否仍然是 "processing"，以防止重复更新
+        if request_id in request_status and request_status[request_id]["status"] == "processing":
             request_status[request_id]["end_time"] = time.time()
             request_status[request_id]["status"] = "failed" if exception else "completed"
+            # 日志记录失败的请求
             logger.info(f"请求失败: {request_id} for {request.url} due to {exception}")
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 
 @app.route('/api/request_status', methods=['GET'])
 def get_request_status():
     with request_lock:
-        active_requests = {k: v for k, v in request_status.items() if v['status'] == 'processing'}
-        completed_requests = {k: v for k, v in request_status.items() if v['status'] == 'completed'}
+        # 过滤 active_requests 中的 /api/request_status 请求
+        active_requests = {k: v for k, v in request_status.items() if v['status'] == 'processing' and '/api/get_answer_stream' in v['url']}
+        # 过滤 completed_requests 中的 /api/request_status 请求
+        completed_requests = {k: v for k, v in request_status.items() if v['status'] == 'completed' and '/api/get_answer_stream' in v['url']}
     return jsonify({
         'active_requests': active_requests,
         'completed_requests': completed_requests
@@ -142,42 +175,40 @@ def _push(file_data):
 
 
 def _process_file_data(data):
-    with app.app_context():
-        user_id = data.get('user_id')
-        assistant_id = data.get('assistant_id')
-        file_id = data.get('file_id')
-        file_name = data.get('file_name')
-        download_path = data.get('download_path')
-        tenant_id = data.get('tenant_id')
-        tag = data.get('tag')
-        createTime = data.get('createTime')
+    try:
+        with app.app_context():
+            user_id = data.get('user_id')
+            assistant_id = data.get('assistant_id')
+            file_id = data.get('file_id')
+            file_name = data.get('file_name')
+            download_path = data.get('download_path')
+            tenant_id = data.get('tenant_id')
+            tag = data.get('tag')
+            createTime = data.get('createTime')
 
-        try:
-            # 处理文件并创建索引
             logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
             file_path = file_manager.download_pdf(download_path, file_id)
             doc_list = file_manager.process_pdf_file(file_path, file_name)
-            # logger.info("分段完成，开始创建索引: %s", doc_list)
 
             if not doc_list:
                 notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
                 logger.error("未能成功处理PDF文件: %s", file_id)
-                return jsonify({"status": "error", "message": "未能成功处理PDF文件"})
+                return
 
             index_name = assistant_id
-            # 转换 createTime 为整数格式的 Unix 时间戳
             try:
                 createTime_int = int(createTime)
             except ValueError as ve:
                 logger.error(f"Invalid createTime value: {createTime}. Error: {ve}")
                 es_handler.notify_backend(file_id, "FAILURE", f"Invalid createTime value: {createTime}")
-                return jsonify({"status": "error", "message": f"Invalid createTime value: {createTime}"})
+                return
 
             es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime_int)
             es_handler.notify_backend(file_id, "SUCCESS")
-        except Exception as e:
-            logger.error("处理文件数据失败: {}".format(e))
-            es_handler.notify_backend(file_id, "FAILURE", str(e))
+            logger.info("文件处理完成并创建索引: %s", file_name)
+    except Exception as e:
+        logger.error("处理文件数据失败: %s", e)
+        es_handler.notify_backend(file_id, "FAILURE", str(e))
 
 
 def _thread_index_func(isFirst):
@@ -280,6 +311,15 @@ def get_open_ans_stream():
 
 @app.route('/api/get_answer_stream', methods=['POST'])
 def answer_question_stream():
+    request_id = str(uuid.uuid4())
+    request.environ['REQUEST_ID'] = request_id
+    with request_lock:
+        request_status[request_id] = {
+            "start_time": time.time(),
+            "status": "processing",
+            "url": request.url
+        }
+
     try:
         # 初始化重排模型
         reranker = FlagReranker(model_path, use_fp16=True)
@@ -394,10 +434,22 @@ def answer_question_stream():
         logger.info(f"问答记录: {log_data}")
         with open(record_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
+
+        # 更新请求状态为完成
+        with request_lock:
+            if request_id in request_status:
+                request_status[request_id]["end_time"] = time.time()
+                request_status[request_id]["status"] = "completed"
+
         return jsonify({'answer': ans, 'matches': matches}), 200
 
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
+        # 更新请求状态为失败
+        with request_lock:
+            if request_id in request_status:
+                request_status[request_id]["end_time"] = time.time()
+                request_status[request_id]["status"] = "failed"
         return jsonify({'error': str(e)}), 500
 
 
@@ -1556,11 +1608,19 @@ def web_search():
     return jsonify(result)
 
 
-if __name__ == '__main__':
-    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(6)]
+def start_background_threads():
+    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(4)]
     for t in threads:
+        t.daemon = True  # 将线程设置为守护线程
         t.start()
 
+# 确保线程在 Flask 应用启动前就启动
+start_background_threads()
+
+
+if __name__ == '__main__':
+    # 在本地调试时可以继续使用 Flask 内置服务器
     app.run(host='0.0.0.0', port=5777, debug=False)
+
 
 

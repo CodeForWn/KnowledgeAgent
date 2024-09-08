@@ -25,6 +25,19 @@ from File_manager.KMC_FileHandler import FileManager
 from LLM.KMC_LLM import LargeModelAPIService
 from Prompt.KMC_Prompt import PromptBuilder
 import types
+import traceback
+import time
+import json
+import requests
+import traceback
+from flask import jsonify, Response, stream_with_context
+from werkzeug.serving import run_simple
+import json
+import time
+import requests
+import traceback
+from flask import jsonify, request, Response, stream_with_context
+from werkzeug.exceptions import BadRequest
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -286,6 +299,18 @@ def ST_get_answer_by_file_id():
         return jsonify({'error': str(e)}), 500
 
 
+
+
+
+@app.errorhandler(BadRequest)
+def handle_bad_request(e):
+    logger.error(f"Bad Request: {e.description}")
+    logger.error(f"Request data: {request.data}")
+    logger.error(f"Request headers: {request.headers}")
+    return jsonify(error=str(e)), 400
+
+
+
 @app.route('/ST_Get_Answer', methods=['POST'])
 def ST_Get_Answer():
     try:
@@ -295,30 +320,27 @@ def ST_Get_Answer():
         query = data.get('query')
         ref_num = data.get('ref_num', 5)
         llm = data.get('llm', 'qwen').lower()
-        top_p = data.get('top_p', 0.8)
-        temperature = data.get('temperature', 0)
+        top_p = data.get('top_p', 0.7)
+        temperature = data.get('temperature', 0.7)
         logger.info(f"Received query: {query}")
+        logger.info(f"Request parameters: ref_num={ref_num}, llm={llm}, top_p={top_p}, temperature={temperature}")
         if not query:
-            return jsonify({'error': '参数不完整'}), 400
+            raise BadRequest('参数不完整')
 
         # 执行混合检索
-        # 执行BM25检索
         bm25_start_time = time.time()
         bm25_refs = es_handler.ST_search_bm25(query, ref_num)
         bm25_end_time = time.time()
         logger.info(f"BM25检索用时: {bm25_end_time - bm25_start_time:.2f} seconds")
 
-        # 执行嵌入检索
         embed_start_time = time.time()
         embed_refs = es_handler.ST_search_embed(query, ref_num)
         embed_end_time = time.time()
         logger.info(f"嵌入检索用时: {embed_end_time - embed_start_time:.2f} seconds")
 
-        # 记录检索后的时间
         after_search_time = time.time()
         logger.info(f"BM25和嵌入检索总用时: {after_search_time - bm25_start_time:.2f} seconds")
 
-        # 合并结果
         merge_start_time = time.time()
         combined_refs = bm25_refs + embed_refs
         unique_refs = {ref['Id']: ref for ref in combined_refs}.values()
@@ -330,27 +352,104 @@ def ST_Get_Answer():
         find_refs_time = time.time()
         logger.info(f"总检索用时: {find_refs_time - start_time:.2f} seconds")
 
+        def generate_stream_response(prompt, matches=None):
+            full_answer = ""
+            buffer = ""
+            headers = {
+                'Content-Type': 'application/json'
+            }
+            payload = {
+                'model': '/modelscope/hub/qwen/Qwen-14B-Chat',
+                'messages': prompt,
+                'max_tokens': 1500,
+                'temperature': 0.7,
+                'stream': True,
+                'stop_token_ids': [151645, 151643],
+                "top_k": 40,
+                "top_p": 0.8,
+                'min_tokens': 10,
+                'truncate_prompt_tokens': 1000
+                
+            }
+
+            # 将 payload 写入文件
+            with open('vllm_input.txt', 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"Payload has been written to vllm_input.txt")
+
+            try:
+                with requests.post('http://106.14.20.122/37-50004/v1/chat/completions',
+                                   headers=headers,
+                                   json=payload,
+                                   stream=True) as response:
+                    response.raise_for_status()
+                    model_output_start_time = time.time()
+                    logger.info(f"模型开始输出用时: {model_output_start_time - start_time:.2f} seconds")
+
+                    with open('vllm_output.txt', 'w', encoding='utf-8') as output_file:
+                        for chunk in response.iter_content(chunk_size=1024):
+                            if chunk:
+                                chunk_str = chunk.decode('utf-8')
+                                buffer += chunk_str
+                                while '\n' in buffer:
+                                    line, buffer = buffer.split('\n', 1)
+                                    if line.strip() == "data: [DONE]":
+                                        logger.info("模型输出完成")
+                                        return
+                                    if line.startswith("data: "):
+                                        try:
+                                            data = json.loads(line[6:])
+                                            content = data['choices'][0]['delta'].get('content', '')
+                                            if content:
+                                                full_answer += content
+                                                output_file.write(content)
+                                                output_file.flush()
+                                                yield json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False).encode('utf-8') + b'\n'
+                                        except json.JSONDecodeError as e:
+                                            logger.error(f"JSON解析错误: {e} - 行内容: {line}")
+                                        except KeyError as e:
+                                            logger.error(f"键错误: {e} - 数据结构: {data}")
+
+                        if buffer:
+                            logger.warning(f"缓冲区中有未处理的数据: {buffer}")
+
+            except requests.RequestException as e:
+                logger.error(f"请求失败: {e}")
+                if e.response is not None:
+                    logger.error(f"响应内容: {e.response.text}")
+                    logger.error(f"HTTP状态码: {e.response.status_code}")
+                    logger.error(f"请求头: {headers}")
+                    logger.error(f"请求体: {payload}")
+                yield json.dumps({'error': str(e), 'details': e.response.text if e.response else None},
+                                 ensure_ascii=False).encode('utf-8') + b'\n'
+            
+        def generate():
+            full_answer = ""
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt_messages, top_p=top_p, temperature=temperature)
+            
+
+            model_output_start_time = time.time()
+
+            logger.info(f"当前正在使用API~~")
+            logger.info(f"模型开始输出用时: {model_output_start_time - start_time:.2f} seconds")
+
+            for chunk in ans_generator:
+                full_answer += chunk
+                data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
+                yield data_stream + '\n'
+
+
         if not all_refs:
-            def generate():
-                full_answer = "您的问题没有在文献中找到答案，正在使用预训练知识库为您解答："
-                Prompt = [{'role': 'system', 'content': "你是一个近代历史文献研究专家"},
-                          {'role': 'user', 'content': query}]
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
-
-                model_output_start_time = time.time()
-                logger.info(f"模型开始输出用时（未检索到）: {model_output_start_time - start_time:.2f} seconds")
-
-                for chunk in ans_generator:
-                    full_answer += chunk
-                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
-                    yield data_stream + '\n'
-
-            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+            prompt = [{'role': 'system', 'content': "你是一个近代历史文献研究专家"},
+                      {'role': 'user', 'content': query}]
+            return Response(stream_with_context(generate_stream_response(prompt)),
+                            content_type='application/json; charset=utf-8')
 
         # 使用重排模型进行重排并归一化得分
         rerank_start_time = time.time()
-        ref_pairs = [[query, str(ref['CT'])] for ref in all_refs]  # 为每个参考文档与查询组合成对
-        scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
+        ref_pairs = [[query, str(ref['CT'])] for ref in all_refs]
+        scores = reranker.compute_score(ref_pairs, normalize=True)
         rerank_end_time = time.time()
         logger.info(f"重排计算用时: {rerank_end_time - rerank_start_time:.2f} seconds")
 
@@ -359,7 +458,7 @@ def ST_Get_Answer():
         sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
         sort_end_time = time.time()
         logger.info(f"排序用时: {sort_end_time - sort_start_time:.2f} seconds")
-        top_list = sorted_refs[:5]
+        top_list = sorted_refs[:3]
         top_scores = [score for _, score in top_list]
         top_refs = [ref for ref, _ in top_list]
         logger.info(f"重排后最高分：{top_scores}")
@@ -374,44 +473,35 @@ def ST_Get_Answer():
         # 构建返回的匹配结果
         matches_start_time = time.time()
         matches = [{
-            # 'CT': ref['CT'],
             'Pid': ref['Pid'],
             'TI': ref.get('TI', '无标题'),
             'score': ref['score'],
             'rerank_score': score,
-            # 'AB': ref.get('AB', ''),
             'Id': ref['Id'],
-            'Id_': SecurityUtility.encrypt(ref['Id'])  # 对Id字段进行加密
-            # 'Issue_F': ref.get('Issue_F', ''),
-            # 'KW': ref.get('KW', ''),
-            # 'JTI': ref.get('JTI', ''),
-            # 'Piid': ref.get('Piid', ''),
-            # 'Year': ref.get('Year', '')
+            'Id_': SecurityUtility.encrypt(ref['Id'])
         } for ref, score in top_list]
         matches_end_time = time.time()
         logger.info(f"构建匹配结果用时: {matches_end_time - matches_start_time:.2f} seconds")
 
         if llm == 'qwen':
-            def generate():
-                full_answer = ""
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt_messages, top_p=top_p, temperature=temperature)
-
-                model_output_start_time = time.time()
-                logger.info(f"模型开始输出用时: {model_output_start_time - start_time:.2f} seconds")
-
-                for chunk in ans_generator:
-                    full_answer += chunk
-                    data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
-                    yield data_stream + '\n'
-
+            return Response(stream_with_context(generate_stream_response(prompt_messages, matches)),
+                            content_type='application/json; charset=utf-8')
+        if llm == 'qwen_api':
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
-
         else:
-            return jsonify({'error': '未知的大模型服务'}), 400
+            raise BadRequest('未知的大模型服务')
 
+    except BadRequest as e:
+        logger.error(f"BadRequest in ST_Get_Answer: {e}")
+        logger.error(f"Request data: {request.data}")
+        logger.error(f"Request headers: {request.headers}")
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error in get_answer_stream: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Unexpected error in ST_Get_Answer: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({'error': '服务器内部错误'}), 500
+
+
 
 
 def gpt_4o(prompt):

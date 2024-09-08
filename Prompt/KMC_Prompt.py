@@ -31,6 +31,7 @@ import threading
 import spacy
 import sys
 
+
 sys.path.append("/work/kmc/kmcGPT/KMC/")
 from config.KMC_config import Config
 
@@ -179,7 +180,19 @@ class PromptBuilder:
             # 构建元数据部分
             metadata = f"这是一篇标题为: {title}，来源期刊是: {journal_title}，年份是: {year}\n"
             ref_text = f"{metadata},正文内容是：{text}\n"
+            # temp_prompt = refs_prompt + f"[{i + 1}]: {ref_text}\n"
             refs_prompt += f"[{i + 1}]: {ref_text}\n"
+            # 检查当前token长度，如果超过限制则截断
+            # tokenized_temp_prompt = tokenizer.encode(temp_prompt)
+            # # 使用 spaCy 处理文本来估算长度
+            # doc = nlp(temp_prompt)
+            # if len(doc) <= 2500:
+            #     refs_prompt = temp_prompt
+            # else:
+            #     # 截断至2500个 token 并停止添加新的文献信息
+            #     truncated_doc = list(doc[:2500])
+            #     refs_prompt = ''.join([token.text_with_ws for token in truncated_doc])
+            #     break
 
         user_message = f"{refs_prompt}请根据这些信息回答问题。\n\n问题: {query}\n"
 

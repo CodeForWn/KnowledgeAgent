@@ -4,64 +4,143 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Request Monitor</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat p {
+            margin: 5px 0;
+            font-size: 18px;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+    </style>
 </head>
 <body>
     <h1>Request Monitor</h1>
-    <canvas id="requestChart" width="800" height="400"></canvas>
+    <div class="container">
+        <div class="stats">
+            <div class="stat">
+                <p>正在执行的请求数</p>
+                <p id="activeCount" style="font-size: 24px; color: #007bff;">0</p>
+            </div>
+            <div class="stat">
+                <p>已完成的请求数</p>
+                <p id="completedCount" style="font-size: 24px; color: #28a745;">0</p>
+            </div>
+            <div class="stat">
+                <p>未完成的请求数</p>
+                <p id="queuedCount" style="font-size: 24px; color: #ffc107;">0</p>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="requestChart"></canvas>
+        </div>
+    </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        const ctx = document.getElementById('requestChart').getContext('2d');
-        const requestChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Processing Time (s)',
-                    data: [],
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
+        let chart;
 
-        function updateChart() {
-            fetch('/api/request_status')
-                .then(response => response.json())
-                .then(data => {
-                    const labels = [];
-                    const processingTimes = [];
-                    
-                    // 处理活动请求
-                    for (const [key, value] of Object.entries(data.active_requests)) {
-                        labels.push(key);
-                        processingTimes.push((Date.now() / 1000) - value.start_time);
-                    }
-                    
-                    // 处理已完成请求
-                    for (const [key, value] of Object.entries(data.completed_requests)) {
-                        labels.push(key);
-                        if (value.end_time) {
-                            processingTimes.push(value.end_time - value.start_time);
+        function initializeChart() {
+            const ctx = document.getElementById('requestChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['正在执行', '已完成', '未完成'],
+                    datasets: [{
+                        label: '请求数',
+                        data: [0, 0, 0],
+                        backgroundColor: [
+                            '#007bff',
+                            '#28a745',
+                            '#ffc107'
+                        ],
+                        borderColor: [
+                            '#0056b3',
+                            '#1e7e34',
+                            '#e0a800'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
                         }
                     }
+                }
+            });
+        }
 
-                    requestChart.data.labels = labels;
-                    requestChart.data.datasets[0].data = processingTimes;
-                    requestChart.update();
+        function updateChart() {
+            fetch('http://119.45.114.43/pythonApi/api/request_status')
+                .then(response => response.json())
+                .then(data => {
+                    let activeCount = 0;
+                    let completedCount = 0;
+
+                    // 只统计 /api/get_answer_stream 请求
+                    if (data.active_requests && typeof data.active_requests === 'object') {
+                        activeCount = Object.values(data.active_requests)
+                            .filter(req => req.url.includes('/api/get_answer_stream'))
+                            .length;
+                    }
+
+                    if (data.completed_requests && typeof data.completed_requests === 'object') {
+                        completedCount = Object.values(data.completed_requests)
+                            .filter(req => req.url.includes('/api/get_answer_stream'))
+                            .length;
+                    }
+
+                    // 未完成请求数可以根据业务需求自定义，这里示例为：正在执行的请求数
+                    let queuedCount = activeCount;
+
+                    // 更新前端显示
+                    document.getElementById('activeCount').innerText = activeCount;
+                    document.getElementById('completedCount').innerText = completedCount;
+                    document.getElementById('queuedCount').innerText = queuedCount;
+
+                    // 更新图表数据
+                    chart.data.datasets[0].data = [activeCount, completedCount, queuedCount];
+                    chart.update();
+                })
+                .catch(error => {
+                    console.error('Error fetching request status:', error);
                 });
         }
 
-        setInterval(updateChart, 1000);  // 每秒更新一次
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeChart();
+            setInterval(updateChart, 5000); // 每5秒更新一次
+        });
     </script>
 </body>
 </html>
-
