@@ -53,7 +53,7 @@
     "history_api_url": "http://119.45.114.43/api/client/answerhistory/getOpen?sessionId=",
     "stopwords": "/work/kmc/kmcGPT/KMC/config/stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
-    "Tyqwen_api_key": "sk-2c440786fa77443791b3c0710261a7a2",
+    "Tyqwen_api_key": "sk-072837472de74c139551100f63906bd8",
     "chatgpt_api": "http://119.8.161.255:50001/SnoopIE",
     "external_api": {
         "llm_ans": "http://kmc.sundeinfo.cn/ans",

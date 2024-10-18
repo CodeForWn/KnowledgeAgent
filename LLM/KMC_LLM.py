@@ -30,6 +30,7 @@ from sentence_transformers import SentenceTransformer
 import json
 # from ltp import LTP
 import queue
+from langchain_core.tools import tool
 import threading
 import spacy
 import time
@@ -41,8 +42,6 @@ import random
 # 设置您的API密钥
 from zhipuai import ZhipuAI
 client = ZhipuAI(api_key="b415a5e9089d4bcae6c287890e3073eb.9BDiJukUgt1KPOmA") # 填写您自己的APIKey
-
-
 
 
 # LLMs 类
@@ -321,8 +320,84 @@ class LargeModelAPIService:
 
         return result
 
+
+    def function_calling(self, query):
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_time",
+                    "description": "当你想知道现在的时间时非常有用。",
+                    "parameters": {}
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_weather",
+                    "description": "当你想查询指定城市的天气时非常有用。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "城市或县区，比如北京市、杭州市、余杭区等。"
+                            }
+                        }
+                    },
+                    "required": [
+                        "location"
+                    ]
+                }
+            }
+        ]
+        dashscope.api_key = self.Tyqwen_api_key
+        messages = [{"role": "user", "content": query}]
+
+        response = dashscope.Generation.call(
+            model='qwen-max',
+            top_p=0.7,
+            temperature=1.0,
+            messages=messages,
+            enable_search=True,
+            tools=tools,
+            result_format='message',  # 设置输出为 'message' 格式
+            # stream=True  # 开启流式输出
+        )
+        print(response)
+
+
+    @tool
+    def multiply(self, first_int: int, second_int: int) -> int:
+        """
+        Multiplies two integers and returns the result.
+
+        Args:
+            first_int (int): The first integer.
+            second_int (int): The second integer.
+
+        Returns:
+            int: The result of multiplying the two integers.
+        """
+        return first_int * second_int
+
+    # @tool
+    # def add(self, first_int: int, second_int: int) -> int:
+    #     # 将两个整数相加。
+    #     return first_int + second_int
+    #
+    # @tool
+    # def exponentiate(self, base: int, exponent: int) -> int:
+    #     #对底数求指数幂。
+    #     return base**exponent
+
+
+
+
+#
 # config = Config(env='production')
 # config.load_config("/work/kmc/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
 # # 创建ElasticSearchHandler实例
 # llm_builder = LargeModelAPIService(config)
-# llm_builder.web_search_glm4("联网搜索，新冠肺炎疫情期间，福建省商务厅(口岸办)采取了哪些措施来保障口岸的安全与稳定?")
+# llm_builder.function_calling("上海今天天气怎么样？")
+

@@ -362,7 +362,7 @@ def answer_question_stream():
         if not all_refs:
             def generate():
                 full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
-                Prompt = [{'role': 'system', 'content': "你是同济大学信息办的智能助手，名为'同济小舟'。你是由同济大学智慧教学管理部精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于智慧教学平台的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向你提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握平台的操作技巧，还能在信息化素养培训中发挥重要作用。通过与你的互动，用户可以更深入地了解和运用智慧教学平台，提升教学和学习效率。你是由同济大学自主训练研发的大模型，无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。"},
+                Prompt = [{'role': 'system', 'content': "你是复旦中学的历史助教，名为'小孔'。你是由复旦中学精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于历史学科的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向你提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握教材知识点，还能在学生的拓展学习中发挥重要作用。通过与你的互动，用户可以更深入地了解和学习历史，提升教学和学习效率。你是由复旦中学自主训练研发的大模型，无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。"},
                 {'role': 'user', 'content': query}]
 
                 ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
@@ -1609,7 +1609,7 @@ def web_search():
 
 
 def start_background_threads():
-    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(4)]
+    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(2)]
     for t in threads:
         t.daemon = True  # 将线程设置为守护线程
         t.start()

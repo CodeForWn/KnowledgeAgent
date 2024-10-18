@@ -300,8 +300,6 @@ def ST_get_answer_by_file_id():
 
 
 
-
-
 @app.errorhandler(BadRequest)
 def handle_bad_request(e):
     logger.error(f"Bad Request: {e.description}")
@@ -421,8 +419,11 @@ def ST_Get_Answer():
                     logger.error(f"HTTP状态码: {e.response.status_code}")
                     logger.error(f"请求头: {headers}")
                     logger.error(f"请求体: {payload}")
-                yield json.dumps({'error': str(e), 'details': e.response.text if e.response else None},
-                                 ensure_ascii=False).encode('utf-8') + b'\n'
+                logger.error(f"本地模型服务失败: {e}, 切换到 qwen_api")
+                for chunk in generate():  # generate 是 qwen_api 的流式生成器
+                    yield chunk  # 保持流式输出    
+                # yield json.dumps({'error': str(e), 'details': e.response.text if e.response else None},
+                                 # ensure_ascii=False).encode('utf-8') + b'\n'
             
         def generate():
             full_answer = ""
@@ -485,7 +486,7 @@ def ST_Get_Answer():
 
         if llm == 'qwen':
             return Response(stream_with_context(generate_stream_response(prompt_messages, matches)),
-                            content_type='application/json; charset=utf-8')
+                                content_type='application/json; charset=utf-8')
         if llm == 'qwen_api':
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
         else:
