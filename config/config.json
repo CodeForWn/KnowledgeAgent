@@ -45,21 +45,28 @@
     "elasticsearch": {
         "hosts": "http://127.0.0.1:9200/",
         "basic_auth_username": "elastic",
-        "basic_auth_password": "=3KtbmJug4-Skm2n3oV*"
+        "basic_auth_password": "ehcmfi1LeromKkKcYl4O"
     },
+    "mongodb_host": "127.0.0.1",
+    "mongodb_port": 27017,
+    "mongodb_database": "knowledge_db",
+    "mongodb_username": "",
+    "mongodb_password": "",
+    "root_path":"/home/ubuntu/work/kmcGPT/KMC",
     "log_file": "myapp.log",
-    "model_path": "/work/kmc/kmcPython/KmcGPT/bge_large_zh/",
-    "spacy_model": "/work/kmc/kmcPython/KmcGPT/zh_core_web_sm/zh_core_web_sm-3.5.0/",
-    "history_api_url": "http://119.45.114.43/api/client/answerhistory/getOpen?sessionId=",
-    "stopwords": "/work/kmc/kmcGPT/KMC/config/stopwords.txt",
+    "rerank_model_path": "/home/ubuntu/work/kmcGPT/model/bge-reranker-base",
+    "model_path": "/home/ubuntu/work/kmcGPT/model/bge_large_zh",
+    "spacy_model": "/home/ubuntu/work/kmcGPT/model/zh_core_web_sm/zh_core_web_sm-3.5.0",
+    "history_api_url": "http://127.0.0.1:82/client/answerhistory/getOpen?sessionId=",
+    "stopwords": "/home/ubuntu/work/kmcGPT/KMC/config/stopwords.txt",
     "secret_token": "Sundeinfollm_KmcGPT",
     "Tyqwen_api_key": "sk-072837472de74c139551100f63906bd8",
     "chatgpt_api": "http://119.8.161.255:50001/SnoopIE",
     "external_api": {
         "llm_ans": "http://kmc.sundeinfo.cn/ans",
-        "backend_notify": "http://119.45.114.43/sync/syncCallback"
+        "backend_notify": "http://127.0.0.1:82/sync/syncCallback"
     },
-    "file_storage_path": "/work/kmc/kmcPython/KmcGPT/kmctemp/",
+    "file_storage_path": "/home/ubuntu/work/kmcGPT/temp",
     "record_path": "QA_record.json"
 }
 }

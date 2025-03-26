@@ -11,8 +11,6 @@ import torch
 import requests
 import jieba.posseg as pseg
 import tempfile
-import os
-from File_manager.pdf2markdown import *
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 import logging
@@ -32,7 +30,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 import sys
 import datetime
-sys.path.append("/work/kmc/kmcGPT/KMC/")
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
 
 # 全局锁对象
@@ -41,31 +40,36 @@ index_lock = threading.Lock()
 
 class ElasticSearchHandler:
     def __init__(self, config):
-        # 从配置中提取Elasticsearch相关配置
-        self.es_hosts = config.elasticsearch_hosts
-        self.es_username = config.elasticsearch_basic_auth_username
-        self.es_password = config.elasticsearch_basic_auth_password
-        self.backend_notify_api = config.external_api_backend_notify
-        # 加载模型和分词器
-        self.tokenizer = AutoTokenizer.from_pretrained(config.model_path)
-        self.model = AutoModel.from_pretrained(config.model_path)
-        self.model.eval()
-        self.config = config
+        try:
+            # 从配置中提取Elasticsearch相关配置
+            self.es_hosts = config.elasticsearch_hosts
+            self.es_username = config.elasticsearch_basic_auth_username
+            self.es_password = config.elasticsearch_basic_auth_password
+            self.backend_notify_api = config.external_api_backend_notify
+            # 加载模型和分词器
+            self.tokenizer = AutoTokenizer.from_pretrained(config.model_path)
+            self.model = AutoModel.from_pretrained(config.model_path)
+            self.model.eval()
+            self.config = config
 
-        # 使用全局logger实例
-        self.logger = self.config.logger
+            # 使用全局logger实例
+            self.logger = self.config.logger
 
-        # 连接到Elasticsearch
-        self.es = Elasticsearch(
-            hosts=self.es_hosts,
-            basic_auth=(self.es_username, self.es_password),
-            verify_certs=False
-        )
-        # 检测是否成功连接到ES
-        if self.es.ping():
-            self.logger.info("成功连接到Elasticsearch")
-        else:
-            self.logger.error("无法连接到Elasticsearch")
+            # 连接到Elasticsearch
+            self.es = Elasticsearch(
+                hosts=self.es_hosts,
+                basic_auth=(self.es_username, self.es_password),
+                verify_certs=False
+            )
+            # 检测是否成功连接到ES
+            if self.es.ping():
+                self.logger.info("成功连接到Elasticsearch")
+            else:
+                self.logger.error("无法连接到Elasticsearch")
+        except elasticsearch.exceptions.ConnectionError as e:
+            self.logger.error(f"Elasticsearch连接错误: {e}")
+        except Exception as e:
+            self.logger.error(f"连接过程中出现其他错误: {e}")
 
     def notify_backend(self, file_id, result, failure_reason=None):
         """通知后端接口处理结果"""
@@ -95,7 +99,7 @@ class ElasticSearchHandler:
         return sentence_embeddings.cpu().numpy()[0].tolist()
 
     def cal_query_embed(self, query):
-        instruction = "为这个句子生成表示以用于检索相关文章："
+        instruction = "为这个句子生成表示以用于检索相关文档片段："
         return self.cal_passage_embed(instruction + query)
 
     def create_answers_index(self):
@@ -500,6 +504,54 @@ class ElasticSearchHandler:
         }
 
         return self.ST_Search(query)
+
+    def get_full_text_by_file_id(self, assistant_id, file_id):
+        """
+        获取ES中指定assistant_id索引内file_id字段值等于指定file_id的所有文档片段，
+        并将每一条数据的text字段按顺序拼接起来形成完整的文章内容。
+
+        参数：
+        assistant_id (str): 索引名。
+        file_id (str): 需要检索的file_id。
+
+        返回：
+        str: 拼接后的完整文章内容。
+        """
+        try:
+            # 构建查询条件
+            query_body = {
+                "query": {
+                    "term": {
+                        "file_id": {
+                            "value": file_id
+                        }
+                    }
+                },
+                "sort": [
+                    {"page": {"order": "asc"}}  # 根据page字段升序排序
+                ]
+            }
+
+            # 查询ES索引
+            result = self.es.search(index=assistant_id, body=query_body, size=100)  # 假设文档片段不会超过10000条
+
+            # 检查查询结果
+            if 'hits' in result and 'hits' in result['hits']:
+                hits = result['hits']['hits']
+
+                # 提取并拼接text字段内容
+                full_text = "".join(hit['_source']['text'] for hit in hits)
+                preview_text = full_text[:10]  # 截取前10个字符
+                self.logger.info(f"成功获取索引 {assistant_id} 中 file_id 为 {file_id} 的完整文章内容，前10个字为：{preview_text}")
+                return full_text
+
+            else:
+                self.logger.warning(f"索引 {assistant_id} 中未找到 file_id 为 {file_id} 的文档片段")
+                return ""
+
+        except Exception as e:
+            self.logger.error(f"获取索引 {assistant_id} 中 file_id 为 {file_id} 的完整文章内容失败: {e}")
+            return ""
 
 #
 # # 加载配置

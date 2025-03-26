@@ -1,0 +1,12 @@
+Defaulting to user installation because normal site-packages is not writeable
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Collecting elasticsearch
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/80/b6/f0923ed8edddd8e70a8b5271f017944e3f24804b6d115092b97f1e9f7f51/elasticsearch-8.17.1-py3-none-any.whl (653 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 654.0/654.0 KB 3.1 MB/s eta 0:00:00
+Collecting elastic-transport<9,>=8.15.1
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/2a/0d/2dd25c06078070973164b661e0d79868e434998391f9aed74d4070aab270/elastic_transport-8.17.0-py3-none-any.whl (64 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64.5/64.5 KB 9.3 MB/s eta 0:00:00
+Requirement already satisfied: urllib3<3,>=1.26.2 in /home/ubuntu/.local/lib/python3.10/site-packages (from elastic-transport<9,>=8.15.1->elasticsearch) (2.3.0)
+Requirement already satisfied: certifi in /home/ubuntu/.local/lib/python3.10/site-packages (from elastic-transport<9,>=8.15.1->elasticsearch) (2025.1.31)
+Installing collected packages: elastic-transport, elasticsearch
+Successfully installed elastic-transport-8.17.0 elasticsearch-8.17.1

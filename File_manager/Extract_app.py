@@ -459,8 +459,30 @@ def clean_and_merge_json_results(results):
             if link not in all_links:
                 all_links.append(link)
 
+    # 新增逻辑：过滤source和target相同但name不同的情况，只保留"包含"
+    all_links = filter_links_by_preference(all_links)
+
     # 返回结构化的节点和链接数据
     return json.dumps({"nodes": all_nodes, "links": all_links}, indent=2)
+
+
+def filter_links_by_preference(links):
+    unique_links = {}
+
+    for link in links:
+        source = link['source']
+        target = link['target']
+        name = link['name']
+
+        identifier = (source, target)
+
+        if identifier in unique_links:
+            if name == "包含":
+                unique_links[identifier] = link
+        else:
+            unique_links[identifier] = link
+
+    return list(unique_links.values())
 
 
 @app.route('/extract-all', methods=['POST'])
@@ -494,7 +516,6 @@ def process_file():
         # 可以在这里添加进一步的处理，比如调用其他方法分析文本和抽取知识点
         example_prompt = prompt_builder.generate_domain_and_triplets_prompt(doc_list)
         examples = large_model_service.get_answer_from_Tyqwen(example_prompt)
-        # logger.info(f"示例：{examples}")
 
         for segment in tqdm(doc_list, desc=f"抽取教材{file_id}段落中。。。 "):
             text = segment['text']

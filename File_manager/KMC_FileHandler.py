@@ -1,4 +1,3 @@
-import os
 import logging
 import subprocess
 import requests
@@ -12,9 +11,15 @@ import re
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-sys.path.append("/work/kmc/kmcGPT/KMC/")
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
+# 获取当前脚本所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
+# 获取上两级目录
+parent_dir = os.path.dirname(current_dir)
+grandparent_dir = os.path.dirname(parent_dir)
 
 class FileManager:
     def __init__(self, config):
@@ -66,8 +71,10 @@ class FileManager:
         self.logger.info(f"开始将文本文件转换为PDF: {txt_path}")
         pdf = FPDF()
         pdf.add_page()
+        # 拼接路径，确保字体文件路径正确
+        font_path = os.path.join(grandparent_dir, 'model', 'font', '微软雅黑.ttf')
         # 添加字体，确保字体文件在正确的路径
-        pdf.add_font('YaHei', '', "/work/kmc/kmcGPT/model/font/微软雅黑.ttf", uni=True)
+        pdf.add_font('YaHei', '', font_path, uni=True)
         pdf.set_font('YaHei', '', 12)  # 设置字体为微软雅黑
 
         try:
@@ -124,7 +131,7 @@ class FileManager:
         supported_extensions = ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']
         # 如果文件是.docx格式，首先转换为.pdf
         if file_extension in supported_extensions:
-            if file_extension in ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx']:
+            if file_extension in ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']:
                 self.logger.info(f"检测到{file_extension}文件，转换为PDF...")
                 converted_pdf_path = self.convert_docx_to_pdf(pdf_path, output_path)
                 if converted_pdf_path is not None:
@@ -156,8 +163,9 @@ class FileManager:
             filtered_texts = set()  # 存储处理后的文本
             for page_index, page in enumerate(pages, start=1):
                 page_content = page.page_content.replace('\n', '').replace('\r', '')
-                split_text = self.spacy_chinese_text_splitter(page_content, max_length=400)
+                split_text = self.spacy_chinese_text_splitter(page_content, max_length=450)
                 for text in split_text:
+                    # self.logger.info(text)
                     if text not in document_texts:
                         document_texts.add(text)
                         words = pseg.cut(text)
@@ -207,7 +215,7 @@ class FileManager:
             document_texts = set()
             filtered_texts = set()  # 存储处理后的文本
             for page_index, page in enumerate(pages, start=1):
-                split_text = self.spacy_chinese_text_splitter(page.page_content, max_length=400)
+                split_text = self.spacy_chinese_text_splitter(page.page_content, max_length=2000)
                 for text in split_text:
                     if text not in document_texts:
                         document_texts.add(text)
@@ -286,6 +294,48 @@ class FileManager:
             chunks.append(current_chunk)
         return chunks
 
+    def process_Canvas_file(self, pdf_path, file_name, output_path=None):
+        # 获取文件扩展名
+        _, file_extension = os.path.splitext(file_name)
+        file_extension = file_extension.lower()
+
+        # 检查并设置输出路径
+        if output_path is None:
+            output_path = os.path.dirname(pdf_path)
+
+        # 支持的文件扩展名检查
+        supported_extensions = ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']
+        if file_extension in supported_extensions:
+            try:
+                self.logger.info(f"检测到 {file_extension} 文件，开始转换为 PDF...")
+                if file_extension in ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx']:
+                    pdf_path = self.convert_docx_to_pdf(pdf_path, output_path)
+                elif file_extension == '.txt':
+                    pdf_path = self.convert_txt_to_pdf(pdf_path, output_path)
+            except Exception as e:
+                self.logger.error(f"{file_extension} 转 PDF 失败: {e}")
+                return ""
+
+        elif file_extension != '.pdf':
+            self.logger.error(f"不支持的文件格式: {file_extension}")
+            return ""
+
+        # PDF 文件处理
+        full_text = ""
+        try:
+            loader = PyPDFLoader(pdf_path)
+            documents = loader.load()
+            full_text = "\n".join(doc.page_content for doc in documents)
+            self.logger.info("成功提取全文内容。")
+        except Exception as e:
+            self.logger.error(f"PDF 文件处理错误: {e}")
+        finally:
+            try:
+                os.remove(pdf_path)
+                self.logger.info(f"成功删除文件: {pdf_path}")
+            except OSError as e:
+                self.logger.error(f"删除文件失败: {e}")
+        return full_text
 
 # # 加载配置
 # config = Config()

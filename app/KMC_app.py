@@ -5,6 +5,7 @@ from transformers import AutoTokenizer, AutoModel
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch
 import json
+import os
 import threading
 import queue
 import urllib3
@@ -16,7 +17,7 @@ import re
 import uuid
 import jieba.posseg as pseg
 from FlagEmbedding import FlagReranker
-sys.path.append("/work/kmc/kmcGPT/KMC/")
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
 from ElasticSearch.KMC_ES import ElasticSearchHandler
 from File_manager.KMC_FileHandler import FileManager
@@ -54,11 +55,12 @@ file_manager = FileManager(config)
 es_handler = ElasticSearchHandler(config)
 large_model_service = LargeModelAPIService(config)
 prompt_builder = PromptBuilder(config)
-model_path = "/work/kmc/kmcGPT/model/bge-reranker-base"
-# 定义调用SnoopIE模型的接口地址
-api_url = "http://chat.cheniison.cn/api/chat"
+rerank_model_path = config.rerank_model_path
+
 # 创建队列
 file_queue = queue.Queue()
+# 创建全局锁，确保一次只有一个文件处理
+file_processing_lock = threading.Lock()
 index_lock = threading.Lock()
 logger.info('服务启动中。。。')
 
@@ -168,44 +170,53 @@ def pull_file_data():
     # 模拟从服务器获取文件数据
     return []
 
-
+processed_files = set()  # 用于追踪已经处理的文件
 def _push(file_data):
-    global file_queue
-    file_queue.put(file_data)
+    global file_queue, processed_files
+    if file_data['file_id'] not in processed_files:
+        file_queue.put(file_data)
+        processed_files.add(file_data['file_id'])
+    else:
+        logger.info(f"文件 {file_data['file_id']} 已经处理过，跳过")
 
 
 def _process_file_data(data):
     try:
-        with app.app_context():
-            user_id = data.get('user_id')
-            assistant_id = data.get('assistant_id')
-            file_id = data.get('file_id')
-            file_name = data.get('file_name')
-            download_path = data.get('download_path')
-            tenant_id = data.get('tenant_id')
-            tag = data.get('tag')
-            createTime = data.get('createTime')
+        with file_processing_lock:
+            with app.app_context():
+                user_id = data.get('user_id')
+                assistant_id = data.get('assistant_id')
+                file_id = data.get('file_id')
+                file_name = data.get('file_name')
+                download_path = data.get('download_path')
+                tenant_id = data.get('tenant_id')
+                tag = data.get('tag')
+                createTime = data.get('createTime')
 
-            logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
-            file_path = file_manager.download_pdf(download_path, file_id)
-            doc_list = file_manager.process_pdf_file(file_path, file_name)
+                logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
+                file_path = file_manager.download_pdf(download_path, file_id)
+                doc_list = file_manager.process_pdf_file(file_path, file_name)
 
-            if not doc_list:
-                notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
-                logger.error("未能成功处理PDF文件: %s", file_id)
-                return
+                if not doc_list:
+                    notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
+                    logger.error("未能成功处理PDF文件: %s", file_id)
+                    return
 
-            index_name = assistant_id
-            try:
-                createTime_int = int(createTime)
-            except ValueError as ve:
-                logger.error(f"Invalid createTime value: {createTime}. Error: {ve}")
-                es_handler.notify_backend(file_id, "FAILURE", f"Invalid createTime value: {createTime}")
-                return
+                index_name = assistant_id
+                try:
+                    createTime_int = int(createTime)
+                except ValueError as ve:
+                    logger.error(f"Invalid createTime value: {createTime}. Error: {ve}")
+                    es_handler.notify_backend(file_id, "FAILURE", f"Invalid createTime value: {createTime}")
+                    return
 
-            es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime_int)
-            es_handler.notify_backend(file_id, "SUCCESS")
-            logger.info("文件处理完成并创建索引: %s", file_name)
+                es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime_int)
+                es_handler.notify_backend(file_id, "SUCCESS")
+                logger.info("文件处理完成并创建索引: %s", file_name)
+
+            # 在文件处理完成后添加 5 秒间隔
+            time.sleep(3)
+
     except Exception as e:
         logger.error("处理文件数据失败: %s", e)
         es_handler.notify_backend(file_id, "FAILURE", str(e))
@@ -294,6 +305,10 @@ def get_open_ans_stream():
     if llm.lower() == 'qwen':
         response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
         return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+    if llm.lower() == 'deepseek':
+        response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
+        return Response(response_generator, content_type='text/plain; charset=utf-8')
     else:
         # 非流式模型或其他模型的处理
         if llm.lower() == 'cutegpt':
@@ -309,7 +324,7 @@ def get_open_ans_stream():
         return jsonify({'answer': answer, 'matches': []}), 200
 
 
-@app.route('/api/get_answer_stream', methods=['POST'])
+@app.route('/api/get_answer_stream_old', methods=['POST'])
 def answer_question_stream():
     request_id = str(uuid.uuid4())
     request.environ['REQUEST_ID'] = request_id
@@ -322,7 +337,7 @@ def answer_question_stream():
 
     try:
         # 初始化重排模型
-        reranker = FlagReranker(model_path, use_fp16=True)
+        reranker = FlagReranker(rerank_model_path, use_fp16=True)
         # 收集所有检索到的文本片段
         all_refs = []
         # 读取请求参数
@@ -333,12 +348,27 @@ def answer_question_stream():
         query = data.get('query')
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 5)
-        llm = data.get('llm', 'qwen').lower()
+        llm = data.get('llm', 'deepseek').lower()
         top_p = data.get('top_p', 0.8)
         temperature = data.get('temperature', 0)
-        logger.info(f"Received query:{query}")
+        user_info = data.get('userInfo', {})
+
+        logger.info(f"Received query:{query}, llm: {llm}")
         if not assistant_id or not query:
             return jsonify({'error': '参数不完整'}), 400
+
+        # 解析用户身份信息
+        outer_origin = user_info.get('outerOrigin', 'canvas')  # 默认为canvas
+        outer_user_name = user_info.get('outerUserName', '一名用户')  # 默认值
+        outer_user_role = user_info.get('outerUserRole', '1')  # 默认值为学生
+
+        # 生成用户身份上下文
+        if outer_user_role == '2':
+            role_description = "老师"
+        else:
+            role_description = "同学"
+
+        user_context = f"您好，我是{outer_user_name}{role_description}。"
 
         # 检查问题是否在预定义的问答中
         predefined_answer = config.predefined_qa.get(query)
@@ -346,7 +376,7 @@ def answer_question_stream():
             # 如果预设的答案是一个字符串，意味着没有匹配信息，返回答案和空的matches列表
             if isinstance(predefined_answer, str):
                 return jsonify({'answer': predefined_answer, 'matches': []}), 200
-            # 如果预设的答案是一个字典，包含'answer'和'matches'键，返回相应的内容
+            # 如果预设的答案是字典，包含'answer'和'matches'键，返回相应的内容
             elif isinstance(predefined_answer,
                             dict) and 'answer' in predefined_answer and 'matches' in predefined_answer:
                 return jsonify({
@@ -354,7 +384,7 @@ def answer_question_stream():
                     'matches': predefined_answer['matches']
                 }), 200
 
-        if func == 'bm25' or 'embed':
+        if func in ('bm25', 'embed'):
             bm25_refs = es_handler.search_bm25(assistant_id, query, ref_num)
             embed_refs = es_handler.search_embed(assistant_id, query, ref_num)
             all_refs = bm25_refs + embed_refs
@@ -362,39 +392,63 @@ def answer_question_stream():
         if not all_refs:
             def generate():
                 full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
-                Prompt = [{'role': 'system', 'content': "你是复旦中学的历史助教，名为'小孔'。你是由复旦中学精心研发的智能问答机器人，旨在为师生提供便捷、高效的信息化服务。你的核心能力是理解和回答关于历史学科的各种问题。无论提问者是初次接触这个平台，还是在使用过程中遇到了难题，只需向你提问，你会根据丰富的教程资料为用户提供详尽的解答和指导。你不仅可以帮助提问者快速掌握教材知识点，还能在学生的拓展学习中发挥重要作用。通过与你的互动，用户可以更深入地了解和学习历史，提升教学和学习效率。你是由复旦中学自主训练研发的大模型，无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。"},
+                Prompt = [{'role': 'system', 'content': "你是小孔，是上海双地信息系统有限公司开发的大语言模型，专注于教育领域，图情领域的各类问答。无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。"},
                 {'role': 'user', 'content': query}]
-
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
-                for chunk in ans_generator:
-                    full_answer += chunk
-                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
-                    yield data_stream + '\n'
+                if llm == 'qwen':
+                    ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
+                    for chunk in ans_generator:
+                        full_answer += chunk
+                        data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
+                        yield data_stream + '\n'
+                elif llm == 'deepseek':
+                    ans_generator = large_model_service.get_answer_from_deepseek_stream(Prompt, top_p=top_p, temperature=temperature)
+                    for chunk in ans_generator:
+                        full_answer += chunk
+                        data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
+                        yield data_stream + '\n'
 
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         # 使用重排模型进行重排并归一化得分
+
         # 提取文本并构造查询-引用对
         ref_pairs = [[query, ref['text']] for ref in all_refs]  # 为每个参考文档与查询组合成对
-
         scores = reranker.compute_score(ref_pairs, normalize=True)  # 计算每对的得分并归一化
+
         # 根据得分排序，并选择得分最高的引用
         sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
-        # 提取前五个最高的分数
-        top_list = sorted_refs[:5]
-        top_scores = [score for _, score in sorted_refs[:5]]
-        top_refs = [ref for ref, score in sorted_refs[:5]]  # 假设您只需要前5个最相关的引用
+
+        # 去重：使用一个集合来追踪已经添加的分数
+        seen_scores = set()
+        top_refs = []
+        top_scores = []
+        top_list = []
+
+        # 提取前五个唯一的最高分
+        for ref, score in sorted_refs[:5]:
+            if score not in seen_scores:
+                top_refs.append(ref)
+                top_scores.append(score)
+                top_list.append((ref, score))
+                seen_scores.add(score)
+
+        # 确保结果最多只有5个
+        top_refs = top_refs[:5]
+        top_scores = top_scores[:5]
+        top_list = top_list[:5]
         logger.info(f"重排后最高分：{top_scores}")
         # 获取历史对话内容
         history = prompt_builder.get_history(session_id, token)
+        logger.info(f"session_id:{session_id}, token:{token}")
         logger.info(f"历史对话：{history}")
 
         # 检查最高分数是否低于0.3
         if top_scores[0] < 0.3:
-            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
+            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
             matches = []
         else:
-            prompt = prompt_builder.generate_answer_prompt(query, top_refs, history)
+            prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context)
+            logger.info(f"最后的提示词：{prompt}")
             matches = [{
                 'text': ref['text'],
                 'original_text': ref['original_text'],
@@ -407,28 +461,54 @@ def answer_question_stream():
             } for ref, score in top_list]
 
         if llm == 'qwen':
+            logger.info("正在使用通义千问......")
             def generate():
                 full_answer = ""
                 ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
-                    data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
-                    yield data_stream + '\n'
+                    try:
+                        data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
+                    except Exception as e:
+                        yield f"Error during JSON encoding: {e}\n"
+                        continue  # 跳过错误，继续处理下一个 chunk
+
+                # 流结束后，执行日志记录
+                log_data = {'question': query, 'answer': full_answer, 'matches': matches}
+                logger.info(f"问答记录: {log_data}")
+                with open(record_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
+
+                # 更新请求状态为完成
+                with request_lock:
+                    if request_id in request_status:
+                        request_status[request_id]["end_time"] = time.time()
+                        request_status[request_id]["status"] = "completed"
+                    yield data_stream + '\n'  # 每次生成一个新的 chunk
 
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
-        elif llm == 'cutegpt':
-            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
-        elif llm == 'chatglm':
-            task_id = large_model_service.async_invoke_chatglm(prompt)
-            ans = large_model_service.query_async_result_chatglm(task_id)
-        elif llm == 'chatgpt':
-            ans = large_model_service.get_answer_from_chatgpt(prompt)
+        elif llm == 'deepseek':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    try:
+                        data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
+                    except Exception as e:
+                        yield f"Error during JSON encoding: {e}\n"
+                        continue  # 跳过错误，继续处理下一个 chunk
+
+                    yield data_stream + '\n'  # 每次生成一个新的 chunk
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+
         else:
             return jsonify({'error': '未知的大模型服务'}), 400
 
         log_data = {'question': query,
-                    'answer': ans,
+                    'answer': full_answer,
                     'matches': matches}
 
         logger.info(f"问答记录: {log_data}")
@@ -441,7 +521,7 @@ def answer_question_stream():
                 request_status[request_id]["end_time"] = time.time()
                 request_status[request_id]["status"] = "completed"
 
-        return jsonify({'answer': ans, 'matches': matches}), 200
+        return jsonify({'answer': full_answer, 'matches': matches}), 200
 
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
@@ -453,11 +533,125 @@ def answer_question_stream():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/get_answer_stream', methods=['POST'])
+def answer_question_stream_new():
+    request_id = str(uuid.uuid4())
+    request.environ['REQUEST_ID'] = request_id
+
+    with request_lock:
+        request_status[request_id] = {
+            "start_time": time.time(),
+            "status": "processing",
+            "url": request.url
+        }
+
+    try:
+        data = request.json
+        assistant_id = data.get('assistant_id')
+        session_id = data.get('session_id')
+        token = data.get('token')
+        query = data.get('query')
+        func = data.get('func', 'bm25')
+        ref_num = data.get('ref_num', 5)
+        llm = data.get('llm', 'deepseek').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
+        user_info = data.get('userInfo', {})
+
+        if not assistant_id or not query:
+            return jsonify({'error': '参数不完整'}), 400
+
+        outer_user_name = user_info.get('outerUserName', '一名用户')
+        outer_user_role = user_info.get('outerUserRole', '1')
+        role_description = "老师" if outer_user_role == '2' else "同学"
+        user_context = f"您好，我是{outer_user_name}{role_description}。"
+
+        predefined_answer = config.predefined_qa.get(query)
+        if predefined_answer:
+            if isinstance(predefined_answer, str):
+                return jsonify({'answer': predefined_answer, 'matches': []}), 200
+            elif isinstance(predefined_answer, dict):
+                return jsonify(predefined_answer), 200
+
+        # 获取历史对话内容
+        history = prompt_builder.get_history(session_id, token)
+
+        all_refs = []
+        if func in ('bm25', 'embed'):
+            bm25_refs = es_handler.search_bm25(assistant_id, query, ref_num)
+            embed_refs = es_handler.search_embed(assistant_id, query, ref_num)
+            all_refs = bm25_refs + embed_refs
+
+        if not all_refs:
+            matches = []
+            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
+        else:
+            reranker = FlagReranker(rerank_model_path, use_fp16=True)
+            ref_pairs = [[query, ref['text']] for ref in all_refs]
+            scores = reranker.compute_score(ref_pairs, normalize=True)
+            sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+
+            seen_texts = set()
+            top_list = []
+            for ref, score in sorted_refs:
+                if ref['text'] not in seen_texts:
+                    seen_texts.add(ref['text'])
+                    top_list.append((ref, score))
+                if len(top_list) >= 5:
+                    break
+
+            top_refs, top_scores = zip(*top_list) if top_list else ([], [])
+
+            matches = [{
+                'text': ref['text'],
+                'original_text': ref['original_text'],
+                'page': ref['page'],
+                'file_id': ref['file_id'],
+                'file_name': ref['file_name'],
+                'download_path': ref['download_path'],
+                'score': ref['score'],
+                'rerank_score': score
+            } for ref, score in top_list]
+
+            if not top_scores or top_scores[0] < 0.3:
+                prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
+                matches = []
+            else:
+                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context)
+
+        def generate_stream(model_name, prompt, matches, top_p, temperature, query, request_id):
+            full_answer = ""
+            ans_generator = (large_model_service.get_answer_from_Tyqwen_stream if model_name == 'qwen' else large_model_service.get_answer_from_deepseek_stream)(prompt, top_p, temperature)
+
+            for chunk in ans_generator:
+                full_answer += chunk
+                yield json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False) + '\n'
+
+            log_data = {'question': query, 'answer': full_answer, 'matches': matches}
+            logger.info(f"问题: {query}, 答案: {full_answer}")
+            with open(record_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
+
+            with request_lock:
+                request_status[request_id].update({"end_time": time.time(), "status": "completed"})
+
+        return Response(
+            stream_with_context(generate_stream(llm, prompt, matches, top_p, temperature, query, request_id)),
+            content_type='application/json; charset=utf-8'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in answer_question_stream: {e}")
+        with request_lock:
+            request_status[request_id].update({"end_time": time.time(), "status": "failed"})
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/get_answer_by_file_id', methods=['POST'])
 def answer_question_by_file_id():
     try:
         # 初始化重排模型
-        reranker = FlagReranker(model_path, use_fp16=True)
+        reranker = FlagReranker(rerank_model_path, use_fp16=True)
         # 收集所有检索到的文本片段
         all_refs = []
         # 读取请求参数
@@ -618,7 +812,7 @@ def answer_question_by_file_id():
 def answer_question():
     try:
         # 初始化重排模型
-        reranker = FlagReranker(model_path, use_fp16=True)
+        reranker = FlagReranker(rerank_model_path, use_fp16=True)
         # 收集所有检索到的文本片段
         all_refs = []
         # 读取请求参数
@@ -1134,7 +1328,7 @@ def ST_answer_question():
 def ST_search_file():
     try:
         # 初始化重排模型
-        reranker = FlagReranker(model_path, use_fp16=True)
+        reranker = FlagReranker(rerank_model_path, use_fp16=True)
         data = request.json
         query = data.get('query')
         ref_num = data.get('ref_num', 5)
@@ -1279,7 +1473,7 @@ def get_snoopIE_ans():
 def ST_answer_question_by_file_id():
     try:
         # 初始化重排模型
-        reranker = FlagReranker(model_path, use_fp16=True)
+        reranker = FlagReranker(rerank_model_path, use_fp16=True)
         # 收集所有检索到的文本片段
         metadata_refs = []
         all_refs = []
@@ -1528,30 +1722,51 @@ def ocr_indexing():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-@app.route('/api/ST_chatpdf', methods=['POST'])
-def ST_chatpdf():
+@app.route('/api/Canvas_chatpdf', methods=['POST'])
+def Canvas_chatpdf():
     try:
         # 读取请求参数
         data = request.json
         query = data.get('query')
+        session_id = data.get('session_id')
+        token = data.get('token')
         file_id = data.get('file_id')
+        assistant_id = data.get('assistant_id')
         llm = data.get('llm', 'qwen').lower()
         top_p = data.get('top_p', 0.8)
-        temperature = data.get('temperature', 0)
+        temperature = data.get('temperature', 0.1)
+        user_info = data.get('userInfo', {})
 
         if not query or not file_id:
             return jsonify({'error': '参数不完整'}), 400
 
+        # 解析用户身份信息
+        outer_origin = user_info.get('outerOrigin', 'canvas')  # 默认为canvas
+        outer_user_name = user_info.get('outerUserName', '用户')  # 默认值
+        outer_user_role = user_info.get('outerUserRole', '1')  # 默认值为学生
+
+        # 生成用户身份上下文
+        if outer_user_role == '2':
+            role_description = "老师"
+        else:
+            role_description = "学生"
+
+        user_context = f"您好，我是{outer_user_name}{role_description}。"
+
+        try:
+            history = prompt_builder.get_history(session_id, token)
+        except Exception as e:
+            history = []  # 或者你可以选择返回默认的空历史
+            logger.warning(f"获取历史对话内容时出错: {e}")
+
         # 从 Elasticsearch 中获取全文内容
         all_content = ""
         try:
-            full_texts = es_handler.get_full_text_by_pid(file_id.strip())
-            if full_texts:
-                # 平展处理列表，并将其连接为一个字符串
-                all_content = "\n".join([text for sublist in full_texts for text in sublist])
-                logger.info(f"检索到全文内容：{all_content}")
+            all_content = es_handler.get_full_text_by_file_id(assistant_id.strip(), file_id.strip())
+            if all_content:
+                logger.info("检索到全文内容")
             else:
-                logger.info(f"未能检索到全文内容 for Pid: {file_id}")
+                logger.info(f"未能检索到全文内容 for Assistant ID: {assistant_id}, File ID: {file_id}")
         except Exception as e:
             logger.error(f"检索文本内容时出错 {file_id}: {e}")
 
@@ -1559,7 +1774,8 @@ def ST_chatpdf():
             def generate():
                 full_answer = "您的问题没有在文献资料中找到答案，正在使用预训练知识库为您解答："
                 prompt = [{'role': 'user', 'content': query}]
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p,
+                                                                                  temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
@@ -1568,13 +1784,26 @@ def ST_chatpdf():
             return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
 
         # 生成 prompt
-        prompt_messages = prompt_builder.generate_chatpdf_prompt(all_content, query)
+        prompt_messages = prompt_builder.generate_canvas_prompt(query, all_content, history, user_context)
         logger.info(f"Prompt: {prompt_messages}")
 
         if llm == 'qwen':
             def generate():
                 full_answer = ""
                 ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt_messages, top_p=top_p, temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+                logger.info(f"问题：{query}")
+                logger.info(f"生成的答案：{full_answer}")
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+        if llm == 'deepseek':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt_messages, top_p=top_p, temperature=temperature)
                 for chunk in ans_generator:
                     full_answer += chunk
                     data_stream = json.dumps({'answer': full_answer}, ensure_ascii=False)
@@ -1609,10 +1838,304 @@ def web_search():
 
 
 def start_background_threads():
-    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(2)]
+    threads = [threading.Thread(target=_thread_index_func, args=(i == 0,)) for i in range(32)]
     for t in threads:
         t.daemon = True  # 将线程设置为守护线程
         t.start()
+
+
+@app.route('/api/canvas_qa', methods=['POST'])
+def canvas_chatpdf():
+    try:
+        # 读取请求参数
+        data = request.json
+        # 打印原始请求数据
+        query = data.get('query')
+        session_id = data.get('session_id')
+        download_path = data.get('download_path')
+        file_name = data.get('file_name')
+        file_id = data.get('file_id')
+        token = data.get('token')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
+        user_info = data.get('userInfo', {})
+
+        if not query or not download_path:
+            return jsonify({'error': '参数不完整'}), 400
+
+        # 解析用户身份信息
+        outer_origin = user_info.get('outerOrigin', 'canvas')  # 默认为canvas
+        outer_user_name = user_info.get('outerUserName', '用户')  # 默认值
+        outer_user_role = user_info.get('outerUserRole', '1')  # 默认值为学生
+
+        # 生成用户身份上下文
+        if outer_user_role == '2':
+            role_description = "老师"
+        else:
+            role_description = "学生"
+
+        user_context = f"您好，我是{outer_user_name}{role_description}。"
+
+        try:
+            history = prompt_builder.get_history(session_id, token)
+        except Exception as e:
+            history = []  # 或者你可以选择返回默认的空历史
+            logger.warning(f"获取历史对话内容时出错: {e}")
+
+        logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
+        file_path = file_manager.download_pdf(download_path, file_id)
+        full_text = file_manager.process_Canvas_file(file_path, file_name)
+
+        # 生成 prompt
+        prompt_messages = prompt_builder.generate_canvas_prompt(query, full_text, history, user_context)
+        logger.info(f"Prompt: {prompt_messages}")
+
+        if llm == 'qwen':
+            def generate():
+                full_answer = ""
+                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt_messages, top_p=top_p, temperature=temperature)
+                for chunk in ans_generator:
+                    full_answer += chunk
+                    data_stream = json.dumps({'answer': full_answer}, ensure_ascii=False)
+                    yield data_stream + '\n'
+
+            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+    except Exception as e:
+        logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/beautify_prompt', methods=['POST'])
+def prompt_rewrite():
+    try:
+        data = request.json
+        query = data.get('query')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.6)
+
+        if llm == 'qwen':
+            prompt = prompt_builder.generate_prompt_for_qwen(query)
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+        if llm == 'deepseek':
+            prompt = prompt_builder.generate_prompt_for_deepseek(query)
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        logger.error(f"Error in prompt_rewrite: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/Text_polish', methods=['POST'])
+def polish_text():
+    try:
+        # Get the question from the request payload
+        data = request.get_json()
+        question = data.get('question', '')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.6)
+        if not question :
+            return jsonify({'error': '参数不完整'}), 400
+
+        prompt = PromptBuilder.generate_polish_prompt(question)
+
+        if llm == 'qwen':
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+        if llm == 'deepseek':
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'文本润色时发生错误: {str(e)}'
+        }), 500
+
+
+@app.route('/api/text_expansion', methods=['POST'])
+def expand_text():
+    try:
+        # Get the question from the request payload
+        data = request.get_json()
+        question = data.get('question', '')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.6)
+        if not question :
+            return jsonify({'error': '参数不完整'}), 400
+
+        prompt = PromptBuilder.generate_expand_prompt(question)
+
+        if llm == 'qwen':
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+        if llm == 'deepseek':
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'文本扩写时发生错误: {str(e)}'
+        }), 500
+
+
+@app.route('/api/text_translation', methods=['POST'])
+def transaltion_text():
+    try:
+        # Get the question from the request payload
+        data = request.get_json()
+        question = data.get('question', '')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.4)
+        if not question :
+            return jsonify({'error': '参数不完整'}), 400
+
+        prompt = PromptBuilder.generate_translation_prompt(question)
+
+        if llm == 'qwen':
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+        if llm == 'deepseek':
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'文本扩写时发生错误: {str(e)}'
+        }), 500
+
+
+@app.route('/api/polite_language', methods=['POST'])
+def polite_text():
+    try:
+        # Get the question from the request payload
+        data = request.get_json()
+        question = data.get('question', '')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.7)
+        style = data.get('style', '商务礼仪')
+        if not question :
+            return jsonify({'error': '参数不完整'}), 400
+
+        prompt = PromptBuilder.generate_politeness_prompt(question, style)
+
+        if llm == 'qwen':
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+        if llm == 'deepseek':
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'礼貌化文本时发生错误: {str(e)}'
+        }), 500
+
+
+@app.route('/api/how_to_say_no', methods=['POST'])
+def refuse_text():
+    try:
+        # Get the question from the request payload
+        data = request.get_json()
+        question = data.get('question', '')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.7)
+        if not question :
+            return jsonify({'error': '参数不完整'}), 400
+
+        prompt = PromptBuilder.generate_refusal_prompt(question)
+
+        if llm == 'qwen':
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+        if llm == 'deepseek':
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'拒绝别人时发生错误: {str(e)}'
+        }), 500
+
+
+@app.route('/api/write_email', methods=['POST'])
+def email_text():
+    try:
+        # Get the question from the request payload
+        data = request.get_json()
+        question = data.get('question', '')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.7)
+        if not question :
+            return jsonify({'error': '参数不完整'}), 400
+
+        prompt = PromptBuilder.generate_email_prompt(question)
+
+        if llm == 'qwen':
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+        if llm == 'deepseek':
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'生成邮件时发生错误: {str(e)}'
+        }), 500
+
+
+@app.route('/api/poem_writer', methods=['POST'])
+def poem_text():
+    try:
+        # Get the question from the request payload
+        data = request.get_json()
+        question = data.get('question', '')
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.7)
+        poetry_style = data.get('poetry_style', '俳句')
+        if not question :
+            return jsonify({'error': '参数不完整'}), 400
+
+        prompt = PromptBuilder.generate_poem_prompt(poetry_style, question)
+
+        if llm == 'qwen':
+            ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+        if llm == 'deepseek':
+            ans_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p=top_p, temperature=temperature)
+            return Response(ans_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'写诗时发生错误: {str(e)}'
+        }), 500
+
 
 # 确保线程在 Flask 应用启动前就启动
 start_background_threads()

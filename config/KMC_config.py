@@ -3,7 +3,6 @@ import re
 import urllib3
 import shutil
 import pickle
-from File_manager.pdf2markdown import PDF
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch
@@ -12,8 +11,6 @@ import torch
 import requests
 import jieba.posseg as pseg
 import tempfile
-import os
-from File_manager.pdf2markdown import *
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 import logging
@@ -35,7 +32,14 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-sys.path.append("/work/kmc/kmcGPT/KMC/")
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# 获取当前脚本所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# 获取上两级目录
+parent_dir = os.path.dirname(current_dir)
+grandparent_dir = os.path.dirname(parent_dir)
 
 
 class NoRequestStatusFilter(logging.Filter):
@@ -48,11 +52,11 @@ class Config(object):
     def __init__(self, env='production'):
         self.predefined_qa = {}
         self.secret_token = None
-        self.external_api_backend_notify = "http://119.45.114.43/sync/syncCallback"
+        self.external_api_backend_notify = "http://127.0.0.1:8888/sync/syncCallback"
         self.env = env
         # 设置默认值
         self.threads = 2
-        self.elasticsearch_hosts = 'http://127.0.0.1:9200'
+        self.elasticsearch_hosts = 'http://localhost:9200/'
         # 初始化日志处理器
         self._init_logger()
 
@@ -94,12 +98,13 @@ class Config(object):
         if attr in conf:
             self._set(attr, conf[attr])
 
-    def load_config(self, file_path="/work/kmc/kmcGPT/KMC/config/config.json"):
+    def load_config(self, file_path=os.path.join(current_dir, 'config.json')):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 all_conf = json.load(f)
                 conf = all_conf.get(self.env, {})
                 # 读取通用配置
+                self._read_attr(conf, 'rerank_model_path')
                 self._read_attr(conf, 'model_path')
                 self._read_attr(conf, 'threads')
                 self._read_attr(conf, 'log_file')
@@ -111,6 +116,12 @@ class Config(object):
                 self._read_attr(conf, 'file_storage_path')
                 self._read_attr(conf, 'record_path')
                 self._read_attr(conf, 'chatgpt_api')
+                self._read_attr(conf, 'mongodb_host')
+                self._read_attr(conf, 'mongodb_port')
+                self._read_attr(conf, 'mongodb_database')
+                self._read_attr(conf, 'mongodb_username')
+                self._read_attr(conf, 'mongodb_password')
+
                 # 读取Elasticsearch相关配置
                 es_config = conf.get('elasticsearch', {})
                 for key in ['hosts', 'basic_auth_username', 'basic_auth_password']:
@@ -126,11 +137,12 @@ class Config(object):
 
     def load_predefined_qa(self):
         try:
-            with open("/work/kmc/kmcGPT/KMC/config/predefined_qa.json", 'r', encoding='utf-8') as file:
+            with open(os.path.join(current_dir, 'predefined_qa.json'), 'r', encoding='utf-8') as file:
                 self.predefined_qa = json.load(file)
         except Exception as e:
             self.logger.error(f"无法加载 predefined_qa.json: {e}")
             self.predefined_qa = {}
+
 
 # # 使用环境变量指定环境并加载配置
 # config = Config(env='development')

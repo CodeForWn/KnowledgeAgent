@@ -3,7 +3,6 @@ from flask import Flask, request, jsonify
 import re
 import shutil
 import pickle
-from pdf2markdown import PDF
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch
@@ -12,8 +11,6 @@ import torch
 import requests
 import jieba.posseg as pseg
 import tempfile
-import os
-from pdf2markdown import *
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 import logging
@@ -31,7 +28,8 @@ import queue
 import threading
 import spacy
 import sys
-sys.path.append("/work/kmc/kmcGPT/KMC/")
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
 
 
@@ -59,7 +57,7 @@ class QueryProcessor:
             return query
 
     def cal_passage_embed(self, text):
-        instruction = "为这个句子生成表示以用于检索相关文章："
+        instruction = "为这个句子生成表示以用于检索相关文档片段："
         text = instruction + text
         encoded_input = self.tokenizer(text, padding=True, truncation=True, return_tensors='pt')
         with torch.inference_mode():
