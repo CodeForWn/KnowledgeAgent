@@ -3,10 +3,13 @@ import logging
 from pymongo import MongoClient, errors
 import sys
 import os
+import json
+import pdfplumber
+from docx import Document
+from pptx import Presentation
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
-
 
 class KMCMongoDBHandler:
     def __init__(self, config):
@@ -56,6 +59,117 @@ class KMCMongoDBHandler:
         except Exception as e:
             self.logger.error("关闭MongoDB连接时出错: {}".format(e))
 
+    def get_resource_by_docID(self, docID, collection_name="geo_documents"):
+        """
+        根据 docID 查询 MongoDB 中的资源详细信息
+        """
+        try:
+            collection = self.db[collection_name]
+            resource_info = collection.find_one({"docID": docID})
+            if resource_info:
+                # 将 MongoDB 的 _id 转换为字符串，避免序列化问题
+                if "_id" in resource_info:
+                    resource_info["_id"] = str(resource_info["_id"])
+            return resource_info
+        except Exception as e:
+            self.logger.error("查询 docID {} 出错: {}".format(docID, e))
+            return None
+
+    @staticmethod
+    def read_pdf(file_path):
+        """
+        读取 PDF 文件的全文内容
+        """
+        try:
+            content = ""
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        content += text + "\n"
+            return content
+        except Exception as e:
+            return f"读取PDF文件出错: {e}"
+
+    @staticmethod
+    def read_docx(file_path):
+        """
+        读取 Word 文件的全文内容
+        """
+        try:
+            doc = Document(file_path)
+            content = "\n".join([p.text for p in doc.paragraphs])
+            return content
+        except Exception as e:
+            return f"读取Word文件出错: {e}"
+
+    @staticmethod
+    def read_txt(file_path):
+        """
+        读取 TXT 文件的全文内容
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            return f"读取TXT文件出错: {e}"
+
+    @staticmethod
+    def read_ppt(file_path):
+        """
+        读取 PPT 或 PPTX 文件的全文内容
+        """
+        try:
+            prs = Presentation(file_path)
+            content = ""
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text:
+                        content += shape.text + "\n"
+            return content
+        except Exception as e:
+            return f"读取PPT文件出错: {e}"
+
+    @staticmethod
+    def read_file_content(file_path):
+        """
+        根据文件后缀选择合适的方式读取全文内容
+        """
+        if file_path.endswith(".pdf"):
+            return KMCMongoDBHandler.read_pdf(file_path)
+        elif file_path.endswith(".docx"):
+            return KMCMongoDBHandler.read_docx(file_path)
+        elif file_path.endswith(".txt"):
+            return KMCMongoDBHandler.read_txt(file_path)
+        elif file_path.endswith(".ppt") or file_path.endswith(".pptx"):
+            return KMCMongoDBHandler.read_ppt(file_path)
+        else:
+            return "不支持的文件格式。"
+
+    def get_resources_full_text(self, resources, collection_name="geo_documents"):
+        """
+        针对从Neo4j接口返回的资源列表（包含docID、file_name、resource_type），
+        查询MongoDB中对应的资源详细信息（包括文件路径），然后读取该文件的全文内容，
+        并将全文内容合并到资源字典中返回。
+        """
+        detailed_resources = []
+        for res in resources:
+            docID = res.get("docID")
+            resource_info = self.get_resource_by_docID(docID, collection_name)
+            if resource_info:
+                file_path = resource_info.get("file_path", "")
+                full_text = self.read_file_content(file_path)
+                res["full_text"] = full_text
+                # 合并 MongoDB 中其它详细信息，并确保 ObjectId 转为字符串
+                for k, v in resource_info.items():
+                    if k == "_id":
+                        res[k] = str(v)
+                    else:
+                        res[k] = v
+            else:
+                res["full_text"] = "未在MongoDB中找到该资源信息。"
+            detailed_resources.append(res)
+        return detailed_resources
 
 if __name__ == '__main__':
     # 示例用法
@@ -63,3 +177,31 @@ if __name__ == '__main__':
     config.load_config()
     mongo_handler = KMCMongoDBHandler(config)
 
+    # 示例：根据 docID 查询资源信息并读取全文内容
+    test_docID = "0033-8784-3716"
+    resource = mongo_handler.get_resource_by_docID(test_docID)
+    if resource:
+        file_path = resource.get("file_path", "")
+        full_text = mongo_handler.read_file_content(file_path)
+        resource["full_text"] = full_text
+        print(resource)
+    else:
+        print("未找到对应的资源信息。")
+
+    # 假设有一组从Neo4j返回的资源列表
+    resources = [
+        {
+            "docID": "0033-8784-3716",
+            "file_name": "第一单元地球自转部分.pdf",
+            "resource_type": "教材"
+        },
+        {
+            "docID": "5737-1173-5069",
+            "file_name": "主题1 地球自转 第一课时.pptx",
+            "resource_type": "课件"
+        }
+    ]
+    detailed_resources = mongo_handler.get_resources_full_text(resources)
+    print(json.dumps(detailed_resources, indent=2, ensure_ascii=False, default=str))
+
+    mongo_handler.close()

@@ -1,0 +1,170 @@
+{
+    "keywords": [
+        "地球运动",
+        "地球自转",
+        "地球公转",
+        "自转方向",
+        "自转周期",
+        "自转速度",
+        "昼夜更替",
+        "地方时",
+        "地转偏向",
+        "太阳日",
+        "恒星日",
+        "角速度",
+        "线速度",
+        "昼半球",
+        "夜半球",
+        "晨昏线",
+        "昼弧",
+        "夜弧",
+        "时区",
+        "区时",
+        "北京时间",
+        "日界线",
+        "人为日界线（国际）",
+        "自然日界线",
+        "地转偏向力",
+        "洋流",
+        "大气环流",
+        "季风",
+        "信风"
+],
+    "graph": [
+        {
+            "subject": "地球运动",
+            "predicate": "前置",
+            "object": "地球自转"
+        },
+        {
+            "subject": "地球运动",
+            "predicate": "前置",
+            "object": "地球公转"
+        },
+        {
+            "subject": "地球自转",
+            "predicate": "前置",
+            "object": "自转方向"
+        },
+        {
+            "subject": "地球自转",
+            "predicate": "前置",
+            "object": "自转周期"
+        },
+        {
+            "subject": "地球自转",
+            "predicate": "前置",
+            "object": "自转速度"
+        },
+        {
+            "subject": "地球自转",
+            "predicate": "前置",
+            "object": "昼夜更替"
+        },
+        {
+            "subject": "地球自转",
+            "predicate": "前置",
+            "object": "地方时"
+        },
+        {
+            "subject": "地球自转",
+            "predicate": "前置",
+            "object": "地转偏向"
+        },
+        {
+            "subject": "自转周期",
+            "predicate": "前置",
+            "object": "太阳日"
+        },
+        {
+            "subject": "自转速度",
+            "predicate": "前置",
+            "object": "角速度"
+        },
+        {
+            "subject": "自转速度",
+            "predicate": "前置",
+            "object": "线速度"
+        },
+        {
+            "subject": "昼夜更替",
+            "predicate": "前置",
+            "object": "昼半球"
+        },
+        {
+            "subject": "昼夜更替",
+            "predicate": "前置",
+            "object": "夜半球"
+        },
+        {
+            "subject": "昼夜更替",
+            "predicate": "前置",
+            "object": "晨昏线"
+        },
+        {
+            "subject": "晨昏线",
+            "predicate": "前置",
+            "object": "昼弧"
+        },
+        {
+            "subject": "晨昏线",
+            "predicate": "前置",
+            "object": "夜弧"
+        },
+        {
+            "subject": "地方时",
+            "predicate": "前置",
+            "object": "时区"
+        },
+        {
+            "subject": "地方时",
+            "predicate": "前置",
+            "object": "日界线"
+        },
+        {
+            "subject": "时区",
+            "predicate": "前置",
+            "object": "区时"
+        },
+        {
+            "subject": "时区",
+            "predicate": "前置",
+            "object": "北京时间"
+        },
+        {
+            "subject": "日界线",
+            "predicate": "前置",
+            "object": "人为日界线（国际）"
+        },
+        {
+            "subject": "日界线",
+            "predicate": "前置",
+            "object": "自然日界线"
+        },
+        {
+            "subject": "地转偏向",
+            "predicate": "前置",
+            "object": "地转偏向力"
+        },
+        {
+            "subject": "地转偏向",
+            "predicate": "前置",
+            "object": "洋流"
+        },
+        {
+            "subject": "地转偏向",
+            "predicate": "前置",
+            "object": "大气环流"
+        },
+        {
+            "subject": "地转偏向",
+            "predicate": "前置",
+            "object": "季风"
+        },
+        {
+            "subject": "地转偏向",
+            "predicate": "前置",
+            "object": "信风"
+        }
+]
+}

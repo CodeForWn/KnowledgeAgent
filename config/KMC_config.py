@@ -121,6 +121,10 @@ class Config(object):
                 self._read_attr(conf, 'mongodb_database')
                 self._read_attr(conf, 'mongodb_username')
                 self._read_attr(conf, 'mongodb_password')
+                # Neo4j配置
+                self._read_attr(conf, 'neo4j_uri')
+                self._read_attr(conf, 'neo4j_username')
+                self._read_attr(conf, 'neo4j_password')
 
                 # 读取Elasticsearch相关配置
                 es_config = conf.get('elasticsearch', {})
