@@ -33,7 +33,6 @@ import sys
 sys.path.append("../")
 from config.KMC_config import Config
 
-
 # prompts类
 class PromptBuilder:
     def __init__(self, config):
@@ -592,6 +591,183 @@ class PromptBuilder:
         messages = [
             {'role': 'system', 'content': system_content},
             {'role': 'user', 'content': f'请以"{content}"为主题，创作一首{poetry_style}。'}
+        ]
+
+        return messages
+
+
+    @staticmethod
+    def generate_question_agent_prompt_for_qwen(knowledge_point, related_texts, spo, difficulty_level, question_type, question_count):
+        """
+        生成用于Qwen或DeepSeek大模型的复杂出题prompt（含示例题目）。
+        """
+        example = ""
+        # 难度描述与规定：
+        difficulty_details = {
+            "简单": """简单难度：
+            - 题目仅考查该知识点的单一属性（例如定义、判断方法）的理解；
+            - 单选题和多选题：选项中的干扰项最多不超过2个；
+            - 填空题：填空数量只有1个；
+            - 推理步长：从题干推理得出答案的思考步数小于2。""",
+
+            "普通": """普通难度：
+            - 题目考查该知识点及其知识图谱关系中知识点的各自单一属性的理解；
+            - 单选题和多选题：选项中的干扰项超过1个；
+            - 填空题：填空数量1-2个；
+            - 推理步长：从题干推理得出答案的思考步数2-3步。""",
+
+            "困难": """困难难度：
+            - 题目考查该知识点及其知识图谱关系中知识点的多属性混合理解；
+            - 单选题和多选题：每个非正确选项都要有一定的干扰；
+            - 填空题：填空数量大于2；
+            - 推理步长：从题干推理得出答案的思考步数大于3；
+            - 知识点如果涉及计算和公式，可生成计算题。"""
+        }.get(difficulty_level, "普通难度")
+
+        question_desc = {
+            "单选题": f"生成单选题的题干及4个选项，只有1个正确选项，每个选项不超过15字。",
+            "多选题": f"生成多选题的题干及4个选项，正确选项1至4个，每个选项不超过15字。",
+            "填空题": f"生成填空题的题干，需填空的空格数量根据难度等级而定。",
+            "判断题": f"生成判断题的题干，要求题干描述清晰准确。"
+        }.get(question_type, "生成单选题的题干及4个选项，只有1个正确选项。")
+
+        if question_type == '多选题':
+            example = """试题示例格式参考：
+            1.关于地球自转和公转的叙述，以下说法正确的是：
+            
+            A. 地球自转导致了昼夜更替现象。
+            B. 地球公转轨道是一个正圆。
+            C. 地球自转轴与公转轨道平面垂直。
+            D. 地球公转导致了四季更替。
+            
+            答案： A、D
+        
+            2.关于太阳直射点的移动，以下说法正确的是：
+            
+            A. 太阳直射点始终位于赤道上。
+            B. 太阳直射点在南北回归线之间移动。
+            C. 太阳直射点的移动导致了不同地区的季节变化。
+            D. 太阳直射点在一年中两次直射赤道。
+            
+            答案： B、C、D
+         
+            3.关于地球运动对地理环境的影响，以下说法正确的是：
+            
+            A. 地球自转产生了地转偏向力，影响大气和洋流运动。
+            B. 地球公转导致了全球气候带的形成。
+            C. 地球自转速度的变化会引发地震。
+            D. 地球公转轨道的偏心率变化影响气候的长期变化。
+            
+            答案： A、D"""
+
+        if question_type == '单选题':
+            example = """试题示例格式参考：
+            1.以下哪个地区属于我国四大牧区之一? 
+            A. 内蒙古高原
+            B. 四川盆地
+            C.长江中下游平原
+            D.珠江三角洲
+            答案:A
+            2.下列哪项属于可再生能源? 
+            A. 石油
+            B.天然气
+            C. 水能
+            D. 煤炭
+            答案:C
+            3.关于我国气候类型的描述，以下哪个选项是正确的? 
+            A.我国南方地区属于温带季风气候
+            B.我国北方地区属于亚热带季风气候
+            C.我国西北地区属于地中海气候
+            D.我国青藏地区属于高原山地气候
+            答案:D"""
+
+        if question_type == '填空题':
+            example = """试题示例格式参考：
+            填空题
+            1.基本国情:国土___，区域差异___。
+            2.目前我国正在建设的区域合作工程有"___","___","___"等
+            3.我国在风沙危害严重的___，___，___地区建设“三北”防护林。
+            4.中国是一个发展中国家,___是第一位的。
+            5.21世纪的世界，是一个经济走向___的世界。"""
+
+        # 处理关系信息：
+        spo_text = ""
+        if spo and 'entity_relations' in spo:
+            relations = spo['entity_relations']
+            if relations:
+                related_entities = "、".join([r['entity'] for r in relations])
+                spo_text = f"根据知识图谱，“{spo['entity']['name'].strip()}”与“{related_entities}”等知识存在紧密联系，出题时请依据难度选择是否需要体现这些知识点之间的关联关系。"
+
+        texts_context = "\n\n".join([f"片段{i + 1}：{text}" for i, text in enumerate(related_texts)])
+
+        # 系统角色提示：
+        system_content = "你是一位经验丰富的地理学科专业出题专家，擅长根据给定的教材资源内容及知识图谱关系生成高质量的考试题目。请只输出题干内容，不包含答案和解析。"
+        user_content = f"""
+            【当前任务】：
+            - 知识点：{knowledge_point}
+            - 题型：{question_type}
+            - 难度等级：{difficulty_level}
+            - 题目数量：{question_count}
+            
+            任务要求：
+            题型：{question_desc}\n
+            难度：{difficulty_details}\n
+            
+            请严格依据以下给定的知识内容片段和知识图谱关系生成题目：
+            
+            相关知识内容片段：
+            {texts_context}\n
+            
+            知识图谱关系提示：
+            {spo_text}\n
+            题目示例：
+            {example}\n
+            
+            请严格按照示例的格式生成题目内容，确保：
+            - 题干表述清晰，逻辑严谨。
+            - 只生成题干及选项内容，不输出答案及解析。
+            
+            现在请生成共{question_count}道{question_type}。
+            """
+
+        # 构建OpenAI格式的 messages
+        messages = [
+            {'role': 'system', 'content': system_content.strip()},
+            {'role': 'user', 'content': user_content.strip()}
+        ]
+
+        return messages
+
+    @staticmethod
+    def generate_explanation_prompt_for_qwen(knowledge_point, question_type, question_content):
+        """
+        构造用于生成题目答案与解析的 Prompt。
+
+        :param knowledge_point: str，知识点名称，例如 “地球自转”
+        :param question_type: str，题型（如 “单选题”、“多选题”、“填空题”）
+        :param question_content: str，上一步生成的题干与选项内容
+        :return: messages 列表，用于构造 Chat Completion 请求
+        """
+        system_content = (
+            "你是一位资深教育出题专家，擅长生成题目的正确答案和详细解析。\n"
+            f"任务说明：请根据以下与【{knowledge_point}】知识点相关的题目信息，"
+            f"生成该【{question_type}】的正确答案和详细解析。\n\n"
+            "【输出要求】：\n"
+            "1. 多选题：答案必须为题目中的1-4项，例如“AC”或“ABD”；\n"
+            "2. 单选题：答案必须为题目中的1项，例如“B”；\n"
+            "3. 填空题：填写正确答案；\n"
+            "4. 所有题型都需提供不超过150字的解析内容，简明扼要说明正确答案的依据；\n"
+            "5. 对于选择题，解析中需简要说明干扰项为什么不正确；\n"
+            "6. **答案与解析之间必须换行输出**，输出格式如下：\n"
+            "答案：B\n解析：地球自转是自西向东，而不是自东向西，因此选项C正确，其余选项错误。\n"
+            "7. 请严格只输出答案和解析内容，不要输出题干或选项。"
+        )
+
+        user_content = f"题目内容如下：\n{question_content}"
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content}
         ]
 
         return messages

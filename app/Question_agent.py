@@ -46,6 +46,8 @@ neo4j_handler = KMCNeo4jHandler(config)
 file_manager = FileManager(config)
 mongo_handler = KMCMongoDBHandler(config)
 es_handler = ElasticSearchHandler(config)
+rerank_model_path = config.rerank_model_path
+reranker = FlagReranker(rerank_model_path, use_fp16=True)
 
 
 @app.route("/api/question_agent", methods=["POST"])
@@ -54,12 +56,20 @@ def get_question_agent():
         # 从请求中获取 JSON 数据
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
-        query = knowledge_point + "的地理意义是什么？"
+        difficulty_level = data.get('difficulty_level', '普通')  # 难度等级
+        question_type = data.get('question_type', '单选题')  # 题型
+        question_count = data.get('question_count', 3)  # 题目数量
+        llm = data.get('llm', 'deepseek')
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.8)
+        query = knowledge_point + "的地理定义和意义是什么？"
+
         if not knowledge_point:
             return jsonify({"error": "knowledge_point 参数为空"}), 400
 
         # 调用 get_entity_details 方法获取该知识点的详细信息
         result = neo4j_handler.get_entity_details(knowledge_point)
+        logger.info(f"获取知识点 {knowledge_point} 的子图信息：{result}")
         resources = result.get("resources", [])
 
         # 关闭数据库连接
@@ -118,13 +128,74 @@ def get_question_agent():
         logger.info(f"索引 {index_name} 已删除")
         if not combined_doc_list:
             return jsonify({"error": "没有成功检索到任何资源数据"}), 404
+        # logger.info(f"{combined_doc_list}")
 
+        # 确保文档包含 text 字段
+        filtered_combined_doc_list = [
+            doc for doc in combined_doc_list
+            if '_source' in doc and 'text' in doc['_source'] and doc['_source']['text'].strip()
+        ]
+
+        if not filtered_combined_doc_list:
+            logger.warning("经过过滤后，没有有效的文档片段。")
+            return jsonify({"error": "没有有效的文档片段用于重排"}), 404
+        # 将所有检索到的结果组合，并去除重复的text片段
+        unique_docs = {
+            doc['_source']['text']: doc for doc in filtered_combined_doc_list
+        }.values()
+        # 为每个文档与查询组合成对以计算重排得分
+        ref_pairs = [[query, doc['_source']['text']] for doc in unique_docs]
+
+        # 计算每对的重排得分并归一化
+        scores = reranker.compute_score(ref_pairs, normalize=True)
+
+        # 根据得分排序
+        sorted_docs_with_scores = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
+
+        # 日志记录前5名最高分及对应文档的text
+        top5_info = [
+            {"score": score, "text": doc['_source']['text'][:100]}  # 截取前100个字符，避免日志过长
+            for doc, score in sorted_docs_with_scores[:5]
+        ]
+        logger.info(f"重排后得分最高的前5个结果：{json.dumps(top5_info, ensure_ascii=False, indent=2)}")
+        # 选择所有得分大于0.3的片段
+        threshold = 0.3
+        final_docs = [doc for doc, score in sorted_docs_with_scores if score > threshold]
+        final_scores = [score for doc, score in sorted_docs_with_scores if score > threshold]
+
+        if not final_docs:
+            logger.warning(f"重排后没有得分超过阈值 {threshold} 的文档片段。")
+            return jsonify({"error": f"重排后无得分超过阈值 {threshold} 的文档片段"}), 404
+
+        # 记录重排后的分值信息
+        logger.info(f"重排后超过阈值 {threshold} 的分值：{final_scores}")
+
+        # 更新 combined_doc_list 为最终的去重并筛选后的文档列表
+        combined_doc_list = final_docs
+        # 调用刚才定义的提示词方法，构建prompt：
+        related_texts = [doc['_source']['text'] for doc in combined_doc_list]
         # 返回候选子图信息以及 ES 检索结果
         result_data = {
             "candidate_subgraph": result,
-            "retrieval_results": combined_doc_list
+            "related_texts": related_texts
         }
-        return jsonify(result_data)
+        # 生成完整提示词：
+        prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
+            knowledge_point=knowledge_point,
+            related_texts=related_texts,
+            spo=result,
+            difficulty_level=difficulty_level,
+            question_type=question_type,
+            question_count=question_count
+        )
+
+        if llm.lower() == 'qwen':
+            response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+        if llm.lower() == 'deepseek':
+            response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
 
     except Exception as e:
         logger.error(f"Error in get_question_agent: {e}", exc_info=True)
@@ -133,6 +204,43 @@ def get_question_agent():
             "trace": traceback.format_exc()
         }), 500
 
+
+@app.route("/api/question_explanation_agent", methods=["POST"])
+def get_question_explanation_agent():
+    try:
+        # 从请求中获取 JSON 数据
+        data = request.get_json()
+        knowledge_point = data.get("knowledge_point", "")
+        question_content = data.get("question_content", "")
+        question_type = data.get('question_type', '单选题')  # 题型
+        llm = data.get('llm', 'deepseek')
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0.4)
+
+        if not question_content:
+            return jsonify({"error": "题干为空"}), 400
+
+        # 生成完整提示词：
+        prompt = prompt_builder.generate_explanation_prompt_for_qwen(
+            knowledge_point=knowledge_point,
+            question_type=question_type,
+            question_content=question_content
+        )
+
+        if llm.lower() == 'qwen':
+            response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+        if llm.lower() == 'deepseek':
+            response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        logger.error(f"Error in get_explanation_question_agent: {e}", exc_info=True)
+        return jsonify({
+            "error": str(e),
+            "trace": traceback.format_exc()
+        }), 500
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777)
