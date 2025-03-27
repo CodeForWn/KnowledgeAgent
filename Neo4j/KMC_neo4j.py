@@ -285,21 +285,23 @@ class KMCNeo4jHandler:
             }
 
 # if __name__ == "__main__":
+
 #     config = Config()
 #     config.load_config()  # 如果 Config 中没有此方法，可以删除这行
 #     neo4j_handler = KMCNeo4jHandler(config)
 #     knowledge_point_name = "地方时"
 #     data = neo4j_handler.get_entity_details(knowledge_point_name)
-#
-#     print(f"实体节点: {data['entity']}")
-#
-#     print("\n相关实体关系:")
-#     for relation in data["entity_relations"]:
-#         print(f"{data['entity']} -[{relation['relationship']}]-> {relation['entity']}")
-#
-#     print("\n相关资源:")
-#     for res in data["resources"]:
-#         print(f"资源文件名: {res['file_name']}, docID: {res['docID']}, 类型: {res['resource_type']}")
-#
-#     neo4j_handler.close()
+#     print(data)
+
+    # print(f"实体节点: {data['entity']}")
+    #
+    # print("\n相关实体关系:")
+    # for relation in data["entity_relations"]:
+    #     print(f"{data['entity']} -[{relation['relationship']}]-> {relation['entity']}")
+    #
+    # print("\n相关资源:")
+    # for res in data["resources"]:
+    #     print(f"资源文件名: {res['file_name']}, docID: {res['docID']}, 类型: {res['resource_type']}")
+
+    # neo4j_handler.close()
 

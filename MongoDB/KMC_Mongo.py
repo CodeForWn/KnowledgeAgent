@@ -171,37 +171,40 @@ class KMCMongoDBHandler:
             detailed_resources.append(res)
         return detailed_resources
 
-if __name__ == '__main__':
-    # 示例用法
-    config = Config()  # 假设 Config 类中包含mongodb_host、mongodb_port、mongodb_database、logger等配置项
-    config.load_config()
-    mongo_handler = KMCMongoDBHandler(config)
 
-    # 示例：根据 docID 查询资源信息并读取全文内容
-    test_docID = "0033-8784-3716"
-    resource = mongo_handler.get_resource_by_docID(test_docID)
-    if resource:
-        file_path = resource.get("file_path", "")
-        full_text = mongo_handler.read_file_content(file_path)
-        resource["full_text"] = full_text
-        print(resource)
-    else:
-        print("未找到对应的资源信息。")
-
-    # 假设有一组从Neo4j返回的资源列表
-    resources = [
-        {
-            "docID": "0033-8784-3716",
-            "file_name": "第一单元地球自转部分.pdf",
-            "resource_type": "教材"
-        },
-        {
-            "docID": "5737-1173-5069",
-            "file_name": "主题1 地球自转 第一课时.pptx",
-            "resource_type": "课件"
-        }
-    ]
-    detailed_resources = mongo_handler.get_resources_full_text(resources)
-    print(json.dumps(detailed_resources, indent=2, ensure_ascii=False, default=str))
-
-    mongo_handler.close()
+# if __name__ == '__main__':
+#     # 示例用法
+#     config = Config()  # 假设 Config 类中包含mongodb_host、mongodb_port、mongodb_database、logger等配置项
+#     config.load_config()
+#     mongo_handler = KMCMongoDBHandler(config)
+#
+#     # 示例：根据 docID 查询资源信息并读取全文内容
+#     test_docID = "0033-8784-3716"
+#     resource = mongo_handler.get_resource_by_docID(test_docID)
+#     print(resource)
+#     if resource:
+#         file_path = resource.get("file_path", "")
+#         full_text = mongo_handler.read_file_content(file_path)
+#         resource["full_text"] = full_text
+#
+#         # print(resource)
+#     else:
+#         print("未找到对应的资源信息。")
+#
+#     # 假设有一组从Neo4j返回的资源列表
+#     resources = [
+#         {
+#             "docID": "0033-8784-3716",
+#             "file_name": "第一单元地球自转部分.pdf",
+#             "resource_type": "教材"
+#         },
+#         {
+#             "docID": "5737-1173-5069",
+#             "file_name": "主题1 地球自转 第一课时.pptx",
+#             "resource_type": "课件"
+#         }
+#     ]
+#     detailed_resources = mongo_handler.get_resources_full_text(resources)
+#     # print(json.dumps(detailed_resources, indent=2, ensure_ascii=False, default=str))
+#
+#     mongo_handler.close()

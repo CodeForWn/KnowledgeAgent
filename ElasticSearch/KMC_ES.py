@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 import re
 import shutil
 import pickle
+import time
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch, helpers
@@ -553,19 +554,193 @@ class ElasticSearchHandler:
             self.logger.error(f"获取索引 {assistant_id} 中 file_id 为 {file_id} 的完整文章内容失败: {e}")
             return ""
 
+
+    def create_temp_index(self, index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata):
+        """
+        创建临时索引，将 doc_list 中的每条文本段向量化后连同文件元数据存入ES索引中。
+        参数：
+            - index_name: 临时索引名称
+            - doc_list: 每个元素格式为 {'page': 页码, 'text': 分段文本, 'original_text': 原始文本}
+            - 其它参数：文件元数据（docID, file_name, file_path, subject, resource_type, metadata, created_at）
+        """
+        with index_lock:
+            try:
+                mappings = {
+                    "mappings": {
+                        "properties": {
+                            "page": {"type": "integer"},
+                            "text": {"type": "text", "analyzer": "standard"},
+                            "embed": {"type": "dense_vector", "dims": 1024},
+                            "docID": {"type": "keyword"},
+                            "file_name": {"type": "keyword"},
+                            "file_path": {"type": "keyword"},
+                            "subject": {"type": "keyword"},
+                            "resource_type": {"type": "keyword"},
+                            "metadata": {"type": "object"},
+                        }
+                    }
+                }
+
+                if not self.es.indices.exists(index=index_name):
+                    self.logger.info("临时索引 %s 不存在，正在创建...", index_name)
+                    self.es.indices.create(index=index_name, body=mappings)
+                    self.logger.info("临时索引 %s 创建成功", index_name)
+                else:
+                    self.logger.info("临时索引 %s 已存在，直接向其中添加数据", index_name)
+
+                # 构造需要插入ES的文档
+                actions = []
+                for item in doc_list:
+                    # 对文本段进行向量化（假设 cal_passage_embed 方法返回1024维向量）
+                    embed = self.cal_passage_embed(item['text'])
+                    document = {
+                        "page": item.get("page"),
+                        "text": item.get("text"),
+                        "embed": embed,
+                        "docID": docID,
+                        "file_name": file_name,
+                        "file_path": file_path,
+                        "subject": subject,
+                        "resource_type": resource_type,
+                        "metadata": metadata
+                    }
+                    actions.append({
+                        "_index": index_name,
+                        "_source": document
+                    })
+
+                # helpers.bulk 返回 (成功数量, 错误列表)
+                success_count, errors = helpers.bulk(self.es, actions, raise_on_error=False)
+                if errors:
+                    self.logger.error("以下文档索引失败: %s", errors)
+                    return False
+                self.logger.info("共索引了 %d 条文档到临时索引 %s 中。", success_count, index_name)
+                return True
+            except Exception as e:
+                self.logger.error(f"创建临时索引 {index_name} 或插入文档失败: {e}", exc_info=True)
+                return False
+
+    def agent_search(self, index_name, query_body, ref_num=10):
+        """
+        统一封装搜索方法，执行 ES 搜索并返回前 ref_num 条结果
+        """
+        try:
+            query_body["_source"] = {"excludes": ["embed"]}
+            res = self.es.search(index=index_name, body=query_body)
+            hits = res['hits']['hits'][:ref_num]
+            self.logger.info("在索引 %s 中，搜索到 %d 条结果", index_name, len(hits))
+            return hits
+        except Exception as e:
+            self.logger.error("ES搜索时出错: %s", e)
+            return []
+
+    def agent_search_bm25(self, index_name, query, ref_num=10, file_id_list=None):
+        """
+        使用 BM25 方法在指定索引中搜索文本，返回匹配的文档片段。
+        参数：
+          - index_name：要检索的索引名称（对于临时索引可以直接传入临时索引名）
+          - query：用户输入的查询文本
+          - ref_num：返回文档数量
+          - file_id_list：可选，限制搜索范围为特定的文件ID列表
+        """
+        query_body = {
+            "query": {
+                "bool": {
+                    "must": {
+                        "match": {
+                            "text": query
+                        }
+                    },
+                    "should": []
+                }
+            }
+        }
+        if file_id_list:
+            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
+            query_body['query']['bool']['minimum_should_match'] = 1  # 至少匹配一个
+
+        # 这里直接调用内部 search 方法进行检索
+        return self.agent_search(index_name, query_body, ref_num)
+
+
+    def agent_search_embed(self, index_name, query, ref_num=10, file_id_list=None):
+        """
+        使用 Embed 方法（基于向量相似度）在指定索引中搜索文本分段。
+        参数同上：
+          - index_name：检索的索引名称
+          - query：用户输入的查询文本
+          - ref_num：返回文档数量
+          - file_id_list：可选，限制搜索范围
+        """
+        # 计算查询文本的向量，假设 cal_query_embed 方法已实现，返回1024维向量
+        query_embed = self.cal_query_embed(query)
+        query_body = {
+            "query": {
+                "bool": {
+                    "must": {
+                        "script_score": {
+                            "query": {"match_all": {}},
+                            "script": {
+                                "source": "cosineSimilarity(params.query_vector, 'embed') + 1.0",
+                                "params": {"query_vector": query_embed}
+                            }
+                        }
+                    },
+                    "should": []
+                }
+            }
+        }
+        if file_id_list:
+            query_body['query']['bool']['should'] = [{"term": {"file_id": file_id}} for file_id in file_id_list]
+            query_body['query']['bool']['minimum_should_match'] = 1
+
+        return self.agent_search(index_name, query_body, ref_num)
+# if __name__ == "__main__":
+#     # 加载配置
+#     # 使用环境变量指定环境并加载配置
+#     config = Config(env='production')
+#     config.load_config()  # 指定配置文件的路径
 #
-# # 加载配置
-# # 使用环境变量指定环境并加载配置
-# config = Config(env='development')
-# config.load_config('config\\config.json')  # 指定配置文件的路径
+#     # 创建ElasticSearchHandler实例
+#     es_handler = ElasticSearchHandler(config)
 #
-# # 创建ElasticSearchHandler实例
-# es_handler = ElasticSearchHandler(config)
-# # 查询特定的文档
-# result = es_handler.es.search(index="st_ocr", body={
-#     "query": {
-#         "term": {
-#             "Pid.keyword": "O_10407610003"
-#         }
-#     }
-# })
+#     # 模拟一个 doc_list，实际可由 file_manager.process_pdf_file 得到
+#     doc_list = [
+#         {"page": 1, "text": "示例文本内容1"},
+#         {"page": 2, "text": "示例文本内容2"}
+#     ]
+#
+#     # 假设已有以下文件元数据
+#     docID = "0033-8784-3716"
+#     file_name = "第一单元地球自转部分.pdf"
+#     file_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/第一单元地球自转部分.pdf"
+#     subject = "高中地理"
+#     resource_type = "教材"
+#     metadata = {"version": "v1.0"}
+#
+#     # 生成一个临时索引名称，例如：
+#     index_name = f"temp_kb_{docID}_{int(time.time())}"
+#
+#     success = es_handler.create_temp_index(index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata)
+#     if success:
+#         print("临时索引创建成功")
+#     else:
+#         print("临时索引创建失败")
+#         sys.exit(1)
+#
+#     # 模拟使用索引（例如可以检索、测试等，此处仅等待几秒钟）
+#     time.sleep(2)
+#     query = "地方时是什么？"
+#     # 测试 BM25 检索：对索引中存储的文档进行 BM25 搜索
+#     bm25_hits = es_handler.agent_search_bm25(index_name, query, ref_num=10)
+#     print("BM25 搜索结果:")
+#     print(json.dumps(bm25_hits, indent=2, ensure_ascii=False, default=str))
+#
+#     # 测试 Embed 检索：对索引中存储的文档进行向量检索
+#     embed_hits = es_handler.agent_search_embed(index_name, query, ref_num=10)
+#     print("Embed 搜索结果:")
+#     print(json.dumps(embed_hits, indent=2, ensure_ascii=False, default=str))
+#
+#     # 删除临时索引
+#     es_handler.delete_index(index_name)
+#     print(f"索引 {index_name} 已删除")

@@ -43,6 +43,9 @@ logger = config.logger
 large_model_service = LargeModelAPIService(config)
 prompt_builder = PromptBuilder(config)
 neo4j_handler = KMCNeo4jHandler(config)
+file_manager = FileManager(config)
+mongo_handler = KMCMongoDBHandler(config)
+es_handler = ElasticSearchHandler(config)
 
 
 @app.route("/api/question_agent", methods=["POST"])
@@ -51,20 +54,80 @@ def get_question_agent():
         # 从请求中获取 JSON 数据
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
+        query = knowledge_point + "的地理意义是什么？"
         if not knowledge_point:
             return jsonify({"error": "knowledge_point 参数为空"}), 400
 
         # 调用 get_entity_details 方法获取该知识点的详细信息
         result = neo4j_handler.get_entity_details(knowledge_point)
+        resources = result.get("resources", [])
 
         # 关闭数据库连接
         neo4j_handler.close()
-
         # 返回 JSON 格式的结果
-        logger.info(f"候选子图为：{result}")
-        return jsonify(result)
+        # logger.info(f"候选子图为：{result}")
+        # 创建一个空列表，用于存储所有资源处理后的 doc_list
+        combined_doc_list = []
+        index_name = f"temp_kb_{knowledge_point}_{int(time.time())}"
+        for res in resources:
+            docID = res.get("docID")
+            # 从 MongoDB 查询该资源的详细信息（例如 file_path 等）
+            resource_detail = mongo_handler.get_resource_by_docID(docID)
+            if resource_detail:
+                # 提取文件路径和文件名（注意，文件名可以直接从 neo4j 的返回值中获取）
+                file_path = resource_detail.get("file_path", "")
+                file_name = resource_detail.get("file_name")
+                subject = resource_detail.get("subject")
+                resource_type = resource_detail.get("resource_type")
+                metadata = resource_detail.get("metadata")
+
+                # 判断文件是否存在
+                if not os.path.exists(file_path):
+                    logger.error(f"文件 {file_path} 不存在，跳过资源 {file_name}")
+                    continue
+
+                try:
+                    # 使用文件处理模块对该文件进行分段处理
+                    doc_list = file_manager.process_pdf_file(file_path, file_name)
+                except Exception as e:
+                    logger.error(f"处理文件 {file_name} 时发生异常: {e}", exc_info=True)
+                    continue
+
+                if doc_list:
+                    success = es_handler.create_temp_index(index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata)
+                    if success:
+                        logger.info(f"临时索引 {index_name} 创建成功")
+                        # 此处可以执行 ES 检索操作，例如：
+                        bm25_hits = es_handler.agent_search_bm25(index_name, query, ref_num=10)
+
+                        # 测试 Embed 检索：对索引中存储的文档进行向量检索
+                        embed_hits = es_handler.agent_search_embed(index_name, query, ref_num=10)
+
+                        combined_doc_list.extend(bm25_hits)
+                        combined_doc_list.extend(embed_hits)
+                    else:
+                        logger.error("临时索引创建失败")
+                        continue
+                else:
+                    logger.error(f"文件处理失败：{file_name}")
+            else:
+                logger.error(f"未在MongoDB中找到 docID: {docID} 的资源信息")
+
+        mongo_handler.close()
+        es_handler.delete_index(index_name)
+        logger.info(f"索引 {index_name} 已删除")
+        if not combined_doc_list:
+            return jsonify({"error": "没有成功检索到任何资源数据"}), 404
+
+        # 返回候选子图信息以及 ES 检索结果
+        result_data = {
+            "candidate_subgraph": result,
+            "retrieval_results": combined_doc_list
+        }
+        return jsonify(result_data)
 
     except Exception as e:
+        logger.error(f"Error in get_question_agent: {e}", exc_info=True)
         return jsonify({
             "error": str(e),
             "trace": traceback.format_exc()

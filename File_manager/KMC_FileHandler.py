@@ -175,12 +175,12 @@ class FileManager:
                             doc_list.append({'page': page_index, 'text': filtered_text, 'original_text': text})
         except Exception as e:
             self.logger.error("PDF文件 %s 处理过程出现错误: %s", pdf_path, str(e))
-        finally:
-            try:
-                os.remove(pdf_path)
-                self.logger.info("成功删除文件：%s", pdf_path)
-            except OSError as e:
-                self.logger.error("删除文件失败：%s，错误：%s", pdf_path, str(e))
+        # finally:
+        #     try:
+        #         os.remove(pdf_path)
+        #         self.logger.info("成功删除文件：%s", pdf_path)
+        #     except OSError as e:
+        #         self.logger.error("删除文件失败：%s，错误：%s", pdf_path, str(e))
         return doc_list
 
     def process_canvas_file(self, file_path, output_path=None):
@@ -235,6 +235,7 @@ class FileManager:
                 self.logger.error("删除文件失败：%s，错误：%s", pdf_path, str(e))
 
         return doc_list
+
 
     def filter_text(self, text):
         stopwords = self.load_stopwords()

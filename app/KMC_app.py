@@ -214,7 +214,7 @@ def _process_file_data(data):
                 es_handler.notify_backend(file_id, "SUCCESS")
                 logger.info("文件处理完成并创建索引: %s", file_name)
 
-            # 在文件处理完成后添加 5 秒间隔
+            # 在文件处理完成后添加 3 秒间隔
             time.sleep(3)
 
     except Exception as e:
