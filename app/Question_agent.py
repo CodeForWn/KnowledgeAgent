@@ -30,7 +30,7 @@ from MongoDB.KMC_Mongo import KMCMongoDBHandler
 import types
 import time
 import os
-
+from docx import Document
 
 app = Flask(__name__)
 CORS(app)
@@ -69,11 +69,28 @@ def get_question_agent():
 
         # 调用 get_entity_details 方法获取该知识点的详细信息
         result = neo4j_handler.get_entity_details(knowledge_point)
+        if not result or not result.get("resources"):
+            logger.info(f"知识点 {knowledge_point} 不存在于图谱中或未关联资源，直接使用大模型生成题目")
+            # 空资源情况下，仍构造 prompt
+            prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
+                knowledge_point=knowledge_point,
+                related_texts=[],  # 为空
+                spo={},  # 空结构
+                difficulty_level=difficulty_level,
+                question_type=question_type,
+                question_count=question_count
+            )
+            if llm.lower() == 'qwen':
+                response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
+                return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+            if llm.lower() == 'deepseek':
+                response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
+                return Response(response_generator, content_type='text/plain; charset=utf-8')
+
         logger.info(f"获取知识点 {knowledge_point} 的子图信息：{result}")
         resources = result.get("resources", [])
 
-        # 关闭数据库连接
-        neo4j_handler.close()
         # 返回 JSON 格式的结果
         # logger.info(f"候选子图为：{result}")
         # 创建一个空列表，用于存储所有资源处理后的 doc_list
@@ -83,19 +100,42 @@ def get_question_agent():
             docID = res.get("docID")
             # 从 MongoDB 查询该资源的详细信息（例如 file_path 等）
             resource_detail = mongo_handler.get_resource_by_docID(docID)
+            if not resource_detail:
+                logger.warning(f"资源未找到：docID = {docID}")
+                continue
+
             if resource_detail:
                 # 提取文件路径和文件名（注意，文件名可以直接从 neo4j 的返回值中获取）
                 file_path = resource_detail.get("file_path", "")
                 file_name = resource_detail.get("file_name")
                 subject = resource_detail.get("subject")
                 resource_type = resource_detail.get("resource_type")
-                metadata = resource_detail.get("metadata")
+                metadata = resource_detail.get("metadata", {})
+                diff_level = resource_detail.get("difficulty_level", "")
+                ques_type = resource_detail.get("question_type", "")
 
                 # 判断文件是否存在
                 if not os.path.exists(file_path):
                     logger.error(f"文件 {file_path} 不存在，跳过资源 {file_name}")
                     continue
 
+                # ✅ 特殊处理：题库资源，直接返回全文作为接口输出
+                if resource_type == "试题" and diff_level == difficulty_level.strip() and ques_type == question_type.strip():
+                    try:
+                        if file_path.endswith(".docx"):
+                            from docx import Document
+                            doc = Document(file_path)
+                            paras = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+                            question_text = "\n".join(paras)
+                            logger.info(f"命中试题资源，直接返回：{file_name}")
+                            return Response(question_text, content_type='text/plain; charset=utf-8')
+                        else:
+                            logger.warning(f"试题资源暂不支持格式：{file_path}")
+                            continue
+                    except Exception as e:
+                        logger.error(f"读取试题资源失败：{e}", exc_info=True)
+                        continue
+                # ✅ 其他资源：继续执行原有分段 + 索引 + 检索逻辑
                 try:
                     # 使用文件处理模块对该文件进行分段处理
                     doc_list = file_manager.process_pdf_file(file_path, file_name)
@@ -123,7 +163,6 @@ def get_question_agent():
             else:
                 logger.error(f"未在MongoDB中找到 docID: {docID} 的资源信息")
 
-        mongo_handler.close()
         es_handler.delete_index(index_name)
         logger.info(f"索引 {index_name} 已删除")
         if not combined_doc_list:
