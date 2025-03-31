@@ -15,6 +15,7 @@ import requests
 from logging.handlers import RotatingFileHandler
 import sys
 import re
+import markdown
 import uuid
 import jieba.posseg as pseg
 from FlagEmbedding import FlagReranker
@@ -251,6 +252,7 @@ def get_question_explanation_agent():
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
         question_content = data.get("question_content", "")
+        difficulty_level = data.get('difficulty_level', '困难')  # 难度等级
         question_type = data.get('question_type', '单选题')  # 题型
         llm = data.get('llm', 'deepseek')
         top_p = data.get('top_p', 0.8)
@@ -263,6 +265,7 @@ def get_question_explanation_agent():
         prompt = prompt_builder.generate_explanation_prompt_for_qwen(
             knowledge_point=knowledge_point,
             question_type=question_type,
+            difficulty_level=difficulty_level,
             question_content=question_content
         )
 
@@ -280,6 +283,127 @@ def get_question_explanation_agent():
             "error": str(e),
             "trace": traceback.format_exc()
         }), 500
+
+
+def extract_text_from_docx(docx_path):
+    """提取 .docx 文件中的纯文本内容"""
+    if not os.path.exists(docx_path):
+        return f"[文件未找到] {docx_path}"
+    try:
+        doc = Document(docx_path)
+        return "\n".join([para.text.strip() for para in doc.paragraphs if para.text.strip()])
+    except Exception as e:
+        return f"[提取失败] {str(e)}"
+
+
+def get_exercises_by_knowledge(knowledge_point):
+    """查找某知识点相关的习题并提取内容"""
+    docIDs = neo4j_handler.get_resource_docIDs(knowledge_point)
+    exercises = []
+
+    for docID in docIDs:
+        res = mongo_handler.get_resource_by_docID(docID)
+        if not res:
+            logger.warning(f"docID {docID} 无法在 MongoDB 中找到对应数据")
+            continue
+
+        if res.get("resource_type") == "试题" and \
+           res.get("difficulty_level") == "普通" and \
+           res.get("question_type") == "单选题":
+
+            content = extract_text_from_docx(res["file_path"])
+            logger.info(f"习题 [{res['file_name']}] 内容提取结果前100字: {content[:100]}")
+            exercises.append({
+                "title": res.get("file_name", ""),
+                "content": content
+            })
+        else:
+            logger.info(f"docID {docID} 不满足试题条件，已跳过")
+
+    return exercises
+
+
+def render_outline_with_exercises(tree, level=2):
+    """渲染知识结构 + 习题页 Markdown，返回每一行组成的 list[str]"""
+    md = []
+
+    def dfs(node, children, lvl):
+        # 知识点介绍页
+        md.append(f"{'#' * lvl} {node}")
+        md.append(f"<!-- 知识点“{node}”讲解页 -->")
+        md.append(f"- **知识点定义与讲解**：请在此处补充对“{node}”的定义、概念讲解与背景说明。")
+        md.append("---")
+
+        # 知识点对应习题页
+        exs = get_exercises_by_knowledge(node)
+        logger.info(f"知识点 [{node}] 找到 {len(exs)} 条试题")
+        if exs:
+            md.append(f"{'#' * lvl} {node} - 随堂练习")
+            for idx, ex in enumerate(exs, 1):
+                md.append(f"### {idx}. {ex['title']}")
+                content = ex.get("content", "")
+                # ⚠️ 强制转为纯字符串行
+                lines = content.splitlines() if isinstance(content, str) else [str(content)]
+                for line in lines:
+                    md.append(str(line))
+            md.append("---")
+
+        # 子节点递归
+        for child, sub in children.items():
+            dfs(child, sub, lvl + 1)
+
+    for root, children in tree.items():
+        dfs(root, children, level)
+
+    return md
+
+
+@app.route("/api/generate_ppt_outline", methods=["POST"])
+def get_ppt_outline():
+    try:
+        # 从请求中获取 JSON 数据
+        data = request.get_json()
+        knowledge_point = data.get("knowledge_point", "")
+        llm = data.get('llm', 'deepseek')
+        if not knowledge_point:
+            return jsonify({"error": "knowledge_point 参数为空"}), 400
+
+        # 获取主题描述 & 教学要求
+        entity_details = neo4j_handler.get_entity_details(knowledge_point)
+        entity_info = entity_details.get("entity", {})
+        teaching_requirements = entity_info.get("teaching_requirements", "")
+
+        # 构建完整知识树（保留中间节点）
+        knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
+        logger.info(f"知识树结构如下：{json.dumps(knowledge_tree, ensure_ascii=False)}")
+
+        # 开始生成 Markdown
+        md = []
+        md.append(f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用\n")
+        md.append(f"请补充对“{knowledge_point}”的定义、基本特征及应用背景。\n")
+        md.append("---\n")
+
+        if teaching_requirements:
+            md.append("## 教学基本要求\n")
+            md.append("<!-- 教学要求部分，包含考纲目标与学习提示 -->")
+            for line in teaching_requirements.strip().splitlines():
+                if line.strip():
+                    md.append(f"- {line.strip()}")
+            md.append("\n---\n")
+
+        # 主体结构 + 每个知识点后的习题页
+        md.extend(render_outline_with_exercises(knowledge_tree, level=2))
+
+        # 小结
+        md.append("## 小结\n")
+        md.append(f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。")
+        md.append("- 建议复习各子知识点之间的关系与逻辑顺序。\n")
+        md.append("---\n")
+
+        return jsonify({"markdown": "\n".join(md)})
+    except Exception as e:
+        logger.exception("生成 PPT 大纲出错")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777)

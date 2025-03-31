@@ -284,6 +284,78 @@ class KMCNeo4jHandler:
                 "resources": [res for res in resources if res["docID"] is not None]
             }
 
+    def get_predecessor_tree(self, entity_name):
+        query = """
+        MATCH (parent:Entity {name: $entity_name})-[:RELATION {type: "前置"}]->(child:Entity)
+        OPTIONAL MATCH path = (child)-[:RELATION*]->(leaf:Entity)
+        WHERE ALL(r IN relationships(path) WHERE r.type = "前置")
+          AND NOT (leaf)-[:RELATION {type: "前置"}]->()
+        RETURN child.name AS child_name,
+               collect(DISTINCT {name: leaf.name}) AS leaves
+        """
+        with self.driver.session() as session:
+            result = session.run(query, entity_name=entity_name).data()
+
+            knowledge_tree = {}
+            for record in result:
+                knowledge_tree[record['child_name']] = {
+                    "description": f"请在此处补充对“{record['child_name']}”的定义与讲解。",
+                    "leaves": record.get("leaves", [])
+                }
+
+            return knowledge_tree
+
+    def get_related_exercises(self, entity_name):
+        query = """
+        MATCH (entity:Entity {name: $entity_name})-[:RELATED_TO]->(res:Resource)
+        WHERE res.resource_type = '试题'
+          AND res.metadata.difficulty IS NOT NULL
+          AND res.metadata.question_type IS NOT NULL
+        RETURN res
+        """
+        with self.driver.session() as session:
+            result = session.run(query, entity_name=entity_name).data()
+
+            exercises = []
+            for record in result:
+                resource = record['res']
+                exercises.append({
+                    "title": resource.get("title", ""),
+                    "type": resource["metadata"].get("question_type", ""),
+                    "difficulty": resource["metadata"].get("difficulty", ""),
+                    "content": self.get_resource_content(resource["docID"])  # 假设已有方法
+                })
+
+            return exercises
+
+    def get_resource_docIDs(self, entity_name):
+        query = """
+        MATCH (entity:Entity {name: $entity_name})-[:相关]->(res:Resource)
+        RETURN DISTINCT res.docID AS docID
+        """
+        with self.driver.session() as session:
+            result = session.run(query, entity_name=entity_name).data()
+            docIDs = [record['docID'] for record in result if record['docID'] is not None]
+        return docIDs
+
+    def get_one_hop_predecessors(self, entity_name):
+        query = """
+        MATCH (parent:Entity {name: $entity_name})-[:RELATION {type: "前置"}]->(child:Entity)
+        RETURN child.name AS child_name
+        """
+        with self.driver.session() as session:
+            result = session.run(query, entity_name=entity_name).data()
+            return [record["child_name"] for record in result]
+
+    def build_predecessor_tree(self, root_entity, max_depth=5):
+        def dfs(entity_name, depth):
+            if depth > max_depth:
+                return {}
+            children = self.get_one_hop_predecessors(entity_name)
+            return {child: dfs(child, depth + 1) for child in children}
+
+        return {root_entity: dfs(root_entity, 1)}
+
 # if __name__ == "__main__":
 
 #     config = Config()

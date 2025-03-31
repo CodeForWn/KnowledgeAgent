@@ -748,29 +748,52 @@ class PromptBuilder:
         return messages
 
     @staticmethod
-    def generate_explanation_prompt_for_qwen(knowledge_point, question_type, question_content):
+    def generate_explanation_prompt_for_qwen(knowledge_point, question_type, question_content, difficulty_level):
         """
-        构造用于生成题目答案与解析的 Prompt。
+        构造用于生成题目答案与解析的模板化Prompt。
 
-        :param knowledge_point: str，知识点名称，例如 “地球自转”
-        :param question_type: str，题型（如 “单选题”、“多选题”、“填空题”）
-        :param question_content: str，上一步生成的题干与选项内容
-        :return: messages 列表，用于构造 Chat Completion 请求
+        :param knowledge_point: str，知识点名称，例如“地球自转”
+        :param question_type: str，题型（“单选题”、“多选题”、“填空题”）
+        :param question_content: str，题干与选项内容
+        :param difficulty: str，难度等级（“简单”、“普通”、“困难”）
+        :return: messages列表，用于构造ChatCompletion请求
         """
-        system_content = (
-            "你是一位资深教育出题专家，擅长生成题目的正确答案和详细解析。\n"
-            f"任务说明：请根据以下与【{knowledge_point}】知识点相关的题目信息，"
-            f"生成该【{question_type}】的正确答案和详细解析。\n\n"
-            "【输出要求】：\n"
-            "1. 多选题：答案必须为题目中的1-4项，例如“AC”或“ABD”；\n"
-            "2. 单选题：答案必须为题目中的1项，例如“B”；\n"
-            "3. 填空题：填写正确答案；\n"
-            "4. 所有题型都需提供不超过150字的解析内容，简明扼要说明正确答案的依据；\n"
-            "5. 对于选择题，解析中需简要说明干扰项为什么不正确；\n"
-            "6. **答案与解析之间必须换行输出**，输出格式如下：\n"
-            "答案：B\n解析：地球自转是自西向东，而不是自东向西，因此选项C正确，其余选项错误。\n"
-            "7. 请严格只输出答案和解析内容，不要输出题干或选项。"
+        common_instruction = (
+            f"你是一位资深教育出题专家，擅长生成题目的正确答案和详细解析。\n"
+            f"请根据以下与【{knowledge_point}】相关的【{question_type}】，结合难度要求，生成准确答案与解析。\n\n"
+            "【输出格式】：\n"
+            "答案：（填写正确答案）\n"
+            "【基本解题思路】：（先简述该知识点的核心考点和常规解题方法）\n"
+            "【干扰项分析】：（如果有干扰项，单独分析各干扰项错误原因；若无干扰项或为填空题，则跳过本段）\n"
+            "【详解】：（根据题干内容，针对选项或填空内容详细解释。）\n\n"
+            "下面请看示例题的完整答案及解析：\n"
+            "题目：1.2020年7月23日12时41分，目前我国运载能力最大的长征五号遥四运载火箭在海南岛文昌航天发射场点火升空，实施我国首次火星探测任务。据此完成下题。由于自转轴倾角和自转周期与地球相近，火星具有与地球相似的(    )\n①昼夜现象②昼夜长短③四季更替④运动方向\nA.①③B.②③C.③④D.①④"
+            "【解析示例】:\n"
+            "答案：D\n"
+            "【基本解题思路】：赤太阳系中的行星运行特点是：同向性、近圆性和共面性。行星围绕太阳运动会产生昼夜现象。自转轴倾角影响行星的四季更替，自转周期影响昼夜长短。\n"
+            "【干扰项分析】：①项错误，昼夜现象由行星的不透明与自转运动产生，与自转轴倾角和周期与地球相近无关；\n④项错误，运动方向取决于太阳系形成过程，与自转轴倾角和周期与地球相近无关；\nA、C、D选项因包含①或④错误项而错误。\n"
+            "【详解】：火星与地球自转轴倾角、自转周期均相似，因此火星的昼夜长短与地球接近，②正确；同时自转轴倾角相似，导致火星自转轨道面与公转轨道面的夹角类似于地球黄赤交角，故火星也具有类似地球的四季更替现象，③正确。因此，②③正确，即选项B正确。"
         )
+
+        # 根据题型动态生成模板要求
+        question_type_instructions = {
+            "单选题": "答案必须为题目中的单个选项，如“A”。",
+            "多选题": "答案必须为题目中的多个选项组合，如“AC”、“ABD”。",
+            "填空题": "答案必须准确填写题目所需的正确答案，不需标选项。"
+        }
+
+        # 根据难度动态调整解析要求
+        difficulty_instructions = {
+            "简单": "【难度说明】：简单难度只需简洁说明正确选项或答案的理由，无需刻意说明干扰项。解析长度在150字以内",
+            "普通": "【难度说明】：普通难度必须明确指出干扰项，并说明其错误原因。解析长度在200字以内",
+            "困难": "【难度说明】：困难难度需深入分析干扰项，特别强调易错点，帮助学生避免陷阱。如果涉及到计算，请详细说明计算过程。解析长度不要超过400字"
+        }
+
+        type_instruction = question_type_instructions.get(question_type, "")
+        difficulty_instruction = difficulty_instructions.get(difficulty_level, "")
+
+        # 最终组装system内容
+        system_content = f"{common_instruction}\n{type_instruction}\n{difficulty_instruction}\n\n请严格遵照以上模板和难度说明，生成答案与解析，不得输出题干与选项。"
 
         user_content = f"题目内容如下：\n{question_content}"
 
