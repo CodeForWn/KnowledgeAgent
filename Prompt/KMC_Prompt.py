@@ -595,7 +595,6 @@ class PromptBuilder:
 
         return messages
 
-
     @staticmethod
     def generate_question_agent_prompt_for_qwen(knowledge_point, related_texts, spo, difficulty_level, question_type, question_count):
         """
@@ -748,7 +747,7 @@ class PromptBuilder:
         return messages
 
     @staticmethod
-    def generate_explanation_prompt_for_qwen(knowledge_point, question_type, question_content, difficulty_level):
+    def generate_explanation_prompt_for_qwen(knowledge_point, question_type, question_content, difficulty_level, related_entity_info):
         """
         构造用于生成题目答案与解析的模板化Prompt。
 
@@ -758,21 +757,43 @@ class PromptBuilder:
         :param difficulty: str，难度等级（“简单”、“普通”、“困难”）
         :return: messages列表，用于构造ChatCompletion请求
         """
+
+        # 提取相关知识点名称（不含主知识点本身）
+        related_entities = [rel["entity"] for rel in related_entity_info.get("entity_relations", [])]
+        related_entities_str = "、".join(related_entities) if related_entities else "无"
+
         common_instruction = (
             f"你是一位资深教育出题专家，擅长生成题目的正确答案和详细解析。\n"
             f"请根据以下与【{knowledge_point}】相关的【{question_type}】，结合难度要求，生成准确答案与解析。\n\n"
-            "【输出格式】：\n"
-            "答案：（填写正确答案）\n"
-            "【基本解题思路】：（先简述该知识点的核心考点和常规解题方法）\n"
-            "【干扰项分析】：（如果有干扰项，单独分析各干扰项错误原因；若无干扰项或为填空题，则跳过本段）\n"
-            "【详解】：（根据题干内容，针对选项或填空内容详细解释。）\n\n"
-            "下面请看示例题的完整答案及解析：\n"
-            "题目：1.2020年7月23日12时41分，目前我国运载能力最大的长征五号遥四运载火箭在海南岛文昌航天发射场点火升空，实施我国首次火星探测任务。据此完成下题。由于自转轴倾角和自转周期与地球相近，火星具有与地球相似的(    )\n①昼夜现象②昼夜长短③四季更替④运动方向\nA.①③B.②③C.③④D.①④"
-            "【解析示例】:\n"
-            "答案：D\n"
-            "【基本解题思路】：赤太阳系中的行星运行特点是：同向性、近圆性和共面性。行星围绕太阳运动会产生昼夜现象。自转轴倾角影响行星的四季更替，自转周期影响昼夜长短。\n"
-            "【干扰项分析】：①项错误，昼夜现象由行星的不透明与自转运动产生，与自转轴倾角和周期与地球相近无关；\n④项错误，运动方向取决于太阳系形成过程，与自转轴倾角和周期与地球相近无关；\nA、C、D选项因包含①或④错误项而错误。\n"
-            "【详解】：火星与地球自转轴倾角、自转周期均相似，因此火星的昼夜长短与地球接近，②正确；同时自转轴倾角相似，导致火星自转轨道面与公转轨道面的夹角类似于地球黄赤交角，故火星也具有类似地球的四季更替现象，③正确。因此，②③正确，即选项B正确。"
+            "【输出格式】：请严格生成如下结构的JSON，不要输出多余解释性语言：\n"
+            "{\n"
+            "  \"answer\": \"填写正确答案（如A、B、AC或填空内容）\",\n"
+            "  \"analysis\": {\n"
+            "     \"【基本解题思路】: \"简述该知识点的核心考点和常规解题方法\",\n"
+            "     \"【详解】: \"根据题干内容，详细解释答案的原因和推理过程\",\n"
+            "     \"【干扰项分析】: \"分析干扰项的错误原因（若无干扰项则跳过此项）\"\n"
+            "  },\n"
+            f"  \"knowledge_point\": [\"本题涉及的所有知识点，主知识点{knowledge_point}必须包含在内\"],\n"
+            f"  \"difficulty_level\": {difficulty_level}\n"
+            "}\n\n"
+            "你还需参考以下相关知识点名称列表：\n"
+            f"{related_entities_str}\n"
+            "请判断这些知识点是否出现在题干或解析中，若出现，请一并加入knowledge_point字段中。\n\n"
+            "注意：\n"
+            "1. analysis 是一个完整的字符串，内部嵌套三个部分（含标题），用“【】”包裹。\n"
+            "2. answer 字段需包含“【答案】：”前缀。\n"
+            "3. knowledge_point 字段请用数组表示，内容需包含主知识点和实际出现的相关知识点。\n"
+            "4. 请不要输出任何无关文字，只返回完整的 JSON 结构。\n\n"
+            "以下是一个示例输出：\n"
+            "{\n"
+            "  \"answer\": \"【答案】：D\\n\",\n"
+            "  \"analysis\": \"【基本解题思路】：赤太阳系中的行星运行特点是：同向性、近圆性和共面性。行星围绕太阳运动会产生昼夜现象。自转轴倾角影响行星的四季更替，自转周期影响昼夜长短。\\n"
+            "【详解】：火星与地球自转轴倾角、自转周期均相似，因此火星的昼夜长短与地球接近，②正确；同时自转轴倾角相似，导致火星自转轨道面与公转轨道面的夹角类似于地球黄赤交角，故火星也具有类似地球的四季更替现象，③正确。因此，②③正确，即选项B正确。\\n"
+            "【干扰项分析】：①项错误，昼夜现象由行星的不透明与自转运动产生，与自转轴倾角和周期与地球相近无关；\\n④项错误，运动方向取决于太阳系形成过程，与自转轴倾角和周期与地球相近无关；\\nA、C、D选项因包含①或④错误项而错误。\\n\",\n"
+            "  \"knowledge_point\": [\"地球自转\", \"昼夜更替\", \"自转周期\"],\n"
+            "  \"difficulty_level\": \"普通\"\n"
+            "}\n\n"
+            "现在，请根据以下题目内容生成符合上述格式的输出："
         )
 
         # 根据题型动态生成模板要求
@@ -784,9 +805,9 @@ class PromptBuilder:
 
         # 根据难度动态调整解析要求
         difficulty_instructions = {
-            "简单": "【难度说明】：简单难度只需简洁说明正确选项或答案的理由，无需刻意说明干扰项。解析长度在150字以内",
-            "普通": "【难度说明】：普通难度必须明确指出干扰项，并说明其错误原因。解析长度在200字以内",
-            "困难": "【难度说明】：困难难度需深入分析干扰项，特别强调易错点，帮助学生避免陷阱。如果涉及到计算，请详细说明计算过程。解析长度不要超过400字"
+            "简单": "【难度说明】：简单难度只需简洁说明正确选项或答案的理由，无需刻意说明干扰项。解析长度在100字以内",
+            "普通": "【难度说明】：普通难度必须明确指出干扰项，并说明其错误原因。解析长度在150字以内",
+            "困难": "【难度说明】：困难难度需深入分析干扰项，特别强调易错点，帮助学生避免陷阱。如果涉及到计算，请详细说明计算过程。解析长度不要超过300字"
         }
 
         type_instruction = question_type_instructions.get(question_type, "")

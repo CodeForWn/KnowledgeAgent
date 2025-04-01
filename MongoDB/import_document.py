@@ -120,8 +120,8 @@ if __name__ == '__main__':
     mongo_handler = KMCMongoDBHandler(config)
     collection_name = "geo_documents"  # 集合名称，根据实际情况设置
     # 指定要处理的文件夹路径，例如：
-    # folder_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/"
-    # process_directory(folder_path, mongo_handler, collection_name)
-    file_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 练习/其他练习/地方时填空题（困难）.docx"
-    process_file(file_path, mongo_handler, collection_name)
+    folder_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理"
+    process_directory(folder_path, mongo_handler, collection_name)
+    # file_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 练习/其他练习/地方时填空题（困难）.docx"
+    # process_file(file_path, mongo_handler, collection_name)
     mongo_handler.close()

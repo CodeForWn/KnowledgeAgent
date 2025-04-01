@@ -261,12 +261,15 @@ def get_question_explanation_agent():
         if not question_content:
             return jsonify({"error": "题干为空"}), 400
 
+        result = neo4j_handler.get_entity_details(knowledge_point)
+
         # 生成完整提示词：
         prompt = prompt_builder.generate_explanation_prompt_for_qwen(
             knowledge_point=knowledge_point,
             question_type=question_type,
             difficulty_level=difficulty_level,
-            question_content=question_content
+            question_content=question_content,
+            related_entity_info=result
         )
 
         if llm.lower() == 'qwen':
