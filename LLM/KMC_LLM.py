@@ -365,6 +365,33 @@ class LargeModelAPIService:
         result = result_queue.get()
         return result
 
+    def get_answer_from_deepseek(self, prompt, top_p=0.8, temperature=0.6):
+        """
+        使用 ollama 调用 deepseek-r1:32b 模型，非流式，一次性返回完整结果（适合 JSON 格式响应）。
+        """
+        url = "http://106.14.20.122/37-11434/v1/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        data = {
+            "model": "deepseek-r1:32b",
+            "messages": prompt,
+            "top_p": top_p,
+            "temperature": temperature
+        }
+
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                if 'choices' in result and len(result['choices']) > 0:
+                    return result['choices'][0]['message']['content']
+                else:
+                    return {"error": "模型未返回结果"}
+            except Exception as e:
+                return {"error": f"解析模型响应失败: {str(e)}"}
+        else:
+            return {"error": f"请求失败，状态码：{response.status_code}"}
+
     def get_answer_from_deepseek_stream(self, prompt, top_p=0.8, temperature=0.6):
         """
         使用 ollama 调用 deepseek-r1:32b 模型实现流式输出。
@@ -636,7 +663,10 @@ class LargeModelAPIService:
 # # 创建ElasticSearchHandler实例
 # llm_builder = LargeModelAPIService(config)
 # # 定义要发送给 deepseek 模型的 prompt
-# prompt = '你如何评价自己的代码能力'
-# llm_builder.get_answer_from_hunyuan_stream(prompt)
+# prompt = [
+#     {"role": "system", "content": "你是一个代码审查专家，请根据用户输入提供回答"},
+#     {"role": "user", "content": "你如何评价自己的代码能力"}
+# ]
+# llm_builder.get_answer_from_deepseek(prompt)
 
 

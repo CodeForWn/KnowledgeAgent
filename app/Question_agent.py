@@ -230,12 +230,14 @@ def get_question_agent():
         )
 
         if llm.lower() == 'qwen':
-            response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
-            return Response(response_generator, content_type='text/plain; charset=utf-8')
+            response_text = large_model_service.get_answer_from_Tyqwen(prompt, top_p, temperature)
+            result = json.loads(response_text)  # 假设返回的是 JSON 字符串
+            return jsonify(result)
 
         if llm.lower() == 'deepseek':
-            response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
-            return Response(response_generator, content_type='text/plain; charset=utf-8')
+            response_text = large_model_service.get_answer_from_deepseek(prompt, top_p, temperature)
+            result = json.loads(response_text)  # 假设返回的是 JSON 字符串
+            return jsonify(result)
 
     except Exception as e:
         logger.error(f"Error in get_question_agent: {e}", exc_info=True)
@@ -243,6 +245,52 @@ def get_question_agent():
             "error": str(e),
             "trace": traceback.format_exc()
         }), 500
+
+
+def highlight_answer_with_html(raw_answer: str, color: str = "#3D8BFF") -> str:
+    """
+    将原始 answer 内容中【答案】：部分加粗、加颜色，并将换行符转为 <br>。
+    保持与 highlight_analysis_with_html 相同风格。
+    """
+    pattern = r"(【答案】：)([\s\S]*)"  # ✅ 用 [\s\S]* 匹配多行内容，支持 \n
+    match = re.match(pattern, raw_answer.strip(), flags=re.DOTALL)
+
+    if match:
+        title = match.group(1)
+        content = match.group(2).replace("\n", "<br>")  # ✅ 保留换行
+        html_title = f"<strong style='color:{color};'>{title}</strong>"
+        return f"{html_title}{content}"
+    else:
+        # 如果不匹配【答案】：格式，也做换行替换
+        return raw_answer.replace("\n", "<br>")
+
+
+def highlight_analysis_with_html(raw_analysis: str, color: str = "#3D8BFF") -> str:
+    """
+    将原始 analysis 内容中【基本解题思路】、【详解】、【干扰项分析】三段内容：
+    - 段标题加 <strong> 和颜色
+    - 每段之间加 <br><br>
+    """
+    pattern = r"(【答案】：.*?)(?=【基本解题思路】：|【详解】：|【干扰项分析】：|$)" \
+              r"|(?:(【基本解题思路】：.*?)(?=【详解】：|【干扰项分析】：|$))" \
+              r"|(?:(【详解】：.*?)(?=【干扰项分析】：|$))" \
+              r"|(?:(【干扰项分析】：.*))"
+    matches = re.findall(pattern, raw_analysis, flags=re.DOTALL)
+
+    # 处理并包上HTML样式
+    html_parts = []
+    for m in matches:
+        for part in m:
+            if part:
+                # 提取标题和正文
+                title_match = re.match(r"(【.*?】：)", part)
+                if title_match:
+                    title = title_match.group(1)
+                    content = part.replace(title, "").strip()
+                    html_title = f"<strong style=\'color:{color};\'>{title}</strong>"
+                    html_parts.append(f"{html_title}{content}")
+
+    return "<br>".join(html_parts)
 
 
 @app.route("/api/question_explanation_agent", methods=["POST"])
@@ -273,18 +321,34 @@ def get_question_explanation_agent():
         )
 
         if llm.lower() == 'qwen':
-            response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
-            return Response(response_generator, content_type='text/plain; charset=utf-8')
+            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
+            result = json.loads(response_text)  # 假设返回的是 JSON 字符串
+            result['answer'] = highlight_answer_with_html(result['answer'])
+            result['analysis'] = highlight_analysis_with_html(result['analysis'])
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": result
+            })
 
         if llm.lower() == 'deepseek':
-            response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
-            return Response(response_generator, content_type='text/plain; charset=utf-8')
+            response_text = large_model_service.get_answer_from_deepseek(prompt, top_p, temperature)
+            result = json.loads(response_text)  # 假设返回的是 JSON 字符串
+            result['answer'] = highlight_answer_with_html(result['answer'])
+            result['analysis'] = highlight_analysis_with_html(result['analysis'])
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": result
+            })
+
 
     except Exception as e:
         logger.error(f"Error in get_explanation_question_agent: {e}", exc_info=True)
         return jsonify({
-            "error": str(e),
-            "trace": traceback.format_exc()
+            "code": 500,
+            "msg": str(e),
+            "data": traceback.format_exc()
         }), 500
 
 
@@ -325,6 +389,118 @@ def get_exercises_by_knowledge(knowledge_point):
 
     return exercises
 
+# 收集树中的所有知识点名称
+def collect_all_nodes(tree):
+    nodes = []
+    def dfs(node, children):
+        nodes.append(node)
+        for child, sub in children.items():
+            dfs(child, sub)
+    for root, children in tree.items():
+        dfs(root, children)
+    return nodes
+
+# 统计某一子图下节点数量
+def count_subtree_nodes(subtree):
+    count = 1
+    for child, child_subtree in subtree.items():
+        count += count_subtree_nodes(child_subtree)
+    return count
+
+# 按阈值拆分：收集节点（按深度优先）直到达到 max_nodes 数
+def split_subtree_by_count(root, subtree, max_nodes):
+    pages = []
+
+    def dfs(node, children, acc, max_count):
+        if len(acc) >= max_count:
+            return False
+        acc.append((node, children))
+        for child, sub in children.items():
+            if not dfs(child, sub, acc, max_count):
+                return False
+        return True
+
+    flat_nodes = []
+    dfs(root, subtree, flat_nodes, max_nodes)
+    pages.append(flat_nodes)
+    return pages
+
+# 渲染一页讲解
+def render_lecture_page(node_children_pairs, level):
+    md = []
+    for node, children in node_children_pairs:
+        md.append(f"{'#' * level} {node}")
+        md.append(f"<!-- 知识点“{node}”讲解页 -->")
+        md.append(f"- **知识点定义与讲解**：在此处补充对“{node}”的定义、概念讲解与背景说明。")
+        md.append("---")
+    return md
+
+def flatten_subtree(node, subtree):
+    """将一个子树拍平成 (node, children) 列表，深度优先"""
+    result = [(node, subtree)]
+    for child, sub in subtree.items():
+        result.extend(flatten_subtree(child, sub))
+    return result
+
+def render_paginated_outline(tree, max_nodes_per_page=5, level=2):
+    md = []
+
+    for root, children in tree.items():
+        flat_nodes = flatten_subtree(root, children)  # 展开当前一级知识点及其子图
+        total_nodes = len(flat_nodes)
+
+        if total_nodes <= max_nodes_per_page:
+            md.append(f"# {root} - 第1页")
+            md.extend(render_lecture_page(flat_nodes, level))
+        else:
+            # 分页输出
+            for i in range(0, total_nodes, max_nodes_per_page):
+                chunk = flat_nodes[i:i + max_nodes_per_page]
+                md.append(f"# {root} - 第{i // max_nodes_per_page + 1}页")
+                md.extend(render_lecture_page(chunk, level))
+
+    return md
+
+def render_paginated_outline_final(tree, max_nodes_per_page=6, level=2):
+    md = []
+    for root, children in tree.items():
+        # ✅ 不再介绍根节点，只讲解它的一级子节点及其下属子图
+        for first_level_node, sub_tree in children.items():
+            flat_nodes = flatten_subtree(first_level_node, sub_tree)
+            total = len(flat_nodes)
+            for i in range(0, total, max_nodes_per_page):
+                page_nodes = flat_nodes[i:i + max_nodes_per_page]
+                page_no = i // max_nodes_per_page + 1
+                md.append(f"# {first_level_node} - 第{page_no}页")
+                md.extend(render_lecture_page(page_nodes, level))
+    return md
+
+
+def render_summary_page(knowledge_point):
+    return [
+        "## 小结",
+        f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。",
+        "- 建议复习各子知识点之间的关系与逻辑顺序。",
+        "---"
+    ]
+
+def render_exercise_pages(knowledge_points, level=2):
+    md = []
+    exercise_id = 1
+    seen_questions = set()
+    for point in knowledge_points:
+        exercises = get_exercises_by_knowledge(point)
+        for ex in exercises:
+            content_key = (ex["title"], ex["content"][:30])
+            if content_key in seen_questions:
+                continue
+            seen_questions.add(content_key)
+            md.append(f"{'#' * level} 习题 {exercise_id}")
+            md.append(f"### {ex['title']}")
+            md.extend(ex["content"].splitlines())
+            md.append("---")
+            exercise_id += 1
+    return md
 
 def render_outline_with_exercises(tree, level=2):
     """渲染知识结构 + 习题页 Markdown，返回每一行组成的 list[str]"""
@@ -334,7 +510,7 @@ def render_outline_with_exercises(tree, level=2):
         # 知识点介绍页
         md.append(f"{'#' * lvl} {node}")
         md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：请在此处补充对“{node}”的定义、概念讲解与背景说明。")
+        md.append(f"- **知识点定义与讲解**：“{node}”的定义、概念讲解与背景说明。")
         md.append("---")
 
         # 知识点对应习题页
@@ -367,7 +543,6 @@ def get_ppt_outline():
         # 从请求中获取 JSON 数据
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
-        llm = data.get('llm', 'deepseek')
         if not knowledge_point:
             return jsonify({"error": "knowledge_point 参数为空"}), 400
 
@@ -383,7 +558,7 @@ def get_ppt_outline():
         # 开始生成 Markdown
         md = []
         md.append(f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用\n")
-        md.append(f"请补充对“{knowledge_point}”的定义、基本特征及应用背景。\n")
+        md.append(f"填充对“{knowledge_point}”的定义、基本特征及应用背景。\n")
         md.append("---\n")
 
         if teaching_requirements:
@@ -394,18 +569,20 @@ def get_ppt_outline():
                     md.append(f"- {line.strip()}")
             md.append("\n---\n")
 
-        # 主体结构 + 每个知识点后的习题页
-        md.extend(render_outline_with_exercises(knowledge_tree, level=2))
+        # ✅ 分页讲解内容（不再讲解根节点）
+        K = data.get("max_nodes_per_page", 6)
+        md.extend(render_paginated_outline_final(knowledge_tree, max_nodes_per_page=K))
 
-        # 小结
-        md.append("## 小结\n")
-        md.append(f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。")
-        md.append("- 建议复习各子知识点之间的关系与逻辑顺序。\n")
-        md.append("---\n")
+        # 小结页
+        md.extend(render_summary_page(knowledge_point))
 
-        return jsonify({"markdown": "\n".join(md)})
+        # 统一召回所有习题（包括根节点和全部子节点）
+        all_knowledge_points = collect_all_nodes(knowledge_tree)
+        md.extend(render_exercise_pages(all_knowledge_points, level=2))
+
+        markdown_str = "\n".join(md)
+        return Response(markdown_str, content_type="text/markdown; charset=utf-8")
     except Exception as e:
-        logger.exception("生成 PPT 大纲出错")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
