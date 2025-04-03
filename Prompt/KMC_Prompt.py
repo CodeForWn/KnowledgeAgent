@@ -771,7 +771,7 @@ class PromptBuilder:
             "  \"analysis\": {\n"
             "     \"【基本解题思路】: \"简述该知识点的核心考点和常规解题方法\",\n"
             "     \"【详解】: \"根据题干内容，详细解释答案的原因和推理过程\",\n"
-            "     \"【干扰项分析】: \"分析干扰项的错误原因（若无干扰项则跳过此项）\"\n"
+            "     \"【干扰项分析】: \"分析干扰项的错误原因，干扰项并不是除了正确答案之外的所有答案，而是那种和标准答案相近的，或者在推理过程中容易让学生混淆的选项。（若无干扰项则跳过此项）\"\n"
             "  },\n"
             f"  \"knowledge_point\": [\"本题涉及的所有图谱中的知识点，主知识点{knowledge_point}必须包含在内\"],\n"
             f"  \"difficulty_level\": {difficulty_level}\n"
@@ -821,6 +821,38 @@ class PromptBuilder:
         messages = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content}
+        ]
+
+        return messages
+
+    @staticmethod
+    def generate_ppt_from_outline_prompt(knowledge_point, outline_markdown, textbook_text):
+        system_content = (
+            "## Role：教学课件内容生成专家\n\n"
+            "## 任务描述\n"
+            "你是一位具备教学设计经验的 AI 课件内容生成专家，能够根据提供的教材内容，智能生成完整、规范的教学课件。\n\n"
+            "## 任务目标\n"
+            "- 教材内容理解：充分理解提供的教材全文内容，找出与目标知识点相关的关键信息。\n"
+            "- 大纲内容补全：对Markdown格式的大纲进行详细内容填写，补充“【请填写】”部分，确保教学逻辑清晰、内容准确。\n"
+            "- 背景知识填充：若教材中缺乏某部分信息，可结合常识与背景知识补全缺失部分。\n"
+            "- 表达风格统一：保持语言严谨、适合教学使用，内容组织结构化、条理分明。\n\n"
+            "## 输出要求\n"
+            "输出格式为完整的Markdown文档：\n"
+            "- 保留原始大纲结构（包含标题/子标题）\n"
+            "- 将所有“【请填写】”内容替换为实际教学内容\n"
+            "- 尽量增加图示、例题、经典文化引用等教学辅助信息（如适用）"
+        )
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {
+                "role": "user",
+                "content": (
+                    f"### 主题知识点：{knowledge_point}\n\n"
+                    f"### 教材全文内容如下：\n{textbook_text[:10000]}\n\n"
+                    f"### 以下是教学大纲，请补全其中空缺内容：\n{outline_markdown}"
+                )
+            }
         ]
 
         return messages

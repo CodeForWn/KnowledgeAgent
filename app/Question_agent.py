@@ -28,6 +28,7 @@ from Prompt.KMC_Prompt import PromptBuilder
 from Neo4j.KMC_neo4j import KMCNeo4jHandler
 from neo4j import GraphDatabase, basic_auth
 from MongoDB.KMC_Mongo import KMCMongoDBHandler
+from app import markdown_to_ppt
 import types
 import time
 import os
@@ -230,14 +231,22 @@ def get_question_agent():
         )
 
         if llm.lower() == 'qwen':
-            response_text = large_model_service.get_answer_from_Tyqwen(prompt, top_p, temperature)
+            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
             result = json.loads(response_text)  # 假设返回的是 JSON 字符串
-            return jsonify(result)
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": result
+            })
 
         if llm.lower() == 'deepseek':
-            response_text = large_model_service.get_answer_from_deepseek(prompt, top_p, temperature)
+            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
             result = json.loads(response_text)  # 假设返回的是 JSON 字符串
-            return jsonify(result)
+            return jsonify({
+                "code": 200,
+                "msg": "success",
+                "data": result
+            })
 
     except Exception as e:
         logger.error(f"Error in get_question_agent: {e}", exc_info=True)
@@ -480,7 +489,7 @@ def render_summary_page(knowledge_point):
     return [
         "## 小结",
         f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。",
-        "- 建议复习各子知识点之间的关系与逻辑顺序。",
+        "- 【请填写】各子知识点之间的关系与逻辑顺序。",
         "---"
     ]
 
@@ -510,7 +519,7 @@ def render_outline_with_exercises(tree, level=2):
         # 知识点介绍页
         md.append(f"{'#' * lvl} {node}")
         md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：“{node}”的定义、概念讲解与背景说明。")
+        md.append(f"- **知识点定义与讲解**：【请填写】“{node}”的定义、概念讲解与背景说明。")
         md.append("---")
 
         # 知识点对应习题页
@@ -558,7 +567,7 @@ def get_ppt_outline():
         # 开始生成 Markdown
         md = []
         md.append(f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用\n")
-        md.append(f"填充对“{knowledge_point}”的定义、基本特征及应用背景。\n")
+        md.append(f"【请填写】对“{knowledge_point}”的定义、基本特征及应用背景。\n")
         md.append("---\n")
 
         if teaching_requirements:
@@ -584,6 +593,96 @@ def get_ppt_outline():
         return Response(markdown_str, content_type="text/markdown; charset=utf-8")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/generate_ppt_from_outline", methods=["POST"])
+def generate_ppt():
+    try:
+        # 从请求中获取 JSON 数据
+        data = request.get_json()
+        knowledge_point = data.get("knowledge_point", "")
+        markdown = data.get("markdown", "")
+        textbook_pdf_path = data.get("textbook_pdf_path", "")
+        llm = data.get("llm", "deepseek")
+        top_p = data.get("top_p", 0.9)
+        temperature = data.get("temperature", 0.7)
+
+        if not knowledge_point:
+            return jsonify({"error": "knowledge_point 参数为空"}), 400
+
+        # 读取教材内容
+        textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
+
+        # 构造提示词
+        prompt = prompt_builder.generate_ppt_from_outline_prompt(
+            knowledge_point,
+            markdown,
+            textbook_content
+        )
+
+        # 根据模型类型调用不同的流式接口
+        if llm.lower() == 'qwen':
+            response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+        elif llm.lower() == 'deepseek':
+            response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
+        else:
+            return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
+
+    except Exception as e:
+        return jsonify({"error": f"接口异常: {str(e)}"}), 500
+
+
+@app.route("/api/generate_ppt_from_outline_and_render", methods=["POST"])
+def generate_and_render_ppt():
+    try:
+        # 从请求中获取 JSON 数据
+        data = request.get_json()
+        knowledge_point = data.get("knowledge_point", "")
+        markdown = data.get("markdown", "")
+        textbook_pdf_path = data.get("textbook_pdf_path", "")
+        llm = data.get("llm", "deepseek")
+        top_p = data.get("top_p", 0.9)
+        temperature = data.get("temperature", 0.7)
+
+        if not knowledge_point:
+            return jsonify({"error": "knowledge_point 参数为空"}), 400
+
+        # 读取教材内容
+        textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
+
+        # 构造提示词
+        prompt = prompt_builder.generate_ppt_from_outline_prompt(
+            knowledge_point,
+            markdown,
+            textbook_content
+        )
+
+        # 根据模型类型调用不同的流式接口
+        if llm.lower() == 'qwen':
+            response_generator = large_model_service.get_answer_from_Tyqwen(prompt)
+            # return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+        elif llm.lower() == 'deepseek':
+            response_generator = large_model_service.get_answer_from_deepseek(prompt)
+            # return Response(response_generator, content_type='text/plain; charset=utf-8')
+        else:
+            return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
+
+        # 4. 渲染为PPT
+        ppt_url = markdown_to_ppt.render_markdown_to_ppt(response_generator, title=knowledge_point)
+        return jsonify({
+            "status": "success",
+            "ppt_url": ppt_url,
+            "markdown_preview": markdown_text[:200] + "..."  # 可选
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"接口异常: {str(e)}"}), 500
+
+
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777)
