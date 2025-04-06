@@ -356,6 +356,69 @@ class KMCNeo4jHandler:
 
         return {root_entity: dfs(root_entity, 1)}
 
+    def export_full_graph_for_g6(self):
+        """
+        导出图谱数据（对 ID 做简化映射，适配 G6 显示）
+        """
+        try:
+            with self.driver.session() as session:
+                # 查询所有节点并构建 ID 映射
+                node_result = session.run(
+                    "MATCH (n) RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props")
+                nodes = []
+                node_id_map = {}  # elementId -> shortId
+                node_index = 0
+
+                for record in node_result:
+                    eid = record["id"]
+                    short_id = f"n{node_index}"
+                    node_id_map[eid] = short_id
+
+                    labels = record["labels"]
+                    props = record["props"]
+
+                    node = {
+                        "id": short_id,
+                        "label": props.get("name", labels[0] if labels else "Entity"),
+                        "type": labels[0] if labels else "Entity",
+                        **props
+                    }
+                    nodes.append(node)
+                    node_index += 1
+
+                # 查询所有边
+                rel_result = session.run("""
+                    MATCH (a)-[r]->(b)
+                    RETURN elementId(r) AS id, elementId(a) AS source, elementId(b) AS target, type(r) AS type, properties(r) AS props
+                """)
+                edges = []
+                edge_index = 0
+
+                for record in rel_result:
+                    rel_id = f"r{edge_index}"
+                    source_id = node_id_map.get(record["source"], record["source"])
+                    target_id = node_id_map.get(record["target"], record["target"])
+
+                    rel_type = record["type"]
+                    rel_props = record["props"]
+
+                    edge = {
+                        "id": rel_id,
+                        "source": source_id,
+                        "target": target_id,
+                        "label": rel_props.get("type", rel_type),
+                        "type": rel_type,
+                        **rel_props
+                    }
+                    edges.append(edge)
+                    edge_index += 1
+
+            return {"nodes": nodes, "edges": edges}
+
+        except Exception as e:
+            self.logger.error("导出图谱数据失败: {}".format(e))
+            return {"nodes": [], "edges": [], "error": str(e)}
+
 # if __name__ == "__main__":
 
 #     config = Config()

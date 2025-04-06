@@ -683,6 +683,13 @@ def generate_and_render_ppt():
         return jsonify({"error": f"接口异常: {str(e)}"}), 500
 
 
+@app.route("/api/graph/full_export", methods=["GET"])
+def export_graph():
+    """
+    获取整张图谱，返回适配 G6 的数据格式
+    """
+    result = neo4j_handler.export_full_graph_for_g6()
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777)
