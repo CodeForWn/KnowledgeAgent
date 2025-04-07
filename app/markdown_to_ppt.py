@@ -22,6 +22,7 @@ SAVE_URL = "https://co.aippt.cn/api/design/v2/save"
 EXPORT_URL = "https://co.aippt.cn/api/download/export/file"
 EXPORT_RESULT_URL = "https://co.aippt.cn/api/download/export/file/result"
 
+
 # === 获取签名的token（自动缓存） ===
 def get_token():
     if os.path.exists(TOKEN_CACHE_PATH):
@@ -51,8 +52,9 @@ def get_token():
     else:
         raise Exception("获取 token 失败: " + res.get("msg", "未知错误"))
 
+
 # === 获取模板列表供用户手动选择 ===
-def get_template_list():
+def get_template_list() -> list:
     token = get_token()
     headers = {
         "x-api-key": API_KEY,
@@ -64,65 +66,148 @@ def get_template_list():
     response = requests.get(TEMPLATE_URL, headers=headers)
     res = response.json()
 
-    if res["code"] == 0:
-        all_data = res["data"]
-        template_list = all_data.get("list", [])
-        print(f"✅ 共找到 {len(template_list)} 个模板：\n")
+    if res.get("code") != 0:
+        raise Exception("获取模板列表失败：" + res.get("msg", "未知错误"))
 
-        valid_templates = []
-        for tpl in template_list:
-            tpl_id = tpl.get("id")
-            cover = tpl.get("cover_img")
-            if tpl_id and cover:
-                print(f"[ID: {tpl_id}] 封面：{cover}")
-                valid_templates.append({
-                    "id": tpl_id,
-                    "cover": cover
-                })
+    template_list = res["data"].get("list", [])
+    valid_templates = []
+    for tpl in template_list:
+        tpl_id = tpl.get("id")
+        cover = tpl.get("cover_img")
+        if tpl_id and cover:
+            valid_templates.append({
+                "id": tpl_id,
+                "cover": cover
+            })
 
-            if not valid_templates:
-                print("⚠️ 没有找到有效模板，请检查返回数据结构。")
-            return valid_templates
-        else:
-            raise Exception("获取模板列表失败：" + res.get("msg", "未知错误"))
+    if not valid_templates:
+        raise Exception("没有找到有效模板，请检查返回数据结构。")
+    return valid_templates
 
 
-def get_template_list_for_markdown(token):
+# ========= 获取推荐模板 =========
+def get_recommended_template(token: str) -> str:
+    """
+    获取推荐模板套装列表，并返回默认（第一个）模板的 id
+    """
     headers = {
         "x-api-key": API_KEY,
         "x-token": token,
         "x-channel": CHANNEL
     }
-    params = {
-        "page": 1,
-        "page_size": 20
-    }
-
-    print("📦 正在获取推荐模板套装列表...")
-    response = requests.get("https://co.aippt.cn/api/template_component/suit/search", headers=headers, params=params)
+    params = {"page": 1, "page_size": 20}
+    response = requests.get(TEMPLATE_URL, headers=headers, params=params)
 
     try:
         data = response.json()
     except Exception as e:
-        print("❌ JSON解析失败：", e)
-        print("原始响应：\n", response.text)
-        raise
+        raise Exception("JSON解析失败：" + str(e))
 
-    if data["code"] != 0:
-        raise Exception("❌ 获取模板失败：" + data.get("msg", "未知错误"))
+    if data.get("code") != 0:
+        raise Exception("获取模板失败：" + data.get("msg", "未知错误"))
 
     templates = data["data"].get("list", [])
     if not templates:
-        raise Exception("❌ 没有获取到推荐模板")
+        raise Exception("没有获取到推荐模板")
+    # 默认返回第一个模板的 id
+    return templates[0]["id"]
 
-    for tpl in templates:
-        print(f"[ID: {tpl['id']}] 封面：{tpl.get('cover_img', '无')}")
+# ========= 创建任务 =========
+def create_task(token: str, title: str, markdown_text: str) -> str:
+    """
+    根据标题和 markdown 内容创建任务，返回任务 id
+    """
+    headers = {
+        "x-api-key": API_KEY,
+        "x-token": token,
+        "x-channel": CHANNEL
+    }
+    payload = {
+        "type": "7",  # markdown 粘贴生成
+        "title": title,
+        "content": markdown_text,
+        "id": ""
+    }
+    response = requests.post(TASK_URL, headers=headers, data=payload)
+    data = response.json()
+    if data.get("code") != 0:
+        raise Exception("创建任务失败：" + data.get("msg", "未知错误"))
+    return data["data"]["id"]
 
-    return templates[0]["id"]  # ✅ 默认返回第一个
+# ========= 保存作品 =========
+def save_work(token: str, title: str, task_id: str, template_id: str) -> str:
+    """
+    根据任务 id 与模板 id 保存作品，返回保存后的作品 id
+    """
+    headers = {
+        "x-api-key": API_KEY,
+        "x-token": token,
+        "x-channel": CHANNEL,
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    payload = {
+        "name": title,
+        "task_id": task_id,
+        "template_id": template_id,
+        "template_type": 1
+    }
+    encoded_payload = urllib.parse.urlencode(payload)
+    response = requests.post(SAVE_URL, headers=headers, data=encoded_payload)
 
+    # 如果返回 HTML，可能请求方式错误
+    if response.headers.get("Content-Type", "").startswith("text/html"):
+        raise Exception("返回 HTML 非预期响应，检查接口路径或请求方式")
+    try:
+        data = response.json()
+    except Exception as e:
+        raise Exception("保存作品响应 JSON 解析失败：" + str(e))
+    if data.get("code") != 0:
+        raise Exception("保存作品失败：" + data.get("msg", "未知错误"))
+    return data["data"]["id"]
+
+# ========= 导出 PPT 文件 =========
+def export_ppt(token: str, user_design_id: str) -> str:
+    """
+    提交导出 PPT 文件任务，返回任务 key
+    """
+    headers = {
+        "x-api-key": API_KEY,
+        "x-token": token,
+        "x-channel": CHANNEL
+    }
+    payload = {
+        "id": user_design_id,
+        "format": "ppt",
+        "edit": "true",
+        "files_to_zip": "false"
+    }
+    response = requests.post(EXPORT_URL, headers=headers, data=payload)
+    data = response.json()
+    if data.get("code") != 0:
+        raise Exception("导出任务提交失败：" + data.get("msg", "未知错误"))
+    return data["data"]
+
+
+# ========= 轮询导出任务结果 =========
+def poll_export_result(token: str, task_key: str, max_retries: int = 30, interval: int = 2) -> str:
+    """
+    轮询导出任务结果，直到成功返回下载链接，否则抛出超时异常
+    """
+    headers = {
+        "x-api-key": API_KEY,
+        "x-token": token,
+        "x-channel": CHANNEL
+    }
+    for _ in range(max_retries):
+        time.sleep(interval)
+        response = requests.post(EXPORT_RESULT_URL, headers=headers, data={"task_key": task_key})
+        data = response.json()
+        if data.get("code") == 0 and data.get("data"):
+            return data["data"][0]
+    raise Exception("轮询超时，未获取到导出链接")
 
 # === 渲染主函数：输入markdown + title + template_id，输出下载链接 ===
-def render_markdown_to_ppt(title, markdown_text):
+def render_markdown_to_ppt_old(title, markdown_text):
     token = get_token()
     headers = {
         "x-api-key": API_KEY,
@@ -211,20 +296,42 @@ def render_markdown_to_ppt(title, markdown_text):
     raise Exception("❌ 轮询超时，未获取到导出链接。")
 
 
-# === 测试入口 ===
-if __name__ == "__main__":
-    title = "地球运动"
-    markdown = textwrap.dedent("""\
-        # 地球运动
+# ========= 主流程：markdown 渲染 PPT =========
+def render_markdown_to_ppt(title: str, markdown_text: str) -> str:
+    """
+    根据输入的标题和 markdown 内容完成以下步骤：
+      1. 获取 token
+      2. 创建任务
+      3. 获取推荐模板 id
+      4. 保存作品
+      5. 提交导出任务
+      6. 轮询获取下载链接
+    返回 PPT 文件的下载链接
+    """
+    token = get_token()
+    task_id = create_task(token, title, markdown_text)
+    template_id = get_recommended_template(token)
+    user_design_id = save_work(token, title, task_id, template_id)
+    task_key = export_ppt(token, user_design_id)
+    download_url = poll_export_result(token, task_key)
+    return download_url
 
-        ## 地球自转
-        地球每天自转一圈，产生昼夜交替现象。
 
-        ## 地球公转
-        地球一周公转约365天，产生四季变化。
-
-        ## 公转与黄赤交角
-        太阳直射点随季节移动，是四季的根本原因。
-    """)
-
-    render_markdown_to_ppt(title, markdown)
+# # === 测试入口 ===
+# if __name__ == "__main__":
+#
+#     title = "地球运动"
+#     markdown = textwrap.dedent("""\
+#         # 地球运动
+#
+#         ## 地球自转
+#         地球每天自转一圈，产生昼夜交替现象。
+#
+#         ## 地球公转
+#         地球一周公转约365天，产生四季变化。
+#
+#         ## 公转与黄赤交角
+#         太阳直射点随季节移动，是四季的根本原因。
+#     """)
+#     download_link = render_markdown_to_ppt(title, markdown)
+#     print("PPT 下载链接：", download_link)

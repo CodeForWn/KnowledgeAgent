@@ -731,17 +731,67 @@ def generate_ppt():
         return jsonify({"error": f"接口异常: {str(e)}"}), 500
 
 
+def node_to_markdown(node: dict, level: int) -> str:
+    """
+    递归将一个节点转换为 Markdown 文本。
+    level 表示标题的层级（1 -> "#", 2 -> "##", 3 -> "###", ...）。
+    """
+    md = ""
+    header_prefix = "#" * level
+
+    # 如果是 PPT 标题（第一层且 label 为“主题”），直接用内容的第一行作为标题
+    if level == 1 and node.get("label", "") == "主题":
+        # 将内容第一行作为标题
+        lines = node.get("content", "").splitlines()
+        if lines:
+            md += f"{header_prefix} {lines[0]}\n"
+            # 如果标题后还有其他内容，作为正文段落输出
+            if len(lines) > 1:
+                md += "\n".join(lines[1:]) + "\n"
+        else:
+            md += f"{header_prefix} {node.get('label', '主题')}\n"
+    else:
+        # 非 PPT 标题部分：先输出标题（用节点的 label）
+        if node.get("label"):
+            md += f"{header_prefix} {node['label']}\n"
+        # 再输出内容
+        if node.get("content"):
+            # 如果内容中已包含换行符，也确保每行都以换行结尾
+            for line in node["content"].splitlines():
+                md += line.rstrip() + "\n"
+    # 如果存在子节点，则递归转换，层级加 1
+    if node.get("children"):
+        for child in node["children"]:
+            md += node_to_markdown(child, level + 1)
+    return md
+
+
+def json_to_markdown(json_data: list) -> str:
+    """
+    将传入的 JSON 数据列表转换为 Markdown 文本。
+    如果第一个节点为“主题”，则将其作为 PPT 标题（一级标题），其余节点作为章节（二级标题）。
+    """
+    md = ""
+    for idx, node in enumerate(json_data):
+        # 如果第一个节点且 label 为“主题”，则使用一级标题
+        if idx == 0 and node.get("label", "") == "主题":
+            md += node_to_markdown(node, 1)
+        else:
+            md += node_to_markdown(node, 2)
+    return md
+
+
 @app.route("/api/generate_ppt_from_outline_and_render", methods=["POST"])
 def generate_and_render_ppt():
     try:
         # 从请求中获取 JSON 数据
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
-        markdown = data.get("markdown", "")
+        outline_json = data.get("outline_json", [])
         textbook_pdf_path = data.get("textbook_pdf_path", "")
-        llm = data.get("llm", "deepseek")
+        llm = data.get("llm", "qwen")
         top_p = data.get("top_p", 0.9)
-        temperature = data.get("temperature", 0.7)
+        temperature = data.get("temperature", 0.4)
 
         if not knowledge_point:
             return jsonify({"error": "knowledge_point 参数为空"}), 400
@@ -749,30 +799,36 @@ def generate_and_render_ppt():
         # 读取教材内容
         textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
 
+        # 将大纲 JSON 转换为标准格式 Markdown
+        outline_markdown = json_to_markdown(outline_json)
+
         # 构造提示词
         prompt = prompt_builder.generate_ppt_from_outline_prompt(
             knowledge_point,
-            markdown,
+            outline_markdown,
             textbook_content
         )
 
         # 根据模型类型调用不同的流式接口
         if llm.lower() == 'qwen':
-            response_generator = large_model_service.get_answer_from_Tyqwen(prompt)
+            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
             # return Response(response_generator, content_type='text/plain; charset=utf-8')
 
         elif llm.lower() == 'deepseek':
-            response_generator = large_model_service.get_answer_from_deepseek(prompt)
+            response_text = large_model_service.get_answer_from_deepseek(prompt)
             # return Response(response_generator, content_type='text/plain; charset=utf-8')
         else:
             return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
 
-        # 4. 渲染为PPT
-        ppt_url = markdown_to_ppt.render_markdown_to_ppt(response_generator, title=knowledge_point)
+        filled_markdown = response_text
+
+        # 调用渲染 PPT 的方法，生成 PPT 并获取下载链接
+        ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=filled_markdown)
+
         return jsonify({
             "status": "success",
             "ppt_url": ppt_url,
-            "markdown_preview": markdown_text[:200] + "..."  # 可选
+            "filled_markdown_preview": filled_markdown
         })
 
     except Exception as e:
