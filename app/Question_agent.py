@@ -440,7 +440,7 @@ def render_lecture_page(node_children_pairs, level):
     for node, children in node_children_pairs:
         md.append(f"{'#' * level} {node}")
         md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：【请填写】对“{node}”的定义、概念讲解与背景说明。")
+        md.append(f"- **知识点定义与讲解**：“{node}”的定义、概念讲解与背景说明。")
         md.append("")  # 添加一个换行，确保每个知识点分段
     return md
 
@@ -469,7 +469,7 @@ def render_summary_page(knowledge_point):
     return [
         "## 小结",
         f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。",
-        "- 【请填写】各子知识点之间的关系与逻辑顺序。\n",
+        "- 各子知识点之间的关系与逻辑顺序。\n",
         ""
     ]
 
@@ -499,7 +499,7 @@ def render_outline_with_exercises(tree, level=2):
         # 知识点介绍页
         md.append(f"{'#' * lvl} {node}")
         md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：【请填写】“{node}”的定义、概念讲解与背景说明。\n")
+        md.append(f"- **知识点定义与讲解**：“{node}”的定义、概念讲解与背景说明。\n")
 
         # 知识点对应习题页
         exs = get_exercises_by_knowledge(node)
@@ -559,9 +559,12 @@ def convert_markdown_to_structured_json(markdown_str: str, allowed_components: l
         result_sections = []
 
         for i, line in enumerate(lines):
-            # 匹配一级章节标题（比如 # 地转偏向）
-            if re.match(r"^# (.+)", line):
-                # 如果之前有主章节，保存
+            sline = line.strip()  # 去除前后空白字符
+            # 调试：打印当前行
+            # print(f"当前行：{sline}")
+
+            # 匹配新的一级标题（例如 "# 地转偏向"）
+            if re.match(r"^# (.+)", sline):
                 if current_main:
                     result_sections.append({
                         "label": "知识讲解",
@@ -569,24 +572,27 @@ def convert_markdown_to_structured_json(markdown_str: str, allowed_components: l
                         "content": current_main,
                         "children": current_children
                     })
-                    current_children = []
+                # 重置当前章节数据
+                current_main = None
+                current_children = []
+                continue
 
-            # 匹配知识点讲解行（子章节）
-            if "**知识点定义与讲解**" in line:
-                match = re.search(r"对“(.+?)”的定义.*?说明。?", line)
+            # 匹配知识讲解段落
+            if "**知识点定义与讲解**" in sline:
+                match = re.search(r"[“\"'](.+?)[”\"']的定义", sline)
                 if match:
-                    point_name = match.group(1)
-                    point_content = line.strip()
-                    if not current_main:
-                        current_main = point_content
+                    # 调试：输出匹配到的知识点名称
+                    # print(f"匹配到知识点：{match.group(1)}")
+                    if current_main is None:
+                        current_main = sline
                     else:
                         current_children.append({
                             "label": "知识讲解",
                             "type": "sub",
-                            "content": point_content
+                            "content": sline
                         })
 
-        # 最后一组也要加进去
+        # 最后一组也要加入
         if current_main:
             result_sections.append({
                 "label": "知识讲解",
@@ -644,7 +650,7 @@ def get_ppt_outline():
         md = []
         if "主题" in components:
             md.append(f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用")
-            md.append(f"\n【请填写】对“{knowledge_point}”的定义、基本特征及应用背景。")
+            md.append(f"\n“{knowledge_point}”的定义、基本特征及应用背景。")
             md.append("")  # 添加一个换行，确保每个知识点分段
 
         if "教学要求" in components and teaching_requirements:
@@ -673,7 +679,7 @@ def get_ppt_outline():
             md.append("")  # 添加一个换行，确保每个知识点分段
 
         markdown_str = "\n".join(md)
-        # logger.info("生成的Markdown：\\n" + markdown_str)
+        logger.info("生成的Markdown：\\n" + markdown_str)
 
         # 2️⃣ 将 Markdown 转换为结构化 JSON（使用新版 strict 方法）
         structured_json = convert_markdown_to_structured_json(markdown_str, components)

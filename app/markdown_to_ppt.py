@@ -6,6 +6,7 @@ import requests
 import os
 import json
 import urllib.parse
+import textwrap
 
 # === 你的认证信息 ===
 API_KEY = "67ecfe70d70c4"
@@ -128,7 +129,7 @@ def render_markdown_to_ppt(title, markdown_text):
         "x-token": token,
         "x-channel": CHANNEL
     }
-
+    print(headers)
     # === 创建任务 ===
     data = {
         "type": "7",  # markdown粘贴生成
@@ -150,7 +151,7 @@ def render_markdown_to_ppt(title, markdown_text):
     payload = {
         "name": title,
         "task_id": task_id,
-        "template_id": 11668,
+        "template_id": template_id,
         "template_type": 1
     }
     headers_form = headers.copy()
@@ -212,19 +213,18 @@ def render_markdown_to_ppt(title, markdown_text):
 
 # === 测试入口 ===
 if __name__ == "__main__":
-    # 第一步：列出模板，人工挑选 ID
-    # get_template_list()
     title = "地球运动"
-    markdown = """
-    # 地球运动
+    markdown = textwrap.dedent("""\
+        # 地球运动
 
-    ## 地球自转
-    地球每天自转一圈，产生昼夜交替现象。
+        ## 地球自转
+        地球每天自转一圈，产生昼夜交替现象。
 
-    ## 地球公转
-    地球一周公转约365天，产生四季变化。
+        ## 地球公转
+        地球一周公转约365天，产生四季变化。
 
-    ## 公转与黄赤交角
-    太阳直射点随季节移动，是四季的根本原因。
-    """
+        ## 公转与黄赤交角
+        太阳直射点随季节移动，是四季的根本原因。
+    """)
+
     render_markdown_to_ppt(title, markdown)
