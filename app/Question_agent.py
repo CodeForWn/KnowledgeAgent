@@ -440,8 +440,8 @@ def render_lecture_page(node_children_pairs, level):
     for node, children in node_children_pairs:
         md.append(f"{'#' * level} {node}")
         md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：在此处补充对“{node}”的定义、概念讲解与背景说明。")
-        md.append("---")
+        md.append(f"- **知识点定义与讲解**：【请填写】对“{node}”的定义、概念讲解与背景说明。")
+        md.append("")  # 添加一个换行，确保每个知识点分段
     return md
 
 def flatten_subtree(node, subtree):
@@ -451,26 +451,7 @@ def flatten_subtree(node, subtree):
         result.extend(flatten_subtree(child, sub))
     return result
 
-def render_paginated_outline(tree, max_nodes_per_page=5, level=2):
-    md = []
-
-    for root, children in tree.items():
-        flat_nodes = flatten_subtree(root, children)  # 展开当前一级知识点及其子图
-        total_nodes = len(flat_nodes)
-
-        if total_nodes <= max_nodes_per_page:
-            md.append(f"# {root} - 第1页")
-            md.extend(render_lecture_page(flat_nodes, level))
-        else:
-            # 分页输出
-            for i in range(0, total_nodes, max_nodes_per_page):
-                chunk = flat_nodes[i:i + max_nodes_per_page]
-                md.append(f"# {root} - 第{i // max_nodes_per_page + 1}页")
-                md.extend(render_lecture_page(chunk, level))
-
-    return md
-
-def render_paginated_outline_final(tree, max_nodes_per_page=6, level=2):
+def render_paginated_outline_final(tree, max_nodes_per_page, level=2):
     md = []
     for root, children in tree.items():
         # ✅ 不再介绍根节点，只讲解它的一级子节点及其下属子图
@@ -479,18 +460,17 @@ def render_paginated_outline_final(tree, max_nodes_per_page=6, level=2):
             total = len(flat_nodes)
             for i in range(0, total, max_nodes_per_page):
                 page_nodes = flat_nodes[i:i + max_nodes_per_page]
-                page_no = i // max_nodes_per_page + 1
-                md.append(f"# {first_level_node} - 第{page_no}页")
+                md.append(f"# {first_level_node}")
+                md.append("")  # 添加一个换行，确保每个知识点分段
                 md.extend(render_lecture_page(page_nodes, level))
     return md
-
 
 def render_summary_page(knowledge_point):
     return [
         "## 小结",
         f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。",
-        "- 【请填写】各子知识点之间的关系与逻辑顺序。",
-        "---"
+        "- 【请填写】各子知识点之间的关系与逻辑顺序。\n",
+        ""
     ]
 
 def render_exercise_pages(knowledge_points, level=2):
@@ -507,7 +487,7 @@ def render_exercise_pages(knowledge_points, level=2):
             md.append(f"{'#' * level} 习题 {exercise_id}")
             md.append(f"### {ex['title']}")
             md.extend(ex["content"].splitlines())
-            md.append("---")
+            md.append("")  # 添加一个换行，确保每个知识点分段
             exercise_id += 1
     return md
 
@@ -519,8 +499,7 @@ def render_outline_with_exercises(tree, level=2):
         # 知识点介绍页
         md.append(f"{'#' * lvl} {node}")
         md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：【请填写】“{node}”的定义、概念讲解与背景说明。")
-        md.append("---")
+        md.append(f"- **知识点定义与讲解**：【请填写】“{node}”的定义、概念讲解与背景说明。\n")
 
         # 知识点对应习题页
         exs = get_exercises_by_knowledge(node)
@@ -534,7 +513,6 @@ def render_outline_with_exercises(tree, level=2):
                 lines = content.splitlines() if isinstance(content, str) else [str(content)]
                 for line in lines:
                     md.append(str(line))
-            md.append("---")
 
         # 子节点递归
         for child, sub in children.items():
@@ -545,6 +523,102 @@ def render_outline_with_exercises(tree, level=2):
 
     return md
 
+def convert_markdown_to_structured_json(markdown_str: str, allowed_components: list) -> list:
+    result = []
+
+    def include(label):
+        return label in allowed_components
+
+    # 1. 主题
+    if include("主题"):
+        theme_match = re.search(r"# (.*?)——(.*?)\n+([^#\n]+(?:\n[^#\n]+)*)", markdown_str)
+        if theme_match:
+            result.append({
+                "label": "主题",
+                "type": "main",
+                "content": f"{theme_match.group(1)}——{theme_match.group(2)}\n\n{theme_match.group(3).strip()}"
+            })
+
+    # 2. 教学要求
+    if include("教学要求"):
+        teach_match = re.search(r"## 教学基本要求\n+([\s\S]+?)\n+# ", markdown_str)
+        if not teach_match:
+            teach_match = re.search(r"## 教学基本要求\n+([\s\S]+)", markdown_str)
+        if teach_match:
+            result.append({
+                "label": "教学要求",
+                "type": "main",
+                "content": teach_match.group(1).strip()
+            })
+
+    # 知识讲解
+    if include("知识讲解"):
+        lines = markdown_str.splitlines()
+        current_main = None
+        current_children = []
+        result_sections = []
+
+        for i, line in enumerate(lines):
+            # 匹配一级章节标题（比如 # 地转偏向）
+            if re.match(r"^# (.+)", line):
+                # 如果之前有主章节，保存
+                if current_main:
+                    result_sections.append({
+                        "label": "知识讲解",
+                        "type": "main",
+                        "content": current_main,
+                        "children": current_children
+                    })
+                    current_children = []
+
+            # 匹配知识点讲解行（子章节）
+            if "**知识点定义与讲解**" in line:
+                match = re.search(r"对“(.+?)”的定义.*?说明。?", line)
+                if match:
+                    point_name = match.group(1)
+                    point_content = line.strip()
+                    if not current_main:
+                        current_main = point_content
+                    else:
+                        current_children.append({
+                            "label": "知识讲解",
+                            "type": "sub",
+                            "content": point_content
+                        })
+
+        # 最后一组也要加进去
+        if current_main:
+            result_sections.append({
+                "label": "知识讲解",
+                "type": "main",
+                "content": current_main,
+                "children": current_children
+            })
+
+        result.extend(result_sections)
+
+    # 小结
+    if include("小结"):
+        summary_match = re.search(r"## 小结\n([\s\S]*?)(?:\n## |\Z)", markdown_str)
+        if summary_match:
+            result.append({
+                "label": "小结",
+                "type": "main",
+                "content": summary_match.group(1).strip()
+            })
+
+    # 习题
+    if include("习题"):
+        exercise_match = re.search(r"(## 习题[\s\S]*)", markdown_str)
+        if exercise_match:
+            result.append({
+                "label": "习题",
+                "type": "main",
+                "content": exercise_match.group(1).strip()
+            })
+
+    return result
+
 
 @app.route("/api/generate_ppt_outline", methods=["POST"])
 def get_ppt_outline():
@@ -552,6 +626,8 @@ def get_ppt_outline():
         # 从请求中获取 JSON 数据
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
+        # 可选：用户指定输出哪些部分
+        components = data.get("components", ["主题", "教学要求", "知识讲解", "小结", "习题"])
         if not knowledge_point:
             return jsonify({"error": "knowledge_point 参数为空"}), 400
 
@@ -564,34 +640,48 @@ def get_ppt_outline():
         knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
         logger.info(f"知识树结构如下：{json.dumps(knowledge_tree, ensure_ascii=False)}")
 
-        # 开始生成 Markdown
+        # 1️⃣ 构建 markdown 内容
         md = []
-        md.append(f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用\n")
-        md.append(f"【请填写】对“{knowledge_point}”的定义、基本特征及应用背景。\n")
-        md.append("---\n")
+        if "主题" in components:
+            md.append(f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用")
+            md.append(f"\n【请填写】对“{knowledge_point}”的定义、基本特征及应用背景。")
+            md.append("")  # 添加一个换行，确保每个知识点分段
 
-        if teaching_requirements:
-            md.append("## 教学基本要求\n")
+        if "教学要求" in components and teaching_requirements:
+            md.append("## 教学基本要求")
             md.append("<!-- 教学要求部分，包含考纲目标与学习提示 -->")
             for line in teaching_requirements.strip().splitlines():
                 if line.strip():
                     md.append(f"- {line.strip()}")
-            md.append("\n---\n")
+            md.append("")  # 添加一个换行，确保每个知识点分段
 
-        # ✅ 分页讲解内容（不再讲解根节点）
-        K = data.get("max_nodes_per_page", 6)
-        md.extend(render_paginated_outline_final(knowledge_tree, max_nodes_per_page=K))
+        if "知识讲解" in components:
+            md.extend(
+                render_paginated_outline_final(knowledge_tree, max_nodes_per_page=data.get("max_nodes_per_page", 6)))
+            md.append("")  # 添加一个换行，确保每个知识点分段
 
-        # 小结页
-        md.extend(render_summary_page(knowledge_point))
+        if "小结" in components:
+            md.extend(render_summary_page(knowledge_point))
+            md.append("")  # 添加一个换行，确保每个知识点分段
 
-        # 统一召回所有习题（包括根节点和全部子节点）
-        all_knowledge_points = collect_all_nodes(knowledge_tree)
-        md.extend(render_exercise_pages(all_knowledge_points, level=2))
+        if "习题" in components:
+            all_knowledge_points = collect_all_nodes(knowledge_tree)
+            md.extend(render_exercise_pages(
+                knowledge_points=all_knowledge_points,
+                level=2
+            ))
+            md.append("")  # 添加一个换行，确保每个知识点分段
 
         markdown_str = "\n".join(md)
-        return Response(markdown_str, content_type="text/markdown; charset=utf-8")
+        # logger.info("生成的Markdown：\\n" + markdown_str)
+
+        # 2️⃣ 将 Markdown 转换为结构化 JSON（使用新版 strict 方法）
+        structured_json = convert_markdown_to_structured_json(markdown_str, components)
+
+        return jsonify(structured_json)
+
     except Exception as e:
+        logger.exception("生成 PPT 大纲失败")
         return jsonify({"error": str(e)}), 500
 
 
