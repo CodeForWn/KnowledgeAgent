@@ -857,6 +857,76 @@ class PromptBuilder:
 
         return messages
 
+    @staticmethod
+    def generate_single_page_prompt(page_markdown, textbook_text):
+        system_content = (
+            "## Role：教学讲解专家\n\n"
+            "## 任务描述\n"
+            "你是一位具备教学设计能力的 AI 教师助理，能够根据大纲片段与教材内容，完成教学讲解内容撰写任务。\n\n"
+            "## 任务目标\n"
+            "- 理解教材内容，识别与当前大纲片段相关的重点知识；\n"
+            "- 围绕给定大纲，生成该页内容的完整讲解，覆盖每个要点；\n"
+            "- 内容层次清晰，语言适合课堂教学场景，结构规范。\n\n"
+            "## 输出要求\n"
+            "- 输出为完整的 Markdown 格式；\n"
+            "- 保留原始大纲结构（标题、列表项等），在其下补充完整教学内容；\n"
+            "- 内容应包括讲解说明、示意图描述（如有）、计算说明（如适用）、课堂互动建议等；\n"
+            "- 不要重复输出教材原文，而是提炼讲解；\n"
+            "- 严禁输出“暂无内容”或“无法生成”等形式的占位语。\n\n"
+            "## 注意\n"
+            "- 若大纲中包含多个知识点，建议合并讲解或逻辑串联。\n"
+            "- 若涉及计算内容，请详细列出计算原理、公式与应用示例。"
+        )
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {
+                "role": "user",
+                "content": (
+                    f"### 当前教学大纲页 Markdown 内容如下：\n{page_markdown}\n\n"
+                    f"### 教材全文如下（供参考使用）：\n{textbook_text[:10000]}"
+                )
+            }
+        ]
+
+        return messages
+
+    @staticmethod
+    def generate_theme_prompt(markdown, textbook_text):
+        system_content = (
+            "## Role：教学课件设计专家\n\n"
+            "## 任务描述\n"
+            "你是一位高中地理课件编写专家，请根据教材内容撰写教学课件中主题页的内容大纲，包括主题知识点的概述、重要意义，可用一个近年来的地理现象来引出这个主题\n\n"
+            "## 输出要求\n"
+            "- 输出保持原有标题结构；\n"
+            "- 引导性语言、定义、应用场景、图示建议、生活化类比、经典引言等形式均可使用；\n"
+            "- 内容应简洁明了，适合作为主题页出现，不要太多字数\n"
+        )
+
+        return [
+            {"role": "system", "content": system_content},
+            {"role": "user",
+             "content": f"### 当前页 Markdown：\n{markdown}\n\n### 教材内容如下：\n{textbook_text[:10000]}"}
+        ]
+
+    @staticmethod
+    def generate_chapter_prompt(chapter, markdown, textbook_text):
+        system_content = (
+            "## Role：教学课件设计专家\n\n"
+            "## 任务描述\n"
+            "你是一位高中地理课件编写专家，你需要根据提供的章节内容要求和教材内容为页面生成这一页的课件大纲\n\n"
+            "## 输出要求\n"
+            "- 内容应结构清晰、语言适合教学、逻辑层次分明；\n"
+            "- 每一页的内容不要过多，适合在课件中展示；\n"
+            "- 建议包含定义、基本特征、作用、背景知识、引导示例等。"
+        )
+
+        return [
+            {"role": "system", "content": system_content},
+            {"role": "user",
+             "content": f"### 当前章节的内容及要求：{chapter}\n\n{markdown}\n\n### 教材全文如下：\n{textbook_text[:10000]}"}
+        ]
+
 # # 测试
 # # 加载配置
 # # 使用环境变量指定环境并加载配置

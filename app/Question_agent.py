@@ -102,6 +102,7 @@ def get_question_agent():
             docID = res.get("docID")
             # 从 MongoDB 查询该资源的详细信息（例如 file_path 等）
             resource_detail = mongo_handler.get_resource_by_docID(docID)
+            logger.info(f"资源 docID={docID} 的详情信息：{resource_detail}")
             if not resource_detail:
                 logger.warning(f"资源未找到：docID = {docID}")
                 continue
@@ -125,7 +126,6 @@ def get_question_agent():
                 if resource_type == "试题" and diff_level == difficulty_level.strip() and ques_type == question_type.strip():
                     try:
                         if file_path.endswith(".docx"):
-                            from docx import Document
                             doc = Document(file_path)
                             paras = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
                             question_text = "\n".join(paras)
@@ -233,6 +233,8 @@ def get_question_agent():
         if llm.lower() == 'qwen':
             response_text = large_model_service.get_answer_from_Tyqwen(prompt)
             result = json.loads(response_text)  # 假设返回的是 JSON 字符串
+            logger.info(f"大模型返回原始内容: {repr(response_text)}")
+
             return jsonify({
                 "code": 200,
                 "msg": "success",
@@ -240,8 +242,10 @@ def get_question_agent():
             })
 
         if llm.lower() == 'deepseek':
-            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
+            response_text = large_model_service.get_answer_from_deepseek(prompt)
             result = json.loads(response_text)  # 假设返回的是 JSON 字符串
+            logger.info(f"大模型返回原始内容: {repr(response_text)}")
+
             return jsonify({
                 "code": 200,
                 "msg": "success",
@@ -434,36 +438,36 @@ def split_subtree_by_count(root, subtree, max_nodes):
     pages.append(flat_nodes)
     return pages
 
-# 渲染一页讲解
+# ✅ 新的讲解页渲染方式：每章一个页，列出所有子知识点 + 自动讲解提示
 def render_lecture_page(node_children_pairs, level):
-    md = []
-    for node, children in node_children_pairs:
-        md.append(f"{'#' * level} {node}")
-        md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：“{node}”的定义、概念讲解与背景说明。")
-        md.append("")  # 添加一个换行，确保每个知识点分段
+    chapter_title, sub_tree = node_children_pairs[0]
+    sub_points = list(sub_tree.keys())
+    md = [f"{'#' * level} {chapter_title}", ""]
+    md.append(f"{'#' * (level + 1)} 本章知识点概览\n")
+    md.extend([f"- {p}" for p in sub_points] if sub_points else ["（暂无子知识点）", ""])
+    md.append("<!-- 请大模型根据教材内容自动分析上述知识点：")
+    md.append("1. 判断知识点之间的逻辑关系和串联讲解方式；")
+    md.append("2. 若涉及计算，请详细介绍计算原理及应用步骤；")
+    md.append("3. 根据内容合理拆分为多个页面，每页明确主标题和副标题。 -->\n")
     return md
 
+
+# ✅ 不变：拍平子树（返回的是 [(node, subtree)]）
 def flatten_subtree(node, subtree):
-    """将一个子树拍平成 (node, children) 列表，深度优先"""
     result = [(node, subtree)]
     for child, sub in subtree.items():
         result.extend(flatten_subtree(child, sub))
     return result
 
-def render_paginated_outline_final(tree, max_nodes_per_page, level=2):
+
+# ✅ 修改后的分页逻辑：不再按照 max_nodes_per_page 拆分，而是每章一页
+def render_paginated_outline_final(tree, level=2):
     md = []
     for root, children in tree.items():
-        # ✅ 不再介绍根节点，只讲解它的一级子节点及其下属子图
         for first_level_node, sub_tree in children.items():
-            flat_nodes = flatten_subtree(first_level_node, sub_tree)
-            total = len(flat_nodes)
-            for i in range(0, total, max_nodes_per_page):
-                page_nodes = flat_nodes[i:i + max_nodes_per_page]
-                md.append(f"# {first_level_node}")
-                md.append("")  # 添加一个换行，确保每个知识点分段
-                md.extend(render_lecture_page(page_nodes, level))
+            md.extend(render_lecture_page([(first_level_node, sub_tree)], level))
     return md
+
 
 def render_summary_page(knowledge_point):
     return [
@@ -474,54 +478,20 @@ def render_summary_page(knowledge_point):
     ]
 
 def render_exercise_pages(knowledge_points, level=2):
-    md = []
-    exercise_id = 1
-    seen_questions = set()
+    md, seen = [], set()
+    idx = 1
     for point in knowledge_points:
-        exercises = get_exercises_by_knowledge(point)
-        for ex in exercises:
-            content_key = (ex["title"], ex["content"][:30])
-            if content_key in seen_questions:
-                continue
-            seen_questions.add(content_key)
-            md.append(f"{'#' * level} 习题 {exercise_id}")
+        for ex in get_exercises_by_knowledge(point):
+            key = (ex["title"], ex["content"][:30])
+            if key in seen: continue
+            seen.add(key)
+            md.append(f"{'#' * level} 习题 {idx}")
             md.append(f"### {ex['title']}")
             md.extend(ex["content"].splitlines())
-            md.append("")  # 添加一个换行，确保每个知识点分段
-            exercise_id += 1
+            md.append("")
+            idx += 1
     return md
 
-def render_outline_with_exercises(tree, level=2):
-    """渲染知识结构 + 习题页 Markdown，返回每一行组成的 list[str]"""
-    md = []
-
-    def dfs(node, children, lvl):
-        # 知识点介绍页
-        md.append(f"{'#' * lvl} {node}")
-        md.append(f"<!-- 知识点“{node}”讲解页 -->")
-        md.append(f"- **知识点定义与讲解**：“{node}”的定义、概念讲解与背景说明。\n")
-
-        # 知识点对应习题页
-        exs = get_exercises_by_knowledge(node)
-        logger.info(f"知识点 [{node}] 找到 {len(exs)} 条试题")
-        if exs:
-            md.append(f"{'#' * lvl} {node} - 随堂练习")
-            for idx, ex in enumerate(exs, 1):
-                md.append(f"### {idx}. {ex['title']}")
-                content = ex.get("content", "")
-                # ⚠️ 强制转为纯字符串行
-                lines = content.splitlines() if isinstance(content, str) else [str(content)]
-                for line in lines:
-                    md.append(str(line))
-
-        # 子节点递归
-        for child, sub in children.items():
-            dfs(child, sub, lvl + 1)
-
-    for root, children in tree.items():
-        dfs(root, children, level)
-
-    return md
 
 def convert_markdown_to_structured_json(markdown_str: str, allowed_components: list) -> list:
     result = []
@@ -551,54 +521,41 @@ def convert_markdown_to_structured_json(markdown_str: str, allowed_components: l
                 "content": teach_match.group(1).strip()
             })
 
-    # 知识讲解
+    # 知识讲解（修改后的版本）
     if include("知识讲解"):
-        lines = markdown_str.splitlines()
-        current_main = None
-        current_children = []
-        result_sections = []
+        current_chapter, chapter_subpoints, in_chapter = None, [], False
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            chapter_match = re.match(r"^# (.+)", line)
+            if chapter_match:
+                next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
+                if next_line.startswith("## 本章知识点概览"):
+                    if current_chapter:
+                        content = f"本章节围绕【{current_chapter}】展开讲解，涵盖以下知识点：{', '.join(chapter_subpoints)}。"
+                        content += "\n\n请根据教材内容，自行判断知识点的逻辑关系及串联方式。若涉及计算，请详细说明计算应用与步骤。请合理划分为多个页面，每页明确主标题和副标题。"
+                        result.append({"label": "知识讲解", "type": "main", "content": content, "children": []})
+                    current_chapter, chapter_subpoints, in_chapter = chapter_match.group(1), [], True
+                    i += 2
+                    continue
+            if in_chapter and line.startswith("- "):
+                chapter_subpoints.append(line[2:].strip())
+            i += 1
+        if current_chapter:
+            content = f"本章节围绕【{current_chapter}】展开讲解，涵盖以下知识点：{', '.join(chapter_subpoints)}。"
+            content += "\n\n请根据教材内容，自行判断知识点的逻辑关系及串联方式。若涉及计算，请详细说明计算应用与步骤。请合理划分为多个页面，每页明确主标题和副标题。"
+            result.append({"label": "知识讲解", "type": "main", "content": content, "children": []})
 
-        for i, line in enumerate(lines):
-            sline = line.strip()  # 去除前后空白字符
-            # 调试：打印当前行
-            # print(f"当前行：{sline}")
+        # 最后一章内容添加（避免遗漏）
+        if current_chapter:
+            chapter_content = f"本章节围绕【{current_chapter}】展开讲解，涵盖以下知识点：{', '.join(chapter_subpoints)}。"
+            chapter_content += "\n\n请根据教材内容，自行判断知识点的逻辑关系及串联方式。若涉及计算，请详细说明计算应用与步骤。请合理划分为多个页面，每页明确主标题和副标题。"
 
-            # 匹配新的一级标题（例如 "# 地转偏向"）
-            if re.match(r"^# (.+)", sline):
-                if current_main:
-                    result_sections.append({
-                        "label": "知识讲解",
-                        "type": "main",
-                        "content": current_main,
-                        "children": current_children
-                    })
-                # 重置当前章节数据
-                current_main = None
-                current_children = []
-                continue
-
-            # 匹配知识讲解段落
-            if "**知识点定义与讲解**" in sline:
-                match = re.search(r"[“\"'](.+?)[”\"']的定义", sline)
-                if match:
-                    # 调试：输出匹配到的知识点名称
-                    # print(f"匹配到知识点：{match.group(1)}")
-                    if current_main is None:
-                        current_main = sline
-                    else:
-                        current_children.append({
-                            "label": "知识讲解",
-                            "type": "sub",
-                            "content": sline
-                        })
-
-        # 最后一组也要加入
-        if current_main:
             result_sections.append({
                 "label": "知识讲解",
                 "type": "main",
-                "content": current_main,
-                "children": current_children
+                "content": chapter_content,
+                "children": []
             })
 
         result.extend(result_sections)
@@ -626,12 +583,13 @@ def convert_markdown_to_structured_json(markdown_str: str, allowed_components: l
     return result
 
 
-@app.route("/api/generate_ppt_outline", methods=["POST"])
+@app.route("/api/generate_ppt_outline_old", methods=["POST"])
 def get_ppt_outline():
     try:
         # 从请求中获取 JSON 数据
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
+        textbook_pdf_path = data.get("textbook_pdf_path", "")
         # 可选：用户指定输出哪些部分
         components = data.get("components", ["主题", "教学要求", "知识讲解", "小结", "习题"])
         if not knowledge_point:
@@ -645,6 +603,9 @@ def get_ppt_outline():
         # 构建完整知识树（保留中间节点）
         knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
         logger.info(f"知识树结构如下：{json.dumps(knowledge_tree, ensure_ascii=False)}")
+
+        # 构建 Markdown + 类型标记
+        pages = []
 
         # 1️⃣ 构建 markdown 内容
         md = []
@@ -663,7 +624,7 @@ def get_ppt_outline():
 
         if "知识讲解" in components:
             md.extend(
-                render_paginated_outline_final(knowledge_tree, max_nodes_per_page=data.get("max_nodes_per_page", 6)))
+                render_paginated_outline_final(knowledge_tree))
             md.append("")  # 添加一个换行，确保每个知识点分段
 
         if "小结" in components:
@@ -679,16 +640,217 @@ def get_ppt_outline():
             md.append("")  # 添加一个换行，确保每个知识点分段
 
         markdown_str = "\n".join(md)
-        logger.info("生成的Markdown：\\n" + markdown_str)
+        textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
+        prompt = prompt_builder.generate_ppt_from_outline_prompt(knowledge_point, markdown_str, textbook_content)
 
-        # 2️⃣ 将 Markdown 转换为结构化 JSON（使用新版 strict 方法）
-        structured_json = convert_markdown_to_structured_json(markdown_str, components)
+        if llm.lower() == 'qwen':
+            stream = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
+        elif llm.lower() == 'deepseek':
+            stream = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
+        else:
+            return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
+
+        return Response(stream, content_type='text/plain; charset=utf-8')
+
+    except Exception as e:
+        logger.exception("生成大纲失败")
+        return jsonify({"error": str(e)}), 500
+
+def split_content_to_pages(title, content, type_, max_lines=30):
+    """将内容按行分页为多个 JSON 页面"""
+    lines = content.strip().splitlines()
+    pages = []
+    for i in range(0, len(lines), max_lines):
+        page_lines = lines[i:i + max_lines]
+        page_content = "\n".join(page_lines)
+        pages.append({
+            "label": "知识讲解" if type_ in ["main", "sub"] else type_,
+            "type": type_,
+            "content": page_content.strip(),
+            "children": [],
+        })
+    return pages
+
+def render_exercise_pages_grouped_by_kp(knowledge_points, level=2):
+    seen = set()
+    exercise_pages = []
+
+    for point in knowledge_points:
+        exercises = get_exercises_by_knowledge(point)
+        if not exercises:
+            continue
+
+        lines = [f"{'#' * level} 习题 - {point}"]
+        count = 1
+        for ex in exercises:
+            key = (ex["title"], ex["content"][:30])
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(f"### 题目 {count}: {ex['title']}")
+            lines.extend(ex["content"].splitlines())
+            lines.append("")
+            count += 1
+
+        if count > 1:
+            page_md = "\n".join(lines)
+            exercise_pages.append({
+                "label": "习题",
+                "type": "main",
+                "title": point,
+                "content": page_md,
+                "children": []
+            })
+
+    return exercise_pages
+
+@app.route("/api/generate_ppt_outline", methods=["POST"])
+def generate_ppt_outline():
+    try:
+        data = request.get_json()
+        knowledge_point = data.get("knowledge_point", "")
+        textbook_pdf_path = data.get("textbook_pdf_path", "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/第一单元地球自转部分.pdf")
+        llm = data.get("llm", "qwen")
+        top_p = data.get("top_p", 0.9)
+        temperature = data.get("temperature", 0.7)
+        components = data.get("components", ["主题", "教学要求", "知识讲解", "小结", "习题"])
+
+        if not knowledge_point or not textbook_pdf_path:
+            return jsonify({"error": "参数缺失：knowledge_point 或 textbook_pdf_path"}), 400
+
+        # 教材全文
+        textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
+        logger.info(f"[教材加载成功] 教材长度: {len(textbook_content)} 字符")
+
+        if not textbook_content:
+            return jsonify({"error": "教材内容为空或读取失败"}), 400
+
+        # 教学要求 & 知识结构
+        entity_details = neo4j_handler.get_entity_details(knowledge_point)
+        entity_info = entity_details.get("entity", {})
+        teaching_requirements = entity_info.get("teaching_requirements", "")
+        knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
+
+        # 构建 Markdown + 类型标记
+        pages = []
+
+        if "主题" in components:
+            pages.append({
+                "type": "主题",
+                "markdown": f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用\n\n“{knowledge_point}”的定义、基本特征及应用背景。"
+            })
+
+        if "教学要求" in components and teaching_requirements:
+            lines = ["## 教学基本要求", "<!-- 教学要求部分，包含考纲目标与学习提示 -->"]
+            lines += [f"- {line.strip()}" for line in teaching_requirements.strip().splitlines() if line.strip()]
+            pages.append({
+                "type": "教学要求",
+                "markdown": "\n".join(lines)
+            })
+
+        # 知识讲解页
+        if "知识讲解" in components:
+            for _, children in knowledge_tree.items():
+                for chapter, sub_tree in children.items():
+                    subpoints = list(sub_tree.keys())
+
+                    # 第一页：main（概念/规律）
+                    lines_main = [f"# {chapter}", "## 本章知识点概览"]
+                    lines_main += [f"- {p}" for p in subpoints] if subpoints else ["（暂无子知识点）"]
+                    lines_main.append("<!-- 请大模型生成本章定义、核心概念、基本规律、原理背景等内容 -->")
+                    pages.append({
+                        "type": "main",
+                        "title": chapter,
+                        "markdown": "\n".join(lines_main)
+                    })
+
+                    # 第二页：sub（统一讲解所有子知识点）
+                    lines_sub = [f"## {chapter} - 子知识点整合讲解", "以下为本章节下的所有子知识点："]
+                    lines_sub += [f"- {p}" for p in subpoints] if subpoints else ["（暂无子知识点）"]
+                    lines_sub.append(
+                        "<!-- 请大模型基于教材内容和地理知识，整合讲解以上知识点。若内容较多可合理分页，每页明确标题。 -->")
+                    pages.append({
+                        "type": "sub",
+                        "title": chapter,
+                        "markdown": "\n".join(lines_sub)
+                    })
+
+        if "小结" in components:
+            all_kps = []
+            for _, children in knowledge_tree.items():
+                for chapter, sub_tree in children.items():
+                    all_kps.extend(list(sub_tree.keys()))
+
+            lines = [
+                "## 小结",
+                f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。",
+                f"- 涉及的子知识点包括：{', '.join(all_kps)}。",
+                "- 请梳理这些知识点之间的内在联系与逻辑顺序，构建本节总结。"
+            ]
+            pages.append({
+                "type": "小结",
+                "markdown": "\n".join(lines)
+            })
+
+        # 最终结构化输出
+        structured_json = []
+
+        for idx, page in enumerate(pages, 1):
+            logger.info(f"[处理页] 第 {idx} 页，类型: {page['type']}")
+            if page["type"] in ["主题", "main", "sub", "小结"]:
+                if page["type"] == "主题":
+                    messages = prompt_builder.generate_theme_prompt(page['markdown'], textbook_content)
+                elif page["type"] == "main":
+                    messages = prompt_builder.generate_chapter_prompt(page['title'], page['markdown'],
+                                                                           textbook_content)
+                elif page["type"] == "sub":
+                    messages = prompt_builder.generate_chapter_prompt(page['title'], page['markdown'],
+                                                                          textbook_content)
+                elif page["type"] == "小结":
+                    messages = prompt_builder.generate_chapter_prompt(page['type'], page['markdown'], textbook_content)
+
+                if llm == "qwen":
+                    content = "".join(large_model_service.get_answer_from_Tyqwen_stream(messages, top_p, temperature))
+                elif llm == "deepseek":
+                    content = "".join(large_model_service.get_answer_from_deepseek_stream(messages, top_p, temperature))
+                else:
+                    return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
+
+                logger.info(f"[模型返回] 第 {idx} 页生成完毕，内容长度: {len(content)}")
+                structured_json.extend(
+                split_content_to_pages(page.get("title", knowledge_point), content, page["type"], max_lines=30))
+
+            else:
+                logger.info(f"[跳过模型] 第 {idx} 页类型为 {page['type']}，直接填入 JSON")
+                structured_json.append({
+                    "label": page["type"],
+                    "type": page["type"],
+                    "content": page["markdown"].strip(),
+                    "children": []
+                })
+
+        # 习题部分（无需进入大模型）
+        if "习题" in components:
+            all_kps = collect_all_nodes(knowledge_tree)
+            exercise_pages = render_exercise_pages_grouped_by_kp(all_kps, level=2)
+            structured_json.extend(exercise_pages)
+
+        # 保存结果到 JSON 文件
+        save_dir = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果"
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{knowledge_point}_outline.json")
+
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(structured_json, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"[保存成功] 大纲已保存到 {save_path}")
 
         return jsonify(structured_json)
 
     except Exception as e:
-        logger.exception("生成 PPT 大纲失败")
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"接口异常：{str(e)}"}), 500
 
 
 @app.route("/api/generate_ppt_from_outline", methods=["POST"])
@@ -698,7 +860,7 @@ def generate_ppt():
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
         markdown = data.get("markdown", "")
-        textbook_pdf_path = data.get("textbook_pdf_path", "")
+        textbook_pdf_path = data.get("textbook_pdf_path", "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/第一单元地球自转部分.pdf")
         llm = data.get("llm", "deepseek")
         top_p = data.get("top_p", 0.9)
         temperature = data.get("temperature", 0.7)
