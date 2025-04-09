@@ -48,6 +48,17 @@ class FileManager:
         print("后端接口返回状态码：%s", response.status_code)
         return response.status_code
 
+    def download_file(self, url, local_path):
+        """
+        从指定的 URL 下载文件并保存到 local_path
+        """
+        response = requests.get(url, stream=True)
+        response.raise_for_status()  # 如果下载失败则抛异常
+        with open(local_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        return local_path
+
     def download_pdf(self, download_url, file_id):
         try:
             headers = {'token': file_id}

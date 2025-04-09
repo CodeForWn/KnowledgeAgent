@@ -33,6 +33,8 @@ import types
 import time
 import os
 from docx import Document
+from urllib.parse import urlparse
+
 
 app = Flask(__name__)
 CORS(app)
@@ -471,9 +473,9 @@ def render_paginated_outline_final(tree, level=2):
 
 def render_summary_page(knowledge_point):
     return [
-        "## 小结",
-        f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。",
-        "- 各子知识点之间的关系与逻辑顺序。\n",
+        "小结",
+        f"本节内容围绕{knowledge_point}展开，涵盖其相关原理与知识点。",
+        "各子知识点之间的关系与逻辑顺序。\n",
         ""
     ]
 
@@ -656,20 +658,48 @@ def get_ppt_outline():
         logger.exception("生成大纲失败")
         return jsonify({"error": str(e)}), 500
 
-def split_content_to_pages(title, content, type_, max_lines=30):
-    """将内容按行分页为多个 JSON 页面"""
-    lines = content.strip().splitlines()
+def split_content_to_pages(title, content, page_type, max_lines=30):
     pages = []
-    for i in range(0, len(lines), max_lines):
-        page_lines = lines[i:i + max_lines]
-        page_content = "\n".join(page_lines)
-        pages.append({
-            "label": "知识讲解" if type_ in ["main", "sub"] else type_,
-            "type": type_,
-            "content": page_content.strip(),
-            "children": [],
-        })
+
+    # 以“第1页：”“第2页：”等为分隔点进行拆分
+    pattern = r"(第\d+页：)"
+    parts = re.split(pattern, content)
+    grouped = []
+
+    # 将分页标题和内容组合起来
+    temp = ""
+    for i in range(len(parts)):
+        if re.match(pattern, parts[i]):
+            if temp:
+                grouped.append(temp.strip())
+            temp = parts[i]
+        else:
+            temp += parts[i]
+    if temp:
+        grouped.append(temp.strip())
+
+    # 构建分页结果
+    for i, page_content in enumerate(grouped):
+        if i == 0:
+            page = {
+                "label": page_type,
+                "type": page_type,
+                "title": title,
+                "content": page_content,
+                "children": []
+            }
+        else:
+            page = {
+                "label": "知识讲解",
+                "type": "sub",
+                "title": title,
+                "content": page_content,
+                "children": []
+            }
+        pages.append(page)
+
     return pages
+
 
 def render_exercise_pages_grouped_by_kp(knowledge_points, level=2):
     seen = set()
@@ -680,14 +710,14 @@ def render_exercise_pages_grouped_by_kp(knowledge_points, level=2):
         if not exercises:
             continue
 
-        lines = [f"{'#' * level} 习题 - {point}"]
+        lines = [f"习题页：{point}"]
         count = 1
         for ex in exercises:
             key = (ex["title"], ex["content"][:30])
             if key in seen:
                 continue
             seen.add(key)
-            lines.append(f"### 题目 {count}: {ex['title']}")
+            lines.append(f"题目 {count}: {ex['title']}")
             lines.extend(ex["content"].splitlines())
             lines.append("")
             count += 1
@@ -709,7 +739,7 @@ def generate_ppt_outline():
     try:
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
-        textbook_pdf_path = data.get("textbook_pdf_path", "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/第一单元地球自转部分.pdf")
+        textbook_pdf_path = data.get("textbook_pdf_path", "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/教学要点与单元实施（选择性必修）第一单元.docx")
         llm = data.get("llm", "qwen")
         top_p = data.get("top_p", 0.9)
         temperature = data.get("temperature", 0.7)
@@ -719,7 +749,7 @@ def generate_ppt_outline():
             return jsonify({"error": "参数缺失：knowledge_point 或 textbook_pdf_path"}), 400
 
         # 教材全文
-        textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
+        textbook_content = mongo_handler.read_docx(textbook_pdf_path)
         logger.info(f"[教材加载成功] 教材长度: {len(textbook_content)} 字符")
 
         if not textbook_content:
@@ -737,15 +767,16 @@ def generate_ppt_outline():
         if "主题" in components:
             pages.append({
                 "type": "主题",
-                "markdown": f"# {knowledge_point}——探索{knowledge_point}的原理、影响及实际应用\n\n“{knowledge_point}”的定义、基本特征及应用背景。"
+                "title": knowledge_point,
+                "description": f"本页任务：用一句话围绕知识点{knowledge_point}，结合考纲内容，输出该知识点的讲解思路。可以通过近年来和这个知识点相关的地理现象来引出这个知识点。"
             })
 
         if "教学要求" in components and teaching_requirements:
-            lines = ["## 教学基本要求", "<!-- 教学要求部分，包含考纲目标与学习提示 -->"]
-            lines += [f"- {line.strip()}" for line in teaching_requirements.strip().splitlines() if line.strip()]
+            lines = ["教学基本要求（来自考纲）："]
+            lines += [line.strip() for line in teaching_requirements.strip().splitlines() if line.strip()]
             pages.append({
                 "type": "教学要求",
-                "markdown": "\n".join(lines)
+                "description": "\n".join(lines)
             })
 
         # 知识讲解页
@@ -754,25 +785,30 @@ def generate_ppt_outline():
                 for chapter, sub_tree in children.items():
                     subpoints = list(sub_tree.keys())
 
-                    # 第一页：main（概念/规律）
-                    lines_main = [f"# {chapter}", "## 本章知识点概览"]
-                    lines_main += [f"- {p}" for p in subpoints] if subpoints else ["（暂无子知识点）"]
-                    lines_main.append("<!-- 请大模型生成本章定义、核心概念、基本规律、原理背景等内容 -->")
+                    # 第一页：main（只讲核心概念）
+                    description_main = (
+                        f"请为知识点“{chapter}”设计本页课件的大纲讲解思路。\n\n"
+                        f"本页是“{chapter}”这一一级知识点的主讲页面，目标是帮助学生理解其核心概念、基本特征、产生背景及地理意义。\n"
+                        f"请结合考纲和教材内容设计一段讲解思路，包括内容安排顺序、重点提示、教学语言风格等。\n"
+                        f"若内容较多，请建议分页，并使用“第1页：”等格式标出，并在每页开头保留章节标题{chapter}"
+                    )
                     pages.append({
                         "type": "main",
                         "title": chapter,
-                        "markdown": "\n".join(lines_main)
+                        "description": description_main
                     })
 
-                    # 第二页：sub（统一讲解所有子知识点）
-                    lines_sub = [f"## {chapter} - 子知识点整合讲解", "以下为本章节下的所有子知识点："]
-                    lines_sub += [f"- {p}" for p in subpoints] if subpoints else ["（暂无子知识点）"]
-                    lines_sub.append(
-                        "<!-- 请大模型基于教材内容和地理知识，整合讲解以上知识点。若内容较多可合理分页，每页明确标题。 -->")
+                    # 第二页：sub（统一讲解子知识点）
+                    description_sub = (
+                        f"请为知识点“{chapter}”下的子知识点设计本页课件的大纲讲解思路。\n\n"
+                        f"以下是“{chapter}”下的子知识点：{', '.join(subpoints) if subpoints else '暂无子知识点'}。\n"
+                        f"请结合考纲要求说明这些子知识点之间的教学顺序、内在联系、适合的引导方法及易错点提醒等。\n"
+                        f"请生成清晰结构化的讲解思路。若内容较多，请建议分页，并使用“第1页：”等格式标出，并在每页开头保留章节标题“{chapter}”。"
+                    )
                     pages.append({
                         "type": "sub",
                         "title": chapter,
-                        "markdown": "\n".join(lines_sub)
+                        "description": description_sub
                     })
 
         if "小结" in components:
@@ -781,15 +817,10 @@ def generate_ppt_outline():
                 for chapter, sub_tree in children.items():
                     all_kps.extend(list(sub_tree.keys()))
 
-            lines = [
-                "## 小结",
-                f"- 本节内容围绕 **{knowledge_point}** 展开，涵盖其相关原理与知识点。",
-                f"- 涉及的子知识点包括：{', '.join(all_kps)}。",
-                "- 请梳理这些知识点之间的内在联系与逻辑顺序，构建本节总结。"
-            ]
             pages.append({
                 "type": "小结",
-                "markdown": "\n".join(lines)
+                "title": knowledge_point,
+                "description": f"请为此章节设计一段小结页的大纲讲解思路。本页用于梳理{knowledge_point}涉及的各知识点之间的关系，涉及的子知识点包括：{', '.join(all_kps)}，此页用于强化理解，提示学习方法，帮助学生形成知识体系。请指出小结页应包含哪些要素、按照怎样的逻辑结构讲解，不要过于复杂，简明扼要即可。"
             })
 
         # 最终结构化输出
@@ -797,17 +828,14 @@ def generate_ppt_outline():
 
         for idx, page in enumerate(pages, 1):
             logger.info(f"[处理页] 第 {idx} 页，类型: {page['type']}")
+
             if page["type"] in ["主题", "main", "sub", "小结"]:
-                if page["type"] == "主题":
-                    messages = prompt_builder.generate_theme_prompt(page['markdown'], textbook_content)
-                elif page["type"] == "main":
-                    messages = prompt_builder.generate_chapter_prompt(page['title'], page['markdown'],
-                                                                           textbook_content)
-                elif page["type"] == "sub":
-                    messages = prompt_builder.generate_chapter_prompt(page['title'], page['markdown'],
-                                                                          textbook_content)
-                elif page["type"] == "小结":
-                    messages = prompt_builder.generate_chapter_prompt(page['type'], page['markdown'], textbook_content)
+                messages = prompt_builder.generate_outline_prompt(
+                    page_type=page["type"],
+                    title=page["title"],
+                    description_text=page["description"],
+                    textbook_text=textbook_content
+                )
 
                 if llm == "qwen":
                     content = "".join(large_model_service.get_answer_from_Tyqwen_stream(messages, top_p, temperature))
@@ -817,15 +845,66 @@ def generate_ppt_outline():
                     return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
 
                 logger.info(f"[模型返回] 第 {idx} 页生成完毕，内容长度: {len(content)}")
-                structured_json.extend(
-                split_content_to_pages(page.get("title", knowledge_point), content, page["type"], max_lines=30))
+
+                split_pages = split_content_to_pages(page.get("title", knowledge_point), content, page["type"], max_lines=30)
+
+                if page["type"] == "main":
+                    # 将第一页作为 main，其余作为 children
+                    main_page = split_pages[0]
+                    main_obj = {
+                        "label": "知识讲解",
+                        "type": "main",
+                        "title": page["title"],
+                        "content": main_page["content"],
+                        "addAble": True,
+                        "deleteAble": True,
+                        "children": []
+                    }
+                    for sub_page in split_pages[1:]:
+                        main_obj["children"].append({
+                            "label": "知识讲解",
+                            "type": "sub",
+                            "content": sub_page["content"],
+                            "addAble": True,
+                            "deleteAble": True
+                        })
+                    structured_json.append(main_obj)
+
+                elif page["type"] == "sub":
+                    # 如果先单独处理了sub，合并到上面的 main 会更好，这里可跳过或暂存
+                    continue
+
+                elif page["type"] == "主题":
+                    structured_json.append({
+                        "label": "主题",
+                        "type": "main",
+                        "title": page["title"],
+                        "content": split_pages[0]["content"],
+                        "addAble": False,
+                        "deleteAble": False,
+                        "children": []
+                    })
+
+                elif page["type"] == "小结":
+                    structured_json.append({
+                        "label": "小结",
+                        "type": "main",
+                        "title": page["title"],
+                        "content": split_pages[0]["content"],
+                        "addAble": True,
+                        "deleteAble": True,
+                        "children": []
+                    })
 
             else:
                 logger.info(f"[跳过模型] 第 {idx} 页类型为 {page['type']}，直接填入 JSON")
                 structured_json.append({
                     "label": page["type"],
-                    "type": page["type"],
-                    "content": page["markdown"].strip(),
+                    "type": "main",
+                    "title": page.get("title", ""),
+                    "content": page["description"].strip(),
+                    "addAble": True,
+                    "deleteAble": True,
                     "children": []
                 })
 
@@ -942,12 +1021,15 @@ def json_to_markdown(json_data: list) -> str:
             md += node_to_markdown(node, 2)
     return md
 
+def get_filename_from_url(url):
+    parsed = urlparse(url)
+    return os.path.basename(parsed.path)
 
 @app.route("/api/generate_ppt_from_outline_and_render", methods=["POST"])
 def generate_and_render_ppt():
     try:
         # 从请求中获取 JSON 数据
-        data = request.get_json()
+        data = request.get_json(force=True)
         knowledge_point = data.get("knowledge_point", "")
         outline_json = data.get("outline_json", [])
         textbook_pdf_path = data.get("textbook_pdf_path", "")
@@ -963,6 +1045,7 @@ def generate_and_render_ppt():
 
         # 将大纲 JSON 转换为标准格式 Markdown
         outline_markdown = json_to_markdown(outline_json)
+        logger.info(f"转换的markdown：{outline_markdown}")
 
         # 构造提示词
         prompt = prompt_builder.generate_ppt_from_outline_prompt(
@@ -987,11 +1070,25 @@ def generate_and_render_ppt():
         # 调用渲染 PPT 的方法，生成 PPT 并获取下载链接
         ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=filled_markdown)
 
-        return jsonify({
-            "status": "success",
+        # 3. 下载 PPT 文件到本地（临时目录）
+        TEMP_DIR = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果"  # 或者你指定其他用于临时文件的路径
+        filename = get_filename_from_url(ppt_url)
+        local_ppt_path = os.path.join(TEMP_DIR, filename)
+        # 注意：download_file 是你定义的下载方法（所属对象根据实际情况调整，比如 self.download_file 或者其他实例）
+        file_manager.download_file(ppt_url, local_ppt_path)
+
+        # 4. 转换下载到本地的 PPT 文件为 PDF
+        # 如果你的 PPT 文件后缀为 .pptx，请确认 LibreOffice 转换参数适用于 PPTX，如有需要可以修改转换命令
+        pdf_local_path = file_manager.convert_docx_to_pdf(local_ppt_path, TEMP_DIR)
+        if pdf_local_path is None:
+            raise Exception("PPT 转 PDF 转换失败")
+
+        # 5. 构建返回结果，ppt_url 保持在线下载链接，pdf_url 是服务器上 PDF 的存储路径
+        response_data = {
             "ppt_url": ppt_url,
-            "filled_markdown_preview": filled_markdown
-        })
+            "pdf_url": pdf_local_path  # 此处为服务器存储路径
+        }
+        return jsonify(response_data)
 
     except Exception as e:
         return jsonify({"error": f"接口异常: {str(e)}"}), 500

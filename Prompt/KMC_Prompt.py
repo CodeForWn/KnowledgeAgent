@@ -910,23 +910,47 @@ class PromptBuilder:
         ]
 
     @staticmethod
-    def generate_chapter_prompt(chapter, markdown, textbook_text):
+    def generate_chapter_prompt(chapter, description_text, textbook_text):
         system_content = (
-            "## Role：教学课件设计专家\n\n"
-            "## 任务描述\n"
-            "你是一位高中地理课件编写专家，你需要根据提供的章节内容要求和教材内容为页面生成这一页的课件大纲\n\n"
-            "## 输出要求\n"
-            "- 内容应结构清晰、语言适合教学、逻辑层次分明；\n"
-            "- 每一页的内容不要过多，适合在课件中展示；\n"
-            "- 建议包含定义、基本特征、作用、背景知识、引导示例等。"
+            "你是一位高中地理教学课件大纲的设计专家，擅长根据教学考纲编写清晰、结构合理的章节讲解思路。"
+            "现在你需要帮助老师完成某一章节的课件内容设计，请仔细分析任务要求与考纲内容，并合理组织内容。"
+        )
+        user_content = (
+            f"本次任务需要你设计“{chapter}”这一章节的教学讲解内容。请基于以下要求进行：\n\n"
+            f"{description_text}\n\n"
+            "请你结合以下考纲内容进行分析，生成一段该章节的讲解思路概述：\n"
+            "1. 内容要层次清晰，突出教学重点与逻辑顺序。\n"
+            "2. 根据需要判断是否分页讲解，若需要分页请使用“第1页：”“第2页：”等格式明确标记。\n"
+            "3. 每一页内容开头需保留章节标题，便于后续拆分。\n"
+            "4. 输出为普通可读文本，不要使用任何Markdown格式。\n\n"
+            f"以下是考纲内容：\n{textbook_text[:10000]}"
         )
 
         return [
             {"role": "system", "content": system_content},
-            {"role": "user",
-             "content": f"### 当前章节的内容及要求：{chapter}\n\n{markdown}\n\n### 教材全文如下：\n{textbook_text[:10000]}"}
+            {"role": "user", "content": user_content}
         ]
 
+    @staticmethod
+    def generate_outline_prompt(page_type, title, description_text, textbook_text):
+        system_content = (
+            "你是一位高中地理教学设计专家，擅长为章节内容设计清晰、合理的大纲讲解思路。"
+            "你的任务是根据教学目的和教材内容，为每一页课件设计结构化的大纲讲解思路，颗粒度应控制在每一页讲清一个教学重点，示例：讲解：国际日界线的规定（东西十二区时刻相同，东十二区比西十二区早一天）以及避免日期混乱的作用。拓展：讲述一些因跨越国际日界线而产生的有趣故事，如麦哲伦环球航行中日期的变化。设计思路：让学生理解国际日界线的重要性，拓展故事增加学习趣味性。每页只需包含简要说明该讲解单元的内容安排与教学思路，不要超过200字"
+            "请千万不要使用 Markdown 格式，输出应为普通可读文本。\n\n"
+        )
+
+        user_content = (
+            f"当前课件页的类型：{page_type}\n"
+            f"对应知识点：{title}\n\n"
+            f"本页课件讲解思路设计描述：\n{description_text}\n\n"
+            f"以下是考纲内容：\n{textbook_text[:10000]}\n\n"
+            "请你结合以上内容，生成一段该页的讲解思路概述：\n"
+        )
+
+        return [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content}
+        ]
 # # 测试
 # # 加载配置
 # # 使用环境变量指定环境并加载配置
