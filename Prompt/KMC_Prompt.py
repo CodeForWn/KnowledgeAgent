@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 import re
 import shutil
 import pickle
@@ -934,9 +934,9 @@ class PromptBuilder:
     @staticmethod
     def generate_outline_prompt(page_type, title, description_text, textbook_text):
         system_content = (
-            "你是一位高中地理教学设计专家，擅长为章节内容设计清晰、合理的大纲讲解思路。"
+            "你是一位高中地理教学设计专家，擅长为课件的章节内容设计清晰、合理的大纲讲解思路。"
             "你的任务是根据教学目的和教材内容，为每一页课件设计结构化的大纲讲解思路，颗粒度应控制在每一页讲清一个教学重点，示例：讲解：国际日界线的规定（东西十二区时刻相同，东十二区比西十二区早一天）以及避免日期混乱的作用。拓展：讲述一些因跨越国际日界线而产生的有趣故事，如麦哲伦环球航行中日期的变化。设计思路：让学生理解国际日界线的重要性，拓展故事增加学习趣味性。每页只需包含简要说明该讲解单元的内容安排与教学思路，不要超过200字"
-            "请千万不要使用 Markdown 格式，输出应为普通可读文本。\n\n"
+            "请千万不要使用 Markdown 格式，输出应为普通可读文本，不要使用 **、#、-、[]() 等 Markdown 特殊符号。\n\n"
         )
 
         user_content = (

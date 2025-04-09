@@ -932,6 +932,199 @@ def generate_ppt_outline():
         return jsonify({"error": f"接口异常：{str(e)}"}), 500
 
 
+@app.route("/api/generate_ppt_outline_stream", methods=["POST"])
+def generate_ppt_outline_stream():
+    try:
+        data = request.get_json()
+        knowledge_point = data.get("knowledge_point", "")
+        textbook_pdf_path = data.get("textbook_pdf_path",
+                                     "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/教学要点与单元实施（选择性必修）第一单元.docx")
+        llm = data.get("llm", "qwen")
+        top_p = data.get("top_p", 0.9)
+        temperature = data.get("temperature", 0.7)
+        components = data.get("components", ["主题", "教学要求", "知识讲解", "小结", "习题"])
+
+        if not knowledge_point or not textbook_pdf_path:
+            return jsonify({"error": "参数缺失：knowledge_point 或 textbook_pdf_path"}), 400
+
+        # 教材全文
+        textbook_content = mongo_handler.read_docx(textbook_pdf_path)
+        logger.info(f"[教材加载成功] 教材长度: {len(textbook_content)} 字符")
+
+        if not textbook_content:
+            return jsonify({"error": "教材内容为空或读取失败"}), 400
+
+        # 教学要求 & 知识结构
+        entity_details = neo4j_handler.get_entity_details(knowledge_point)
+        entity_info = entity_details.get("entity", {})
+        teaching_requirements = entity_info.get("teaching_requirements", "")
+        knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
+
+        # 构建 Markdown + 类型标记
+        pages = []
+
+        if "主题" in components:
+            pages.append({
+                "type": "主题",
+                "title": knowledge_point,
+                "description": f"本页任务：用一句话围绕知识点{knowledge_point}，结合考纲内容，输出该知识点的讲解思路。可以通过近年来和这个知识点相关的地理现象来引出这个知识点。"
+            })
+
+        if "教学要求" in components and teaching_requirements:
+            lines = ["教学基本要求（来自考纲）："]
+            lines += [line.strip() for line in teaching_requirements.strip().splitlines() if line.strip()]
+            pages.append({
+                "type": "教学要求",
+                "description": "\n".join(lines)
+            })
+
+        # 知识讲解页
+        if "知识讲解" in components:
+            for _, children in knowledge_tree.items():
+                for chapter, sub_tree in children.items():
+                    subpoints = list(sub_tree.keys())
+
+                    # 第一页：main（只讲核心概念）
+                    description_main = (
+                        f"请为知识点“{chapter}”设计本页课件的大纲讲解思路。\n\n"
+                        f"本页是“{chapter}”这一一级知识点的主讲页面，目标是帮助学生理解其核心概念、基本特征、产生背景及地理意义。\n"
+                        f"请结合考纲和教材内容设计一段讲解思路，包括内容安排顺序、重点提示、教学语言风格等。\n"
+                        f"若内容较多，请建议分页，并使用“第1页：”等格式标出，并在每页开头保留章节标题{chapter}"
+                    )
+                    pages.append({
+                        "type": "main",
+                        "title": chapter,
+                        "description": description_main
+                    })
+
+                    # 第二页：sub（统一讲解子知识点）
+                    description_sub = (
+                        f"请为知识点“{chapter}”下的子知识点设计本页课件的大纲讲解思路。\n\n"
+                        f"以下是“{chapter}”下的子知识点：{', '.join(subpoints) if subpoints else '暂无子知识点'}。\n"
+                        f"请结合考纲要求说明这些子知识点之间的教学顺序、内在联系、适合的引导方法及易错点提醒等。\n"
+                        f"请生成清晰结构化的讲解思路。若内容较多，请建议分页，并使用“第1页：”等格式标出，并在每页开头保留章节标题“{chapter}”。"
+                    )
+                    pages.append({
+                        "type": "sub",
+                        "title": chapter,
+                        "description": description_sub
+                    })
+
+        if "小结" in components:
+            all_kps = []
+            for _, children in knowledge_tree.items():
+                for chapter, sub_tree in children.items():
+                    all_kps.extend(list(sub_tree.keys()))
+
+            pages.append({
+                "type": "小结",
+                "title": knowledge_point,
+                "description": f"请为此章节设计一段小结页的大纲讲解思路。本页用于梳理{knowledge_point}涉及的各知识点之间的关系，涉及的子知识点包括：{', '.join(all_kps)}，此页用于强化理解，提示学习方法，帮助学生形成知识体系。请指出小结页应包含哪些要素、按照怎样的逻辑结构讲解，不要过于复杂，简明扼要即可。"
+            })
+        # ... 参数提取与教材加载保持不变
+
+        def generate_pages_stream():
+            for idx, page in enumerate(pages, 1):
+                try:
+                    logger.info(f"[处理页] 第 {idx} 页，类型: {page['type']}")
+                    structured_obj = None
+
+                    if page["type"] in ["主题", "main", "sub", "小结"]:
+                        messages = prompt_builder.generate_outline_prompt(
+                            page_type=page["type"],
+                            title=page["title"],
+                            description_text=page["description"],
+                            textbook_text=textbook_content
+                        )
+                        if llm == "qwen":
+                            content = "".join(large_model_service.get_answer_from_Tyqwen_stream(messages, top_p, temperature))
+                        elif llm == "deepseek":
+                            content = "".join(large_model_service.get_answer_from_deepseek_stream(messages, top_p, temperature))
+                        else:
+                            yield json.dumps({"error": f"不支持的模型类型: {llm}"}) + "\n"
+                            continue
+
+                        split_pages = split_content_to_pages(page.get("title", knowledge_point), content, page["type"], max_lines=30)
+
+                        if page["type"] == "main":
+                            main_page = split_pages[0]
+                            main_obj = {
+                                "label": "知识讲解",
+                                "type": "main",
+                                "title": page["title"],
+                                "content": main_page["content"],
+                                "addAble": True,
+                                "deleteAble": True,
+                                "children": []
+                            }
+                            for sub_page in split_pages[1:]:
+                                main_obj["children"].append({
+                                    "label": "知识讲解",
+                                    "type": "sub",
+                                    "content": sub_page["content"],
+                                    "addAble": True,
+                                    "deleteAble": True
+                                })
+                            structured_obj = main_obj
+
+                        elif page["type"] == "主题":
+                            structured_obj = {
+                                "label": "主题",
+                                "type": "main",
+                                "title": page["title"],
+                                "content": split_pages[0]["content"],
+                                "addAble": False,
+                                "deleteAble": False,
+                                "children": []
+                            }
+
+                        elif page["type"] == "小结":
+                            structured_obj = {
+                                "label": "小结",
+                                "type": "main",
+                                "title": page["title"],
+                                "content": split_pages[0]["content"],
+                                "addAble": True,
+                                "deleteAble": True,
+                                "children": []
+                            }
+
+                    else:
+                        # 非模型页直接构建
+                        structured_obj = {
+                            "label": page["type"],
+                            "type": "main",
+                            "title": page.get("title", ""),
+                            "content": page["description"].strip(),
+                            "addAble": True,
+                            "deleteAble": True,
+                            "children": []
+                        }
+
+                    if structured_obj:
+                        json_str = json.dumps(structured_obj, ensure_ascii=False)
+                        logger.info(f"[已生成] 第 {idx} 页输出：{json_str[:100]}...")  # 只打印前100字符，防止日志过长
+                        yield json_str + "\n"
+
+                except Exception as page_err:
+                    logger.warning(f"页码 {idx} 生成异常: {str(page_err)}")
+                    yield json.dumps({"error": f"页码 {idx} 处理异常: {str(page_err)}"}) + "\n"
+
+            # 最后处理习题页
+            if "习题" in components:
+                all_kps = collect_all_nodes(knowledge_tree)
+                exercise_pages = render_exercise_pages_grouped_by_kp(all_kps, level=2)
+                for ex_page in exercise_pages:
+                    yield json.dumps(ex_page, ensure_ascii=False) + "\n"
+
+        return Response(stream_with_context(generate_pages_stream()), content_type='application/json')
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"接口异常：{str(e)}"}), 500
+
+
 @app.route("/api/generate_ppt_from_outline", methods=["POST"])
 def generate_ppt():
     try:
@@ -1088,6 +1281,7 @@ def generate_and_render_ppt():
             "ppt_url": ppt_url,
             "pdf_url": pdf_local_path  # 此处为服务器存储路径
         }
+        logger.info(f"生成的 PPT 在线下载链接: {ppt_url}")
         return jsonify(response_data)
 
     except Exception as e:

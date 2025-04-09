@@ -75,6 +75,7 @@ def get_template_list() -> list:
         tpl_id = tpl.get("id")
         cover = tpl.get("cover_img")
         if tpl_id and cover:
+            print(f"[ID: {tpl_id}] 封面图：{cover}")
             valid_templates.append({
                 "id": tpl_id,
                 "cover": cover
@@ -82,6 +83,7 @@ def get_template_list() -> list:
 
     if not valid_templates:
         raise Exception("没有找到有效模板，请检查返回数据结构。")
+
     return valid_templates
 
 
@@ -310,7 +312,7 @@ def render_markdown_to_ppt(title: str, markdown_text: str) -> str:
     """
     token = get_token()
     task_id = create_task(token, title, markdown_text)
-    template_id = get_recommended_template(token)
+    template_id = 1128
     user_design_id = save_work(token, title, task_id, template_id)
     task_key = export_ppt(token, user_design_id)
     download_url = poll_export_result(token, task_key)
@@ -319,7 +321,8 @@ def render_markdown_to_ppt(title: str, markdown_text: str) -> str:
 
 # # === 测试入口 ===
 # if __name__ == "__main__":
-#
+#     get_template_list()
+
 #     title = "地球运动"
 #     markdown = textwrap.dedent("""\
 #         # 地球运动
