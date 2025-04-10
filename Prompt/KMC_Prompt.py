@@ -365,6 +365,51 @@ class PromptBuilder:
         return messages
 
     @staticmethod
+    def generate_prompt_for_file_id(query, full_refs, history):
+        """
+        full_refs: List[Dict]，每个字典应包含：
+            {
+                'file_id': 'xxx',
+                'text': '全文内容...'
+            }
+        """
+        # 系统角色设定
+        messages = [{
+            'role': 'system',
+            'content': (
+                '你是一个能够从多个文档中提取关键信息、理解内容并回答用户问题的智能助手。\n'
+                '你应当尽量引用原文表达，结合多个文件的上下文，使用 markdown 输出答案。\n'
+                '语言风格贴合老师为学生解答问题的语气，清晰、逻辑性强，适用于解释、翻译、总结等任务。\n'
+                '若涉及数据、图表、数字比较等，请先分析再下结论。'
+            )
+        }]
+
+        # 添加用户身份上下文
+        context_intro = "以下是用户提供的多个文档全文内容：\n"
+
+        # 拼接所有全文内容（格式上区分每个文件）
+        full_text = ""
+        for i, ref in enumerate(full_refs):
+            file_id = ref.get('file_id', f'文件{i + 1}')
+            text = ref.get('text', '')
+            full_text += f"\n---\n【文件 {i + 1}：{file_id}】\n{text}\n"
+
+        # 将所有全文与身份放入一个用户发言中
+        system_message = context_intro + full_text.strip()
+        messages.append({'role': 'user', 'content': system_message})
+
+        # 添加历史问答
+        if history:
+            for item in history:
+                if 'question' in item and 'content' in item:
+                    messages.append({'role': 'user', 'content': item['question']})
+                    messages.append({'role': 'assistant', 'content': item['content']})
+
+        # 添加本次提问
+        messages.append({'role': 'user', 'content': query})
+
+        return messages
+    @staticmethod
     def generate_polish_prompt(query):
         # 构建示例内容与消息列表
         system_content = (

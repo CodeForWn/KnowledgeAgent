@@ -617,7 +617,38 @@ def answer_question_stream_new():
                 prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
                 matches = []
             else:
-                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context)
+                # ✅ 将前5个ref的file_id去重，构造成 ref 结构列表
+                file_ids = list({ref['file_id'] for ref in top_refs})
+                full_context_refs = []
+                seen_chars = 0
+
+                logger.info(f"即将召回以下 file_id 的全文内容：{file_ids}")
+
+                for file_id in file_ids:
+                    content = es_handler.get_full_text_by_file_id(assistant_id.strip(), file_id.strip())
+                    if not content:
+                        logger.warning(f"file_id = {file_id} 的全文为空，跳过。")
+                        continue
+
+                    content_len = len(content)
+                    if seen_chars + len(content) > 15000:
+                        logger.info(f"file_id = {file_id} 的全文超出总长度限制（已用 {seen_chars} 字符，将跳过该全文）")
+                        break
+
+                    logger.info(f"file_id = {file_id} 的全文长度为 {content_len} 字符，当前累计 {seen_chars}，即将添加")
+                    full_context_refs.append({
+                        'text': f"以下是文件（{file_id}）的完整内容：\n{content}",
+                        'file_id': file_id
+                    })
+                    seen_chars += len(content)
+
+                # ✅ 用全文作为上下文构建prompt（结构保持和top_refs一致）
+                prompt = prompt_builder.generate_answer_prompt(
+                    query=query,
+                    refs=full_context_refs,
+                    history=history,
+                    user_context=user_context
+                )
 
         def generate_stream(model_name, prompt, matches, top_p, temperature, query, request_id):
             full_answer = ""
@@ -650,10 +681,6 @@ def answer_question_stream_new():
 @app.route('/api/get_answer_by_file_id', methods=['POST'])
 def answer_question_by_file_id():
     try:
-        # 初始化重排模型
-        reranker = FlagReranker(rerank_model_path, use_fp16=True)
-        # 收集所有检索到的文本片段
-        all_refs = []
         # 读取请求参数
         data = request.json
         assistant_id = data.get('assistant_id')
@@ -661,12 +688,11 @@ def answer_question_by_file_id():
         token = data.get('token')
         query = data.get('query')
         file_id_list = data.get('file_id')
-        func = data.get('func', 'bm25')
-        ref_num = data.get('ref_num', 5)
         llm = data.get('llm', 'qwen').lower()
         top_p = data.get('top_p', 0.8)
         temperature = data.get('temperature', 0)
         memory_time = data.get('memory_time', 3)  # 新增参数
+
         if not assistant_id or not query or not file_id_list:
             return jsonify({'error': '参数不完整'}), 400
 
@@ -681,132 +707,53 @@ def answer_question_by_file_id():
                     'matches': predefined_answer['matches']
                 }), 200
 
-        # 搜索只在给定的 file_id 的文件内容中进行
-        if func == 'bm25' or func == 'embed':
-            bm25_refs = es_handler.search_bm25(assistant_id, query, ref_num, file_id_list=file_id_list)
-            embed_refs = es_handler.search_embed(assistant_id, query, ref_num, file_id_list=file_id_list)
-            all_refs = bm25_refs + embed_refs
-
-        if not all_refs:
-            def generate():
-                full_answer = "您的问题没有在文本片段中找到答案，正在使用预训练知识库为您解答："
-                Prompt = [{'role': 'user', 'content': query}]
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(Prompt, top_p=top_p, temperature=temperature)
-                for chunk in ans_generator:
-                    full_answer += chunk
-                    data_stream = json.dumps({'matches': [], 'answer': full_answer}, ensure_ascii=False)
-                    yield data_stream + '\n'
-
-            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
-
-        # 使用重排模型进行重排并归一化得分
-        ref_pairs = [[query, ref['text']] for ref in all_refs]
-        scores = reranker.compute_score(ref_pairs, normalize=True)
-        sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
-        top_list = sorted_refs[:5]
-        top_scores = [score for _, score in sorted_refs[:5]]
-        logger.info(f"Top 5 scores: {top_scores}")
-        top_refs = [ref for ref, score in sorted_refs[:5]]
         # 获取历史对话内容
         history = prompt_builder.get_history(session_id, token)
-        # 计算当前对话轮数
-        current_round = len(history) + 1
-        logger.info(f"当前对话轮数: {current_round}")
-        # 初始化默认的prompt和matches
-        prompt = None
-        matches = []
-
-        # 获取之前的查询和对应的结果
-        previous_queries = []
-        if history:
-            for item in history:
-                if 'question' in item and 'documents' in item:
-                    previous_queries.append((item['question'], item['documents']))
-
-        # 检查最高分数是否低于0.3
-        if top_scores[0] < 0.3:
-            logger.info("问题与文档无关")
-            last_query = None
-            last_matches = []
-
-            # 找到与当前问题相关的上一次有效查询
-            if previous_queries:
-                for prev_query, prev_matches in reversed(previous_queries):
-                    if prev_matches:
-                        last_query = prev_query
-                        last_matches = prev_matches
-                        break
-
-            if last_query and last_matches:
-                prompt = prompt_builder.generate_answer_prompt(query, last_matches, history)
-                matches = [{
-                    'text': doc.get('text', '无内容'),
-                    'original_text': doc.get('original_text', '无内容'),
-                    'page': doc.get('page', '未知'),
-                    'file_id': doc.get('file_id', '未知'),
-                    'file_name': doc.get('file_name', '未知'),
-                    'download_path': doc.get('download_path', '未知'),
-                    'score': doc.get('score', 0)
-                } for doc in last_matches]
-                logger.info(f"使用了generate_answer_prompt，生成的prompt：{prompt}")
-            else:
-                prompt = prompt_builder.generate_answer_prompt_un_refs(query, history)
-                matches = []
+        if len(history) > memory_time:
+            trimmed_history = history[-memory_time:]
         else:
-            # 根据memory_time参数决定是否使用历史记录生成prompt
-            if len(history) > memory_time:
-                trimmed_history = history[-memory_time:]
-                prompt = prompt_builder.generate_answer_prompt(query, top_refs, trimmed_history)
-            else:
-                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history)
+            trimmed_history = history
 
-            matches = [{
-                'text': ref.get('text', '无内容'),
-                'original_text': ref.get('original_text', '无内容'),
-                'page': ref.get('page', '未知'),
-                'file_id': ref.get('file_id', '未知'),
-                'file_name': ref.get('file_name', '未知'),
-                'download_path': ref.get('download_path', '未知'),
-                'score': ref.get('score', 0),
-                'rerank_score': score
-            } for ref, score in top_list]
-            logger.info(f"使用了generate_answer_prompt，生成的prompt：{prompt}")
+        # 🔥 直接按 file_id_list 召回全文，作为上下文
+        full_context_refs = []
+        seen_chars = 0
 
-        if llm == 'qwen':
-            def generate():
-                full_answer = ""
-                ans_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
-                for chunk in ans_generator:
-                    full_answer += chunk
-                    data_stream = json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False)
-                    yield data_stream + '\n'
+        logger.info(f"开始按 file_id_list 直接召回全文内容：{file_id_list}")
 
-            logger.info(f"命中文档：{matches}")
-            return Response(stream_with_context(generate()), content_type='application/json; charset=utf-8')
+        for file_id in file_id_list:
+            content = es_handler.get_full_text_by_file_id(assistant_id.strip(), file_id.strip())
+            if not content:
+                logger.warning(f"file_id = {file_id} 的全文内容为空，跳过。")
+                continue
 
-        elif llm == 'cutegpt':
-            ans = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p=top_p, temperature=temperature)
-        elif llm == 'chatglm':
-            task_id = large_model_service.async_invoke_chatglm(prompt)
-            ans = large_model_service.query_async_result_chatglm(task_id)
-        elif llm == 'chatgpt':
-            ans = large_model_service.get_answer_from_chatgpt(prompt)
-        else:
-            return jsonify({'error': '未知的大模型服务'}), 400
+            content_len = len(content)
+            if seen_chars + content_len > 10000:
+                logger.info(f"file_id = {file_id} 的全文超限（当前累计 {seen_chars} 字符，跳过）。")
+                break
 
-        log_data = {'question': query,
-                    'answer': ans,
-                    'matches': matches}
+            logger.info(f"file_id = {file_id} 的全文长度为 {content_len}，将加入上下文。")
+            full_context_refs.append({
+                'text': f"以下是文件（{file_id}）的完整内容：\n{content}",
+                'file_id': file_id
+            })
+            seen_chars += content_len
 
-        logger.info(f"问答记录: {log_data}")
-        with open(record_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
-        return jsonify({'answer': ans, 'matches': matches}), 200
+        logger.info(f"最终用于prompt构建的全文数：{len(full_context_refs)}，累计字符数：{seen_chars}")
+
+        # 构造提示词
+        prompt = prompt_builder.generate_prompt_for_file_id(query, full_context_refs, trimmed_history)
+
+        if llm.lower() == 'qwen':
+            response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
+
+        if llm.lower() == 'deepseek':
+            response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
+            return Response(response_generator, content_type='text/plain; charset=utf-8')
 
     except Exception as e:
-        logger.error(f"Error in answer_question: {e}")
+        logger.error(f"Error in answer_question_by_file_id: {e}")
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/get_answer', methods=['POST'])
 def answer_question():

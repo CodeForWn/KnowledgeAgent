@@ -923,8 +923,14 @@ def generate_ppt_outline():
             json.dump(structured_json, f, ensure_ascii=False, indent=2)
 
         logger.info(f"[保存成功] 大纲已保存到 {save_path}")
-
-        return jsonify(structured_json)
+        response_data = {
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "outline": structured_json,
+            }
+        }
+        return response_data
 
     except Exception as e:
         import traceback
@@ -1102,8 +1108,13 @@ def generate_ppt_outline_stream():
                         }
 
                     if structured_obj:
-                        json_str = json.dumps(structured_obj, ensure_ascii=False)
-                        logger.info(f"[已生成] 第 {idx} 页输出：{json_str[:100]}...")  # 只打印前100字符，防止日志过长
+                        wrapped_obj = {
+                            "code": 200,
+                            "msg": "success",
+                            "data": structured_obj
+                        }
+                        json_str = json.dumps(wrapped_obj, ensure_ascii=False)
+                        logger.info(f"[已生成] 第 {idx} 页输出：{json_str[:100]}...")
                         yield json_str + "\n"
 
                 except Exception as page_err:
@@ -1114,8 +1125,14 @@ def generate_ppt_outline_stream():
             if "习题" in components:
                 all_kps = collect_all_nodes(knowledge_tree)
                 exercise_pages = render_exercise_pages_grouped_by_kp(all_kps, level=2)
-                for ex_page in exercise_pages:
-                    yield json.dumps(ex_page, ensure_ascii=False) + "\n"
+                for ex_idx, ex_page in enumerate(exercise_pages, 1):
+                    ex_json_str = json.dumps({
+                        "code": 200,
+                        "msg": "success",
+                        "data": ex_page
+                    }, ensure_ascii=False)
+                    logger.info(f"[习题页] 第 {ex_idx} 题输出：{ex_json_str[:100]}...")
+                    yield ex_json_str + "\n"
 
         return Response(stream_with_context(generate_pages_stream()), content_type='application/json')
 
@@ -1259,12 +1276,14 @@ def generate_and_render_ppt():
             return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
 
         filled_markdown = response_text
+        logger.info(f"生成的markdown：{filled_markdown}")
 
         # 调用渲染 PPT 的方法，生成 PPT 并获取下载链接
         ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=filled_markdown)
 
         # 3. 下载 PPT 文件到本地（临时目录）
         TEMP_DIR = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果"  # 或者你指定其他用于临时文件的路径
+        PUBLIC_URL_PREFIX = "http://119.45.164.254/file"
         filename = get_filename_from_url(ppt_url)
         local_ppt_path = os.path.join(TEMP_DIR, filename)
         # 注意：download_file 是你定义的下载方法（所属对象根据实际情况调整，比如 self.download_file 或者其他实例）
@@ -1275,11 +1294,17 @@ def generate_and_render_ppt():
         pdf_local_path = file_manager.convert_docx_to_pdf(local_ppt_path, TEMP_DIR)
         if pdf_local_path is None:
             raise Exception("PPT 转 PDF 转换失败")
+        # 替换路径，生成公网访问路径
+        pdf_public_url = pdf_local_path.replace(TEMP_DIR, PUBLIC_URL_PREFIX)
 
         # 5. 构建返回结果，ppt_url 保持在线下载链接，pdf_url 是服务器上 PDF 的存储路径
         response_data = {
-            "ppt_url": ppt_url,
-            "pdf_url": pdf_local_path  # 此处为服务器存储路径
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "ppt_url": ppt_url,
+                "pdf_url": pdf_public_url
+            }
         }
         logger.info(f"生成的 PPT 在线下载链接: {ppt_url}")
         return jsonify(response_data)
