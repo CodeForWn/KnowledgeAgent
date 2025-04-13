@@ -447,8 +447,6 @@ def answer_question_stream():
             prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
             matches = []
         else:
-            prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context)
-            logger.info(f"最后的提示词：{prompt}")
             matches = [{
                 'text': ref['text'],
                 'original_text': ref['original_text'],
@@ -459,6 +457,41 @@ def answer_question_stream():
                 'score': ref['score'],
                 'rerank_score': score
             } for ref, score in top_list]
+
+            # 🔥 文件级全文召回逻辑
+            file_ids = list({ref['file_id'] for ref in top_refs})
+            full_context_refs = []
+            seen_chars = 0
+
+            logger.info(f"[全文召回] 即将召回以下 file_id 的全文内容：{file_ids}")
+
+            for file_id in file_ids:
+                content = es_handler.get_full_text_by_file_id(assistant_id.strip(), file_id.strip())
+                if not content:
+                    logger.warning(f"[全文召回] file_id={file_id} 内容为空，跳过。")
+                    continue
+
+                content_len = len(content)
+                if seen_chars + content_len > 10000:
+                    logger.info(
+                        f"[全文召回] file_id={file_id} 内容超限（{content_len}字），当前已用{seen_chars}字，跳过该文件。")
+                    break
+
+                logger.info(f"[全文召回] file_id={file_id} 内容长度：{content_len}，当前累计：{seen_chars}，添加中。")
+                full_context_refs.append({
+                    'text': f"以下是文件（{file_id}）的完整内容：\n{content}",
+                    'file_id': file_id
+                })
+                seen_chars += content_len
+
+            logger.info(f"[全文召回] 最终用于提示词拼接的全文数：{len(full_context_refs)}，总长度：{seen_chars}")
+
+            prompt = prompt_builder.generate_answer_prompt(
+                query=query,
+                refs=full_context_refs,
+                history=history,
+                user_context=user_context
+            )
 
         if llm == 'qwen':
             logger.info("正在使用通义千问......")

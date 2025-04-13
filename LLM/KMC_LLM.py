@@ -31,7 +31,6 @@ import queue
 from langchain_core.tools import tool
 import threading
 import spacy
-import time
 from config.KMC_config import Config
 import dashscope
 from dashscope import Generation
@@ -39,6 +38,9 @@ from http import HTTPStatus
 import random
 import os
 from openai import OpenAI
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from queue import PriorityQueue
+import time
 # 设置您的API密钥
 from zhipuai import ZhipuAI
 client = ZhipuAI(api_key="5911de66da26821dc50121429e6ce856.M3ZIx6kKM9WbpfiO") # 填写您自己的APIKey
