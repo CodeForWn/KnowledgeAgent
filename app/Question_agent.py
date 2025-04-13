@@ -1167,11 +1167,10 @@ def generate_pages_stream(context):
             idx = future_to_index[future]
             try:
                 json_str = future.result()
-                results.put((idx, json_str))
+                yield json_str + "\n"
             except Exception as e:
                 logger.warning(f"[并发异常] 第 {idx + 1} 页出错：{e}")
-                error_json = json.dumps({"error": f"第 {idx + 1} 页异常: {e}"}, ensure_ascii=False)
-                results.put((idx, error_json))
+                yield json.dumps({"error": f"第 {idx + 1} 页异常: {str(e)}"}, ensure_ascii=False) + "\n"
 
         while not results.empty():
             _, json_str = results.get()
@@ -1533,7 +1532,7 @@ def generate_and_render_ppt():
 
         # 将大纲 JSON 转换为标准格式 Markdown
         outline_markdown = json_to_markdown(outline_json)
-        logger.info(f"转换的markdown：{outline_markdown}")
+        # logger.info(f"转换的markdown：{outline_markdown}")
 
         # 构造提示词
         prompt = prompt_builder.generate_ppt_from_outline_prompt(
@@ -1554,7 +1553,13 @@ def generate_and_render_ppt():
             return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
 
         filled_markdown = response_text
-        logger.info(f"生成的markdown：{filled_markdown}")
+        # ==== 保存 markdown 内容为文件 ====
+        save_dir = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果/ppt内容结果"
+        os.makedirs(save_dir, exist_ok=True)  # 确保目录存在
+        save_path = os.path.join(save_dir, f"{knowledge_point}_ppt.md")
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(filled_markdown)
+        logger.info(f"markdown内容已保存到：{save_path}")
 
         # 调用渲染 PPT 的方法，生成 PPT 并获取下载链接
         ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=filled_markdown)
@@ -1600,4 +1605,4 @@ def export_graph():
     return jsonify(result)
 
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=7777)
+    app.run(debug=False, host="0.0.0.0", port=7777, threaded=True)
