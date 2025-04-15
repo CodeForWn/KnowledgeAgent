@@ -319,9 +319,9 @@ def render_markdown_to_ppt(title: str, markdown_text: str) -> str:
     return download_url
 
 
-# # === 测试入口 ===
-# if __name__ == "__main__":
-#     get_template_list()
+# === 测试入口 ===
+if __name__ == "__main__":
+    get_template_list()
 
 #     title = "地球运动"
 #     markdown = textwrap.dedent("""\

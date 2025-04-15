@@ -1162,19 +1162,15 @@ def generate_pages_stream(context):
             for idx, page in enumerate(pages)
         }
 
-        results = PriorityQueue()
-        for future in as_completed(future_to_index):
-            idx = future_to_index[future]
+        ordered_futures = sorted(future_to_index.items(), key=lambda item: item[1])
+
+        for future, idx in ordered_futures:
             try:
                 json_str = future.result()
                 yield json_str + "\n"
             except Exception as e:
                 logger.warning(f"[并发异常] 第 {idx + 1} 页出错：{e}")
                 yield json.dumps({"error": f"第 {idx + 1} 页异常: {str(e)}"}, ensure_ascii=False) + "\n"
-
-        while not results.empty():
-            _, json_str = results.get()
-            yield json_str + "\n"
 
     if "习题" in components:
         all_kps = collect_all_nodes(knowledge_tree)
@@ -1200,7 +1196,7 @@ def process_page(idx, page, context):
     structured_obj = None
 
     try:
-        if page["type"] in ["主题", "main", "sub", "小结"]:
+        if page["type"] in ["主题", "main", "小结"]:
             messages = prompt_builder.generate_outline_prompt(
                 page_type=page["type"],
                 title=page.get("title", ""),
@@ -1218,63 +1214,28 @@ def process_page(idx, page, context):
             if not split_pages:
                 raise ValueError("模型返回内容为空或无法拆分页")
 
-            if page["type"] == "main":
-                cleaned_main = re.sub(r"^第\d+页[:：]\s*", "", split_pages[0]["content"])
-                main_obj = {
-                    "label": "知识讲解",
-                    "type": "main",
-                    "title": page["title"],
-                    "content": cleaned_main,
-                    "addAble": True,
-                    "deleteAble": True,
-                    "children": []
-                }
-                for sub_page in split_pages[1:]:
-                    cleaned_sub = re.sub(r"^第\d+页[:：]\s*", "", sub_page["content"])
-                    main_obj["children"].append({
-                        "label": "知识讲解",
-                        "type": "sub",
-                        "content": cleaned_sub,
-                        "addAble": True,
-                        "deleteAble": True
-                    })
-                structured_obj = main_obj
+            cleaned_main = re.sub(r"^第\d+页[:：]?\s*", "", split_pages[0]["content"])
+            main_obj = {
+                "label": "知识讲解" if page["type"] == "main" else page["type"],
+                "type": "main",
+                "title": page["title"],
+                "content": cleaned_main,
+                "addAble": True,
+                "deleteAble": True,
+                "children": []
+            }
 
-            elif page["type"] == "主题":
-                cleaned = re.sub(r"^第\d+页[:：]\s*", "", split_pages[0]["content"])
-                structured_obj = {
-                    "label": "主题",
-                    "type": "main",
-                    "title": page["title"],
-                    "content": cleaned,
-                    "addAble": False,
-                    "deleteAble": False,
-                    "children": []
-                }
-
-            elif page["type"] == "小结":
-                cleaned = re.sub(r"^第\d+页[:：]\s*", "", split_pages[0]["content"])
-                structured_obj = {
-                    "label": "小结",
-                    "type": "main",
-                    "title": page["title"],
-                    "content": cleaned,
-                    "addAble": True,
-                    "deleteAble": True,
-                    "children": []
-                }
-
-            elif page["type"] == "sub":
-                cleaned = re.sub(r"^第\d+页[:：]\s*", "", split_pages[0]["content"])
-                structured_obj = {
+            for sub_page in split_pages[1:]:
+                cleaned_sub = re.sub(r"^第\d+页[:：]?\s*", "", sub_page["content"])
+                main_obj["children"].append({
                     "label": "知识讲解",
                     "type": "sub",
-                    "title": page["title"],
-                    "content": cleaned,
+                    "content": cleaned_sub,
                     "addAble": True,
-                    "deleteAble": True,
-                    "children": []
-                }
+                    "deleteAble": True
+                })
+
+            structured_obj = main_obj
 
         elif page["type"] == "教学要求":
             structured_obj = {
@@ -1284,16 +1245,6 @@ def process_page(idx, page, context):
                 "content": page["description"].strip(),
                 "addAble": False,
                 "deleteAble": False,
-                "children": []
-            }
-        else:
-            structured_obj = {
-                "label": page["type"],
-                "type": "main",
-                "title": page.get("title", ""),
-                "content": page["description"].strip(),
-                "addAble": True,
-                "deleteAble": True,
                 "children": []
             }
 
@@ -1374,18 +1325,8 @@ def generate_ppt_outline_stream():
                         "title": chapter,
                         "description": (
                             f"请为知识点“{chapter}”设计本页课件的大纲讲解思路。\n"
-                            f"重点是帮助学生理解其核心概念、基本特征、产生背景及地理意义。\n"
-                            f"若内容较多，请建议分页，并使用“第1页：”等格式标出。"
-                        )
-                    })
-
-                    pages.append({
-                        "type": "sub",
-                        "title": chapter,
-                        "description": (
-                            f"请为知识点“{chapter}”下的子知识点设计本页讲解思路。\n"
-                            f"子知识点包括：{', '.join(subpoints) if subpoints else '暂无子知识点'}。\n"
-                            f"讲解应包含教学顺序、联系、引导方法、易错点提醒等。"
+                            f"你需要覆盖此知识点及其相关的子知识点：{', '.join(subpoints) if subpoints else '暂无子知识点'}。\n"
+                            f"请根据教材内容与考纲要求进行完整讲解，如内容较多，请合理分页，建议使用“第1页：”、“第2页：”等格式标出。"
                         )
                     })
 
@@ -1512,6 +1453,20 @@ def get_filename_from_url(url):
     parsed = urlparse(url)
     return os.path.basename(parsed.path)
 
+
+def clean_markdown(md_text: str) -> str:
+    """
+    清除 Markdown 中的特殊符号，例如 ** 加粗、--- 分割线等
+    """
+    # 删除加粗符号 **内容**
+    md_text = re.sub(r'\*\*(.*?)\*\*', r'\1', md_text)
+    # 删除分割线 ---
+    md_text = re.sub(r'\n?-{3,}\n?', '\n', md_text)
+    # 删除 Markdown 注释 <!-- ... -->
+    md_text = re.sub(r'<!--.*?-->', '', md_text, flags=re.DOTALL)
+    # 可根据需要继续添加其他规则，如 * 列表等
+    return md_text.strip()
+
 @app.route("/api/generate_ppt_from_outline_and_render", methods=["POST"])
 def generate_and_render_ppt():
     try:
@@ -1553,12 +1508,15 @@ def generate_and_render_ppt():
             return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
 
         filled_markdown = response_text
+        # 清洗 markdown 中的特殊格式
+        cleaned_markdown = clean_markdown(filled_markdown)
+
         # ==== 保存 markdown 内容为文件 ====
         save_dir = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果/ppt内容结果"
         os.makedirs(save_dir, exist_ok=True)  # 确保目录存在
         save_path = os.path.join(save_dir, f"{knowledge_point}_ppt.md")
         with open(save_path, "w", encoding="utf-8") as f:
-            f.write(filled_markdown)
+            f.write(cleaned_markdown)
         logger.info(f"markdown内容已保存到：{save_path}")
 
         # 调用渲染 PPT 的方法，生成 PPT 并获取下载链接

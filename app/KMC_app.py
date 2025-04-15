@@ -1889,6 +1889,67 @@ def canvas_chatpdf():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/image2text_stream', methods=['POST'])
+def image2text_stream():
+    try:
+        data = request.json
+        query = data.get('query')
+        llm = data.get('llm', 'internvl')  # 默认使用 internvl2.5-latest
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
+
+        # 判断用户输入是文字还是图片
+        messages = []
+        if isinstance(query, list):
+            for item in query:
+                message_content = []
+
+                # 如果有文字部分
+                if 'text' in item and isinstance(item['text'], str):
+                    message_content.append({"type": "text", "text": item['text']})
+
+                # 如果有图片部分
+                if 'image' in item and isinstance(item['image'], str):
+                    # 如果只有图片，自动填充 text
+                    if not any(c['type'] == 'text' for c in message_content):
+                        message_content.append({"type": "text", "text": "请描述这张图片"})
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": item['image']}
+                    })
+
+                # 如果 message_content 只包含文字而没有图片
+                if message_content and len(message_content) == 1 and 'text' in message_content[0]:
+                    messages.append({
+                        "role": "user",
+                        "content": message_content[0]["text"]
+                    })
+                elif message_content:
+                    # 如果有图片和文字，返回数组形式
+                    messages.append({
+                        "role": "user",
+                        "content": message_content
+                    })
+                else:
+                    return jsonify({"error": "每个条目必须包含有效的 text 或 image 字段"}), 400
+        else:
+            return jsonify({"error": "query 必须是一个列表"}), 400
+
+        logger.info(f"构建的提示词: {messages}")
+
+        # 调用模型获取回答并返回流式响应
+        def generate_stream_response():
+            # 使用你的方法获取流式输出
+            for part in large_model_service.get_answer_from_internvl_stream(messages, top_p, temperature):
+                yield part  # 返回流式内容
+
+        return Response(generate_stream_response(), content_type='application/json; charset=utf-8')
+
+    except Exception as e:
+        logger.error(f"处理请求时发生错误: {str(e)}")
+        return jsonify({"error": "内部服务器错误", "details": str(e)}), 500
+
+
 @app.route('/api/beautify_prompt', methods=['POST'])
 def prompt_rewrite():
     try:

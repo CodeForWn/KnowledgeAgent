@@ -660,15 +660,74 @@ class LargeModelAPIService:
             if chunk.choices[0].delta.content:
                 print(chunk.choices[0].delta.content, end="", flush=True)
 
+
+    def get_answer_from_internvl_stream(self, prompt, top_p=0.9, temperature=0.8):
+        client = OpenAI(
+            api_key="eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiI1MzMwODYzMCIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc0NDcyOTA5NCwiY2xpZW50SWQiOiJlYm1ydm9kNnlvMG5semFlazF5cCIsInBob25lIjoiMTM5NDA4Nzg5OTEiLCJvcGVuSWQiOm51bGwsInV1aWQiOiIyZjcyZWI4OS05NzkyLTRhYmMtODM0MC05NzU4NDIzNWVkODciLCJlbWFpbCI6IiIsImV4cCI6MTc2MDI4MTA5NH0.kFVEFfm9yB08ZDQtEn6cXAQSrKX5YFzU7C_LhLPKgAEsNPgmQjKyhizmHDYlPeHLQqhz1rAJeYQfKGUUsLwwrw",  # 环境变量中设置 token，不带 Bearer
+            base_url="https://chat.intern-ai.org.cn/api/v1/",  # InternVL 的接口地址
+        )
+
+        # 发起流式请求
+        completion = client.chat.completions.create(
+            model="internvl2.5-latest",
+            messages=prompt,
+            stream=True,
+            top_p=top_p,
+            temperature=temperature,
+        )
+
+        # 处理流式输出
+        for chunk in completion:
+            # OpenAI 返回的 chunk 是 ChatCompletionChunk 类型，应该通过属性访问
+            if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if hasattr(delta, 'content'):
+                    content = delta.content
+                    # 处理流式输出的数据格式
+                    # 检查是否是 [DONE] 标志
+                    if content == "[DONE]":
+                        yield '{"code": 200, "msg": "success", "data": {"text": "finish!"}}'
+                        break  # 停止流式输出
+
+                    # 返回每个chunk的内容，格式为 JSON
+                    yield f'{{"code": 200, "msg": "success", "data": {{"text": "{content}"}}}}\n'
+
 # config = Config(env='production')
 # config.load_config("/home/ubuntu/work/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
 # # 创建ElasticSearchHandler实例
 # llm_builder = LargeModelAPIService(config)
 # # 定义要发送给 deepseek 模型的 prompt
 # prompt = [
-#     {"role": "system", "content": "你是一个代码审查专家，请根据用户输入提供回答"},
-#     {"role": "user", "content": "你如何评价自己的代码能力"}
-# ]
-# llm_builder.get_answer_from_deepseek(prompt)
+#         {
+#             "role": "user",
+#             "content": "你好"
+#         },
+#         {
+#             "role": "assistant",
+#             "content": "你好，我是 internvl"
+#         },
+#         {
+#             "role": "user",
+#             "content": [
+#                 {
+#                     "type": "text",
+#                     "text": "Describe the image please"
+#                 },
+#                 {
+#                     "type": "image_url",
+#                     "image_url": {
+#                         "url": "https://static.openxlab.org.cn/internvl/demo/visionpro.png"
+#                     }
+#                 },
+#                 {
+#                     "type": "image_url",
+#                     "image_url": {
+#                         "url": "https://static.openxlab.org.cn/puyu/demo/000-2x.jpg"
+#                     }
+#                 }
+#             ]
+#         }
+#     ]
+# llm_builder.get_answer_from_internvl_stream(prompt)
 
 
