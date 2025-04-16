@@ -7,6 +7,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch
 import json
 import os
+import datetime
 import threading
 import queue
 import urllib3
@@ -1553,7 +1554,7 @@ def generate_and_render_ppt():
     except Exception as e:
         return jsonify({"error": f"接口异常: {str(e)}"}), 500
 
-
+# 获取知识图谱数据
 @app.route("/api/graph/full_export", methods=["GET"])
 def export_graph():
     """
@@ -1561,6 +1562,180 @@ def export_graph():
     """
     result = neo4j_handler.export_full_graph_for_g6()
     return jsonify(result)
+
+# 资源库筛选查询接口
+@app.route("/api/resource/filter", methods=["POST"])
+def filter_resources():
+    data = request.get_json(force=True)
+    filters = {
+        "kb_id": data.get("kb_id", ""),
+        "file_name": data.get("file_name", []),
+        "status": data.get("status", [])
+    }
+    results = mongo_handler.filter_documents(filters)
+    return jsonify({
+        "code": 200,
+        "msg": "success",
+        "data": [dict(r, _id=str(r["_id"])) for r in results]
+    })
+
+# 题库筛选查询接口
+@app.route("/api/question/filter", methods=["POST"])
+def filter_questions():
+    data = request.get_json(force=True)
+    filters = {
+        "kb_id": data.get("kb_id", ""),
+        "type": data.get("type", []),
+        "diff_level": data.get("diff_level", []),
+        "status": data.get("status", [])
+    }
+    results = mongo_handler.filter_questions(filters)
+    return jsonify({
+        "code": 200,
+        "msg": "success",
+        "data": [dict(r, _id=str(r["_id"])) for r in results]
+    })
+
+# 资源库更新接口
+@app.route("/api/resource", methods=["PUT"])
+def update_resource():
+    try:
+        data = request.get_json(force=True)
+        doc_id = data.get("docID")
+        update_fields = {}
+
+        # 仅支持修改以下字段
+        for field in ["file_name", "resource_type", "status", "file_path"]:
+            if field in data:
+                update_fields[field] = data[field]
+
+        if not doc_id or not update_fields:
+            return jsonify({"code": 400, "msg": "参数缺失或无更新字段", "data": {}})
+
+        result = mongo_handler.update_document_by_id(doc_id, update_fields)
+        if result and result.modified_count > 0:
+            return jsonify({"code": 200, "msg": "更新成功", "data": {"modified": result.modified_count}})
+        else:
+            return jsonify({"code": 404, "msg": "未找到对应资源或内容未修改", "data": {}})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"更新失败：{str(e)}", "data": {}})
+
+# 试题库更新接口
+@app.route("/api/question", methods=["PUT"])
+def update_question():
+    try:
+        data = request.get_json(force=True)
+        doc_id = data.get("docID")
+        update_fields = {}
+
+        # 仅允许更新以下字段
+        for field in ["question", "answer", "analysis", "status", "type", "diff_level"]:
+            if field in data:
+                update_fields[field] = data[field]
+
+        if not doc_id or not update_fields:
+            return jsonify({"code": 400, "msg": "参数缺失或无更新字段", "data": {}})
+
+        result = mongo_handler.update_question_by_id(doc_id, update_fields)
+        if result and result.modified_count > 0:
+            return jsonify({"code": 200, "msg": "更新成功", "data": {"modified": result.modified_count}})
+        else:
+            return jsonify({"code": 404, "msg": "未找到对应试题或内容未修改", "data": {}})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"更新失败：{str(e)}", "data": {}})
+
+
+# 资源库新增接口
+@app.route("/api/resource", methods=["POST"])
+def add_resource():
+    try:
+        data = request.get_json(force=True)
+        # 生成 docID
+        doc_id = mongo_handler.generate_docid()
+
+        # 设置默认值并填充字段
+        document = {
+            "docID": doc_id,
+            "file_name": data.get("file_name", ""),
+            "resource_type": data.get("resource_type", ""),
+            "status": data.get("status", ""),
+            "file_path": data.get("file_path", ""),
+            "kb_id": data.get("kb_id", ""),
+            "created_at": datetime.datetime.utcnow(),
+            "subject": data.get("subject", "")
+        }
+
+        # 插入到数据库
+        inserted_id = mongo_handler.insert_document("geo_documents", document)
+        return jsonify({"code": 200, "msg": "新增成功", "data": {"docID": doc_id, "inserted_id": str(inserted_id)}})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"新增失败：{str(e)}", "data": {}})
+
+# 题库新增接口
+@app.route("/api/question", methods=["POST"])
+def add_question():
+    try:
+        data = request.get_json(force=True)
+        # 生成 docID
+        doc_id = mongo_handler.generate_docid()
+
+        # 设置默认值并填充字段
+        question = {
+            "docID": doc_id,
+            "question": data.get("question", ""),
+            "answer": data.get("answer", ""),
+            "analysis": data.get("analysis", ""),
+            "type": data.get("type", ""),
+            "diff_level": data.get("diff_level", "普通"),
+            "status": data.get("status", ""),
+            "created_at": datetime.datetime.utcnow(),
+            "resource_type": "试题",
+            "subject": data.get("subject", ""),
+            "kb_id": data.get("kb_id", "")
+        }
+
+        # 插入到数据库
+        inserted_id = mongo_handler.insert_question("edu_question", question)
+        return jsonify({"code": 200, "msg": "新增成功", "data": {"docID": doc_id, "inserted_id": str(inserted_id)}})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"新增失败：{str(e)}", "data": {}})
+
+# 资源库删除接口
+@app.route("/api/resource", methods=["DELETE"])
+def delete_resource():
+    try:
+        data = request.get_json(force=True)
+        doc_id = data.get("docID")
+        if not doc_id:
+            return jsonify({"code": 400, "msg": "docID 是必填字段", "data": {}})
+
+        # 删除对应文档
+        result = mongo_handler.delete_document_by_id(doc_id, "geo_documents")
+        if result and result.deleted_count > 0:
+            return jsonify({"code": 200, "msg": "删除成功", "data": {"deleted": result.deleted_count}})
+        else:
+            return jsonify({"code": 404, "msg": "未找到对应资源", "data": {}})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"删除失败：{str(e)}", "data": {}})
+
+# 题库删除接口
+@app.route("/api/question", methods=["DELETE"])
+def delete_question():
+    try:
+        data = request.get_json(force=True)
+        doc_id = data.get("docID")
+        if not doc_id:
+            return jsonify({"code": 400, "msg": "docID 是必填字段", "data": {}})
+
+        # 删除对应题目
+        result = mongo_handler.delete_question_by_id(doc_id, "edu_question")
+        if result and result.deleted_count > 0:
+            return jsonify({"code": 200, "msg": "删除成功", "data": {"deleted": result.deleted_count}})
+        else:
+            return jsonify({"code": 404, "msg": "未找到对应试题", "data": {}})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"删除失败：{str(e)}", "data": {}})
+
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777, threaded=True)

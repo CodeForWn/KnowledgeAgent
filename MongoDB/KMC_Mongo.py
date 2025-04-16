@@ -7,6 +7,9 @@ import json
 import pdfplumber
 from docx import Document
 from pptx import Presentation
+import random
+import re
+import time
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
@@ -49,6 +52,26 @@ class KMCMongoDBHandler:
             return result.inserted_id
         except Exception as e:
             self.logger.error("向集合 {} 插入文档失败: {}".format(collection_name, e))
+            return None
+
+    def generate_docid(self):
+        """
+        生成一个唯一的 docID，格式为三个4位数字拼接，如 "1234-5678-9012"
+        """
+        return "{}-{}-{}".format(
+            str(random.randint(0, 9999)).zfill(4),
+            str(random.randint(0, 9999)).zfill(4),
+            str(random.randint(0, 9999)).zfill(4)
+        )
+
+    def insert_question(self, collection_name, question_data):
+        """向题库中插入一个新题目"""
+        try:
+            result = self.db[collection_name].insert_one(question_data)
+            self.logger.info(f"插入试题 docID={question_data['docID']}，插入成功")
+            return result.inserted_id
+        except Exception as e:
+            self.logger.error(f"插入试题失败 docID={question_data['docID']}：{e}")
             return None
 
     def close(self):
@@ -171,7 +194,75 @@ class KMCMongoDBHandler:
             detailed_resources.append(res)
         return detailed_resources
 
+    def filter_documents(self, filters: dict, collection_name="geo_documents"):
+        """根据多条件筛选资源库数据（resource_type != 试题）"""
+        query = {
+            "resource_type": {"$ne": "试题"}
+        }
+        if filters.get("kb_id"):
+            query["kb_id"] = filters["kb_id"]
 
+        # 多选字段，仅在非空时加入
+        if filters.get("file_name"):
+            query["file_name"] = {"$in": filters["file_name"]}
+        if filters.get("status"):
+            query["status"] = {"$in": filters["status"]}
+
+        return list(self.db[collection_name].find(query))
+
+    def filter_questions(self, filters: dict, collection_name="edu_question"):
+        """根据多条件筛选题库数据（resource_type = 试题）"""
+        query = {
+            "resource_type": "试题"
+        }
+        if filters.get("kb_id"):
+            query["kb_id"] = filters["kb_id"]
+
+            # 多选字段：type, diff_level, status
+        if filters.get("type"):
+            query["type"] = {"$in": filters["type"]}
+        if filters.get("diff_level"):
+            query["diff_level"] = {"$in": filters["diff_level"]}
+        if filters.get("status"):
+            query["status"] = {"$in": filters["status"]}
+
+        return list(self.db[collection_name].find(query))
+
+    def update_document_by_id(self, doc_id, update_fields, collection_name="geo_documents"):
+        try:
+            result = self.db[collection_name].update_one({"docID": doc_id}, {"$set": update_fields})
+            self.logger.info(f"更新文档 docID={doc_id}，修改字段：{update_fields}")
+            return result
+        except Exception as e:
+            self.logger.error(f"更新文档失败 docID={doc_id}：{e}")
+            return None
+
+    def update_question_by_id(self, doc_id, update_fields, collection_name="edu_question"):
+        try:
+            result = self.db[collection_name].update_one({"docID": doc_id}, {"$set": update_fields})
+            self.logger.info(f"更新试题 docID={doc_id}，修改字段：{update_fields}")
+            return result
+        except Exception as e:
+            self.logger.error(f"更新试题失败 docID={doc_id}：{e}")
+            return None
+
+    def delete_document_by_id(self, doc_id, collection_name="geo_documents"):
+        try:
+            result = self.db[collection_name].delete_one({"docID": doc_id})
+            self.logger.info(f"删除资源 docID={doc_id}，删除数：{result.deleted_count}")
+            return result
+        except Exception as e:
+            self.logger.error(f"删除资源失败 docID={doc_id}：{e}")
+            return None
+
+    def delete_question_by_id(self, doc_id, collection_name="edu_question"):
+        try:
+            result = self.db[collection_name].delete_one({"docID": doc_id})
+            self.logger.info(f"删除试题 docID={doc_id}，删除数：{result.deleted_count}")
+            return result
+        except Exception as e:
+            self.logger.error(f"删除试题失败 docID={doc_id}：{e}")
+            return None
 # if __name__ == '__main__':
 #     # 示例用法
 #     config = Config()  # 假设 Config 类中包含mongodb_host、mongodb_port、mongodb_database、logger等配置项
