@@ -201,12 +201,14 @@ class KMCMongoDBHandler:
         }
         if filters.get("kb_id"):
             query["kb_id"] = filters["kb_id"]
-
-        # 多选字段，仅在非空时加入
+        if filters.get("folder_id"):
+            query["folder_id"] = filters["folder_id"]
         if filters.get("file_name"):
             query["file_name"] = {"$in": filters["file_name"]}
         if filters.get("status"):
             query["status"] = {"$in": filters["status"]}
+        if filters.get("knowledge_point"):
+            query["knowledge_point"] = {"$in": filters["knowledge_point"]}
 
         return list(self.db[collection_name].find(query))
 
@@ -217,14 +219,16 @@ class KMCMongoDBHandler:
         }
         if filters.get("kb_id"):
             query["kb_id"] = filters["kb_id"]
-
-            # 多选字段：type, diff_level, status
+        if filters.get("folder_id"):
+            query["folder_id"] = filters["folder_id"]
         if filters.get("type"):
             query["type"] = {"$in": filters["type"]}
         if filters.get("diff_level"):
             query["diff_level"] = {"$in": filters["diff_level"]}
         if filters.get("status"):
             query["status"] = {"$in": filters["status"]}
+        if filters.get("knowledge_point"):
+            query["knowledge_point"] = {"$in": filters["knowledge_point"]}
 
         return list(self.db[collection_name].find(query))
 

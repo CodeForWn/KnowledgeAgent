@@ -80,11 +80,15 @@ def process_directory(directory_path, mongo_handler, collection_name, resource_t
       - 如果是普通文件，则将文件信息存入 MongoDB，并增加学科字段（固定为“高中地理”）
       - 同时过滤掉以 "._" 开头的文件，避免乱码问题
     """
+    new_base_url = "http://119.45.164.254/resource/"
+
     for file in os.listdir(directory_path):
         # 过滤掉以 "._" 开头的隐藏或辅助文件
         if file.startswith("._"):
             continue
+
         full_path = os.path.join(directory_path, file)
+
         # 如果是文件
         if os.path.isfile(full_path):
             if file.lower().endswith('.zip'):
@@ -98,17 +102,28 @@ def process_directory(directory_path, mongo_handler, collection_name, resource_t
                     process_directory(extract_folder, mongo_handler, collection_name)
             else:
                 # 普通文件，构造文档并插入到 MongoDB
+                # 这里直接替换本地路径为新的 URL 路径
+                relative_path = full_path.replace("/home/ubuntu/work/kmcGPT/temp/resource/", "")
+
+                # 拼接为新的 URL 格式
+                new_file_path = new_base_url + relative_path.replace("\\", "/")  # 确保路径是正斜杠
                 document = {
                     "docID": generate_docid(),
                     "file_name": file,
-                    "file_path": full_path,
+                    # 替换文件路径为新的 URL 格式
+                    "file_path": new_file_path,
                     "subject": "高中地理",
                     "resource_type": resource_type,
                     "metadata": {"version": "v1.0"},
+                    "kb_id": "",
+                    "status" : "on",
+                    "user_id": "",
+                    "knowledge_point": [],
                     "created_at": datetime.datetime.utcnow()
                 }
                 inserted_id = mongo_handler.insert_document(collection_name, document)
                 print("Inserted document ID:", inserted_id)
+
         # 如果是目录，也递归处理
         elif os.path.isdir(full_path):
             process_directory(full_path, mongo_handler, collection_name)
@@ -136,6 +151,17 @@ def complete_all_resources(mongo_handler, collection_name):
             update_fields['status'] = 'on'
         if 'user_id' not in doc:
             update_fields['user_id'] = ''
+        if 'knowledge_point' not in doc:
+            update_fields['knowledge_point'] = []
+
+            # 根据 resource_type 设置 folder_id
+        if 'resource_type' in doc:
+            if doc['resource_type'] == '教材':
+                update_fields['folder_id'] = '1911604922479026177'
+            elif doc['resource_type'] == '课件':
+                update_fields['folder_id'] = '1911604966997368834'
+            elif doc['resource_type'] == '试题':
+                update_fields['folder_id'] = '1911604997812920321'
 
         if update_fields:
             collection.update_one({'_id': doc['_id']}, {'$set': update_fields})
@@ -152,13 +178,12 @@ if __name__ == '__main__':
 
     collection_name = "geo_documents"  # 集合名称，根据实际情况设置
     collection_name_ques = "edu_question"
-
-    # 指定要处理的文件夹路径，例如：
+    # #指定要处理的文件夹路径，例如：
     # folder_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理"
     # process_directory(folder_path, mongo_handler, collection_name)
     # file_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 练习/其他练习/地方时填空题（困难）.docx"
     # process_file(file_path, mongo_handler, collection_name)
-    # 第二步：补全数据库中已有的资源字段
+    #第二步：补全数据库中已有的资源字段
     complete_all_resources(mongo_handler, collection_name)
 
     # 插入一条空题目文档，用于建立字段结构

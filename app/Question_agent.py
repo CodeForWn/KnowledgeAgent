@@ -1524,8 +1524,8 @@ def generate_and_render_ppt():
         ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=filled_markdown)
 
         # 3. 下载 PPT 文件到本地（临时目录）
-        TEMP_DIR = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果"  # 或者你指定其他用于临时文件的路径
-        PUBLIC_URL_PREFIX = "http://119.45.164.254/file"
+        TEMP_DIR = "/home/ubuntu/work/kmcGPT/temp/resource/"  # 或者你指定其他用于临时文件的路径
+        PUBLIC_URL_PREFIX = "http://119.45.164.254/resource/"  # 替换为你的公网访问路径前缀
         filename = get_filename_from_url(ppt_url)
         local_ppt_path = os.path.join(TEMP_DIR, filename)
         # 注意：download_file 是你定义的下载方法（所属对象根据实际情况调整，比如 self.download_file 或者其他实例）
@@ -1565,19 +1565,50 @@ def export_graph():
 
 # 资源库筛选查询接口
 @app.route("/api/resource/filter", methods=["POST"])
-def filter_resources():
-    data = request.get_json(force=True)
-    filters = {
-        "kb_id": data.get("kb_id", ""),
-        "file_name": data.get("file_name", []),
-        "status": data.get("status", [])
-    }
-    results = mongo_handler.filter_documents(filters)
-    return jsonify({
-        "code": 200,
-        "msg": "success",
-        "data": [dict(r, _id=str(r["_id"])) for r in results]
-    })
+def filter_data():
+    try:
+        data = request.get_json(force=True)
+        folder_id = data.get("folder_id")
+
+
+        # 根据 folder_id 判断选择资源库或题库查询
+        if folder_id == "1911604922479026177" or folder_id == "1911604966997368834":
+            # 进入资源库查询
+            filters = {
+                "kb_id": data.get("kb_id", ""),
+                "file_name": data.get("file_name", []),
+                "status": data.get("status", []),
+                "folder_id": folder_id,
+                "knowledge_point" : data.get("knowledge_point", []),
+            }
+
+            # 调用资源库查询方法
+            results = mongo_handler.filter_documents(filters)
+
+        elif folder_id == "1911604997812920321":
+            # 进入题库查询
+            filters = {
+                "kb_id": data.get("kb_id", ""),
+                "type": data.get("type", []),
+                "diff_level": data.get("diff_level", []),
+                "status": data.get("status", []),
+                "knowledge_point" : data.get("knowledge_point", []),
+            }
+
+            # 调用题库查询方法
+            results = mongo_handler.filter_questions(filters)
+
+        else:
+            return jsonify({"code": 400, "msg": "无效的 folder_id", "data": {}})
+
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": [dict(r, _id=str(r["_id"])) for r in results]
+        })
+
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"查询失败：{str(e)}", "data": {}})
 
 # 题库筛选查询接口
 @app.route("/api/question/filter", methods=["POST"])
@@ -1587,7 +1618,7 @@ def filter_questions():
         "kb_id": data.get("kb_id", ""),
         "type": data.get("type", []),
         "diff_level": data.get("diff_level", []),
-        "status": data.get("status", [])
+        "status": data.get("status", "")
     }
     results = mongo_handler.filter_questions(filters)
     return jsonify({
@@ -1605,7 +1636,7 @@ def update_resource():
         update_fields = {}
 
         # 仅支持修改以下字段
-        for field in ["file_name", "resource_type", "status", "file_path"]:
+        for field in ["file_name", "resource_type", "status", "file_path", "knowledge_point", "folder_id"]:
             if field in data:
                 update_fields[field] = data[field]
 
@@ -1629,7 +1660,7 @@ def update_question():
         update_fields = {}
 
         # 仅允许更新以下字段
-        for field in ["question", "answer", "analysis", "status", "type", "diff_level"]:
+        for field in ["question", "answer", "analysis", "status", "type", "diff_level", "knowledge_point"]:
             if field in data:
                 update_fields[field] = data[field]
 
@@ -1662,7 +1693,9 @@ def add_resource():
             "file_path": data.get("file_path", ""),
             "kb_id": data.get("kb_id", ""),
             "created_at": datetime.datetime.utcnow(),
-            "subject": data.get("subject", "")
+            "subject": data.get("subject", ""),
+            "folder_id": data.get("folder_id", ""),
+            "knowledge_point": data.get("knowledge_point", [])
         }
 
         # 插入到数据库
@@ -1687,11 +1720,13 @@ def add_question():
             "analysis": data.get("analysis", ""),
             "type": data.get("type", ""),
             "diff_level": data.get("diff_level", "普通"),
-            "status": data.get("status", ""),
+            "status": data.get("status", 'on'),
             "created_at": datetime.datetime.utcnow(),
             "resource_type": "试题",
             "subject": data.get("subject", ""),
-            "kb_id": data.get("kb_id", "")
+            "kb_id": data.get("kb_id", ""),
+            "folder_id": data.get("folder_id", "1911604997812920321"),
+            "knowledge_point": data.get("knowledge_point", []),
         }
 
         # 插入到数据库
