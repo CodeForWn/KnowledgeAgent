@@ -1837,8 +1837,8 @@ def canvas_chatpdf():
         file_id = data.get('file_id')
         token = data.get('token')
         llm = data.get('llm', 'qwen').lower()
-        top_p = data.get('top_p', 0.8)
-        temperature = data.get('temperature', 0)
+        top_p = data.get('top_p', 0.7)
+        temperature = data.get('temperature', 0.1)
         user_info = data.get('userInfo', {})
 
         if not query or not download_path:

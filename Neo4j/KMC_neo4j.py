@@ -258,7 +258,7 @@ class KMCNeo4jHandler:
                         "id": short_id,
                         "label": props.get("name", labels[0] if labels else "Entity"),
                         "type": labels[0] if labels else "Entity",
-                        **props
+                        "rawProps": props
                     }
                     nodes.append(node)
                     node_index += 1
@@ -285,7 +285,7 @@ class KMCNeo4jHandler:
                         "target": target_id,
                         "label": rel_props.get("type", rel_type),
                         "type": rel_type,
-                        **rel_props
+                        "rawProps": rel_props
                     }
                     edges.append(edge)
                     edge_index += 1
@@ -296,11 +296,116 @@ class KMCNeo4jHandler:
             self.logger.error("导出图谱数据失败: {}".format(e))
             return {"nodes": [], "edges": [], "error": str(e)}
 
-# if __name__ == "__main__":
+    def update_entity_name(self, old_name, new_name):
+        query = "MATCH (e:Entity {name: $old_name}) SET e.name = $new_name"
+        with self.driver.session() as session:
+            session.run(query, old_name=old_name, new_name=new_name)
 
-#     config = Config()
-#     config.load_config()  # 如果 Config 中没有此方法，可以删除这行
-#     neo4j_handler = KMCNeo4jHandler(config)
+    def fill_missing_entity_fields(self, default_values: dict):
+        """
+        为所有 Entity 节点补充缺失字段（不覆盖已有值），并记录日志。
+        """
+        try:
+            with self.driver.session() as session:
+                # 查询所有 Entity 节点及其属性
+                result = session.run("MATCH (e:Entity) RETURN e.name AS name, properties(e) AS props")
+                entities = result.data()
+
+                self.logger.info(f"共找到 {len(entities)} 个 Entity 节点")
+
+                field_counts = {k: 0 for k in default_values.keys()}
+                missing_entities = {k: [] for k in default_values.keys()}
+
+                for entity in entities:
+                    name = entity["name"]
+                    props = entity["props"]
+                    for field, default in default_values.items():
+                        if field not in props or props[field] is None:
+                            field_counts[field] += 1
+                            missing_entities[field].append(name)
+
+                # 打印缺失统计
+                for field, count in field_counts.items():
+                    self.logger.info(f"字段 {field} 缺失节点数量: {count}")
+                    if count > 0:
+                        preview_names = ", ".join(missing_entities[field][:5])
+                        self.logger.info(f"缺失字段 {field} 的前几个节点: {preview_names}")
+
+                # 补齐字段
+                query = """
+                MATCH (e:Entity)
+                SET
+                    e.unit = COALESCE(e.unit, $unit),
+                    e.kb_id = COALESCE(e.kb_id, $kb_id),
+                    e.root_name = COALESCE(e.root_name, $root_name),
+                    e.difficulty = COALESCE(e.difficulty, $difficulty),
+                    e.type = COALESCE(e.type, $type),
+                    e.teaching_requirements = COALESCE(e.teaching_requirements, $teaching_requirements)
+                RETURN count(e) AS updated_count
+                """
+                result = session.run(query, **default_values)
+                updated_count = result.single()["updated_count"]
+                self.logger.info(f"补齐操作执行完成，共更新 {updated_count} 个知识点字段（仅补缺）")
+
+                return field_counts
+
+        except Exception as e:
+            self.logger.error(f"补齐字段失败：{e}")
+            return {}
+
+    def update_all_entity_root_name(self, new_root_name):
+        """
+        将所有 Entity 节点的 root_name 字段统一修改为指定值。
+        """
+        query = "MATCH (e:Entity) SET e.root_name = $new_root_name RETURN count(e) AS updated_count"
+        with self.driver.session() as session:
+            result = session.run(query, new_root_name=new_root_name)
+            updated = result.single()["updated_count"]
+            self.logger.info(f"所有 Entity 节点的 root_name 字段已更新为：{new_root_name}，共计 {updated} 个节点")
+            return updated
+
+    def clear_entity_fields(self, name, fields: list):
+        """
+        将指定名称的知识点的部分字段设为空。
+        """
+        set_clauses = ", ".join([f"e.{field} = NULL" for field in fields])
+        query = f"""
+        MATCH (e:Entity {{name: $name}})
+        SET {set_clauses}
+        RETURN properties(e) AS updated
+        """
+        with self.driver.session() as session:
+            result = session.run(query, name=name)
+            updated_props = result.single()["updated"]
+            self.logger.info(f"已将节点“{name}”的字段 {fields} 清空。当前属性为：{updated_props}")
+            return updated_props
+
+    def bind_resource_to_entities(self, docID: str, entity_names: list, file_name: str = "",
+                                  resource_type: str = "课件"):
+        """
+        将某一资源绑定到多个知识点（Entity 节点），建立“相关”关系。
+        - docID: Resource 节点的唯一标识
+        - entity_names: 要绑定的知识点名称列表
+        - file_name/resource_type: 可选，补充 Resource 节点属性
+        """
+        with self.driver.session() as session:
+            for name in entity_names:
+                session.run("""
+                    MERGE (e:Entity {name: $entity_name})
+                    MERGE (r:Resource {docID: $docID})
+                    SET r.file_name = $file_name,
+                        r.resource_type = $resource_type
+                    MERGE (e)-[:相关]->(r)
+                """, entity_name=name, docID=docID, file_name=file_name, resource_type=resource_type)
+
+            self.logger.info(f"已将资源 docID={docID} 绑定到知识点：{entity_names}")
+
+
+if __name__ == "__main__":
+
+    config = Config()
+    config.load_config()  # 如果 Config 中没有此方法，可以删除这行
+    neo4j_handler = KMCNeo4jHandler(config)
 #     knowledge_point_name = "地方时"
 #     data = neo4j_handler.get_entity_details(knowledge_point_name)
 #     print(data)
@@ -314,6 +419,19 @@ class KMCNeo4jHandler:
     # print("\n相关资源:")
     # for res in data["resources"]:
     #     print(f"资源文件名: {res['file_name']}, docID: {res['docID']}, 类型: {res['resource_type']}")
-
+    # neo4j_handler.update_entity_name("地球运动", "高中地理")
+    # default_values = {
+    #     "unit": "第一单元",
+    #     "kb_id": "高中地理",
+    #     "root_name": "高中地理知识图谱",
+    #     "difficulty": "",
+    #     "type": "概念型",
+    #     "teaching_requirements": ""
+    # }
+    #
+    # neo4j_handler.fill_missing_entity_fields(default_values)
+    # neo4j_handler.update_all_entity_root_name("选必一")
+    # neo4j_handler.clear_entity_fields("高中地理", ["root_name", "unit", "type"])
+    #
     # neo4j_handler.close()
 

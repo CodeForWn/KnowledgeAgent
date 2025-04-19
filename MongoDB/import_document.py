@@ -162,12 +162,41 @@ def complete_all_resources(mongo_handler, collection_name):
                 update_fields['folder_id'] = '1911604966997368834'
             elif doc['resource_type'] == '试题':
                 update_fields['folder_id'] = '1911604997812920321'
+            elif doc['resource_type'] == '视频':
+                update_fields['folder_id'] = '1913174184729747458'
+            elif doc['resource_type'] == '图片':
+                update_fields['folder_id'] = '1913174208926687233'
+
 
         if update_fields:
             collection.update_one({'_id': doc['_id']}, {'$set': update_fields})
             total += 1
 
     print(f"已更新 {total} 条资源记录，确保字段完整")
+
+def fix_resource_type(mongo_handler, collection_name="geo_documents"):
+    collection = mongo_handler.db[collection_name]
+    updated_count = 0
+
+    cursor = collection.find({})
+    for doc in cursor:
+        file_name = doc.get("file_name", "")
+        resource_type = doc.get("resource_type", "")
+
+        update_fields = {}
+
+        if file_name.lower().endswith(".pdf"):
+            if resource_type != "教材":
+                update_fields["resource_type"] = "教材"
+        else:
+            if resource_type == "" or resource_type is None:
+                update_fields["resource_type"] = "课件"
+
+        if update_fields:
+            collection.update_one({"_id": doc["_id"]}, {"$set": update_fields})
+            updated_count += 1
+
+    print(f"✅ 已更新 {updated_count} 条记录的 resource_type 字段")
 
 
 if __name__ == '__main__':
@@ -184,7 +213,9 @@ if __name__ == '__main__':
     # file_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 练习/其他练习/地方时填空题（困难）.docx"
     # process_file(file_path, mongo_handler, collection_name)
     #第二步：补全数据库中已有的资源字段
+    fix_resource_type(mongo_handler)  # 调用修复方法
     complete_all_resources(mongo_handler, collection_name)
+    
 
     # 插入一条空题目文档，用于建立字段结构
     # mongo_handler.db[collection_name_ques].insert_one({

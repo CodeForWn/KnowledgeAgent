@@ -1572,7 +1572,7 @@ def filter_data():
 
 
         # 根据 folder_id 判断选择资源库或题库查询
-        if folder_id == "1911604922479026177" or folder_id == "1911604966997368834":
+        if folder_id != "1911604997812920321":
             # 进入资源库查询
             filters = {
                 "kb_id": data.get("kb_id", ""),
@@ -1770,6 +1770,45 @@ def delete_question():
             return jsonify({"code": 404, "msg": "未找到对应试题", "data": {}})
     except Exception as e:
         return jsonify({"code": 500, "msg": f"删除失败：{str(e)}", "data": {}})
+
+
+@app.route("/api/neo4j/bind_resource_to_entities", methods=["POST"])
+def bind_resource_to_entities():
+    try:
+        data = request.get_json()
+        docID = data.get("docID")
+        entity_names = data.get("entity_names", [])
+        file_name = data.get("file_name", "")
+        resource_type = data.get("resource_type", "课件")
+
+        if not docID or not entity_names:
+            return jsonify({"code": 400, "msg": "参数 docID 或 entity_names 缺失", "data": {}}), 400
+
+        neo4j_handler.bind_resource_to_entities(
+            docID=docID,
+            entity_names=entity_names,
+            file_name=file_name,
+            resource_type=resource_type
+        )
+
+        return jsonify({
+            "code": 200,
+            "msg": "资源成功绑定到知识点",
+            "data": {
+                "docID": docID,
+                "entity_names": entity_names
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"绑定资源到知识点失败: {e}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": "内部错误",
+            "data": {
+                "error": str(e)
+            }
+        }), 500
 
 
 if __name__ == "__main__":
