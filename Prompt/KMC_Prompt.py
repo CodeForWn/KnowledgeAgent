@@ -59,7 +59,7 @@ class PromptBuilder:
     def generate_open_answer_prompt(query, history):
         # 构建messages列表
         messages = [dict(role='system',
-                         content="你是小孔，是基于大语言模型的人工智能助手。无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。")]
+                         content="你是小孔，是基于大语言模型的人工智能助手。无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。输出内容格式美观，如果需要的话，请用表格或思维导图等形式丰富回答内容。")]
 
         # 添加历史对话到messages列表中
         if history:
@@ -125,7 +125,7 @@ class PromptBuilder:
             text = ref.get('text', '无内容')
             refs_prompt += f"[{i + 1}]: {text}\n"
 
-        system_message = f"{refs_prompt}回答要求：你应当尽量用原文回答，以markdown语言输出。"
+        system_message = f"{refs_prompt}回答要求：你应当尽量用原文回答，以markdown语言输出，输出内容格式美观，如果需要的话，请用表格或思维导图等形式丰富回答内容。"
 
         # 添加参考文本提示到system消息
         messages.append({'role': 'user', 'content': system_message})

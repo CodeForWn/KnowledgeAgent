@@ -400,6 +400,38 @@ class KMCNeo4jHandler:
 
             self.logger.info(f"已将资源 docID={docID} 绑定到知识点：{entity_names}")
 
+    def fuzzy_search_entities(self, kb_id: str, query: str, limit: int = 20):
+        cypher = """
+        MATCH (e:Entity)
+        WHERE e.kb_id = $kb_id AND toLower(e.name) CONTAINS toLower($query)
+        RETURN e.name AS name
+        LIMIT $limit
+        """
+        parameters = {
+            "kb_id": kb_id,
+            "query": query,
+            "limit": limit
+        }
+        with self.driver.session() as session:
+            result = session.run(cypher, parameters)
+            return [record["name"] for record in result]
+
+    def update_kb_id_for_entities(self, old_kb_id: str, new_kb_id: str):
+        """
+        将所有 Entity 节点中 kb_id = old_kb_id 的节点，更新为 new_kb_id。
+        """
+        query = """
+        MATCH (e:Entity {kb_id: $old_kb_id})
+        SET e.kb_id = $new_kb_id
+        RETURN count(e) AS updated_count
+        """
+        with self.driver.session() as session:
+            result = session.run(query, old_kb_id=old_kb_id, new_kb_id=new_kb_id)
+            count = result.single()["updated_count"]
+            self.logger.info(f"已将 kb_id = {old_kb_id} 的 Entity 节点共 {count} 个，更新为：{new_kb_id}")
+            return count
+
+
 
 if __name__ == "__main__":
 
@@ -429,6 +461,8 @@ if __name__ == "__main__":
     #     "teaching_requirements": ""
     # }
     #
+    # neo4j_handler.update_kb_id_for_entities("高中地理", "1911603842693210113")
+
     # neo4j_handler.fill_missing_entity_fields(default_values)
     # neo4j_handler.update_all_entity_root_name("选必一")
     # neo4j_handler.clear_entity_fields("高中地理", ["root_name", "unit", "type"])

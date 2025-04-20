@@ -1811,5 +1811,30 @@ def bind_resource_to_entities():
         }), 500
 
 
+@app.route("/api/neo4j/fuzzy_entity_search", methods=["GET"])
+def fuzzy_entity_search():
+    try:
+        kb_id = request.args.get("kb_id", "")
+        query = request.args.get("query", "")
+        if not kb_id or not query:
+            return jsonify({"code": 400, "msg": "参数 kb_id 或 query 缺失", "data": []})
+
+        matched_entities = neo4j_handler.fuzzy_search_entities(kb_id, query)
+
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": matched_entities
+        })
+
+    except Exception as e:
+        logger.error(f"模糊查询知识点失败: {e}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": "服务器内部错误",
+            "data": []
+        })
+
+
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777, threaded=True)
