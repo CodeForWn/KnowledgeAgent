@@ -144,7 +144,7 @@ def complete_all_resources(mongo_handler, collection_name):
         update_fields = {}
 
         if 'kb_id' not in doc:
-            update_fields['kb_id'] = ''
+            update_fields['kb_id'] = '1911603842693210113'
         if 'resource_type' not in doc:
             update_fields['resource_type'] = ''
         if doc.get('status') != 'on':
@@ -198,6 +198,21 @@ def fix_resource_type(mongo_handler, collection_name="geo_documents"):
 
     print(f"✅ 已更新 {updated_count} 条记录的 resource_type 字段")
 
+def update_all_kb_ids(mongo_handler):
+    new_kb_id = "1911603842693210113"
+    collections = ["geo_documents", "edu_question"]
+    total_updated = 0
+
+    for col in collections:
+        result = mongo_handler.db[col].update_many(
+            {},  # 匹配全部文档
+            {"$set": {"kb_id": new_kb_id}}
+        )
+        print(f"✅ 集合 `{col}` 中已更新 {result.modified_count} 条 kb_id")
+        total_updated += result.modified_count
+
+    print(f"🎉 共更新 kb_id 字段 {total_updated} 条记录。")
+
 
 if __name__ == '__main__':
     # 加载配置并创建 MongoDB 连接对象
@@ -207,15 +222,16 @@ if __name__ == '__main__':
 
     collection_name = "geo_documents"  # 集合名称，根据实际情况设置
     collection_name_ques = "edu_question"
+    new_collection_name = "edu_documents"
     # #指定要处理的文件夹路径，例如：
     # folder_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理"
     # process_directory(folder_path, mongo_handler, collection_name)
     # file_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 练习/其他练习/地方时填空题（困难）.docx"
     # process_file(file_path, mongo_handler, collection_name)
     #第二步：补全数据库中已有的资源字段
-    fix_resource_type(mongo_handler)  # 调用修复方法
-    complete_all_resources(mongo_handler, collection_name)
-    
+    # fix_resource_type(mongo_handler)  # 调用修复方法
+    # complete_all_resources(mongo_handler, collection_name_ques)
+    update_all_kb_ids(mongo_handler)
 
     # 插入一条空题目文档，用于建立字段结构
     # mongo_handler.db[collection_name_ques].insert_one({

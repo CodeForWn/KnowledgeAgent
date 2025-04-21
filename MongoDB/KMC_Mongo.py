@@ -208,7 +208,9 @@ class KMCMongoDBHandler:
         if filters.get("status"):
             query["status"] = {"$in": filters["status"]}
         if filters.get("knowledge_point"):
-            query["knowledge_point"] = {"$in": filters["knowledge_point"]}
+            kp_values = filters["knowledge_point"]
+            if isinstance(kp_values, list) and kp_values:
+                query["knowledge_point"] = {"$in": kp_values}
 
         return list(self.db[collection_name].find(query))
 

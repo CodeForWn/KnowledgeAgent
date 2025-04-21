@@ -1635,6 +1635,10 @@ def update_resource():
         doc_id = data.get("docID")
         update_fields = {}
 
+        # 原 knowledge_point（用于对比）
+        old_doc = mongo_handler.get_resource_by_docID(doc_id)
+        old_kps = old_doc.get("knowledge_point", []) if old_doc else []
+
         # 仅支持修改以下字段
         for field in ["file_name", "resource_type", "status", "file_path", "knowledge_point", "folder_id"]:
             if field in data:
@@ -1644,7 +1648,17 @@ def update_resource():
             return jsonify({"code": 400, "msg": "参数缺失或无更新字段", "data": {}})
 
         result = mongo_handler.update_document_by_id(doc_id, update_fields)
+
         if result and result.modified_count > 0:
+            new_kps = update_fields.get("knowledge_point", [])
+            if new_kps and set(new_kps) != set(old_kps):
+                neo4j_handler.bind_resource_to_entities(
+                    docID=doc_id,
+                    entity_names=new_kps,
+                    file_name=update_fields.get("file_name", old_doc.get("file_name", "")),
+                    resource_type=update_fields.get("resource_type", old_doc.get("resource_type", "课件"))
+                )
+                logger.info(f"知识点绑定成功：{doc_id} -> {new_kps}")
             return jsonify({"code": 200, "msg": "更新成功", "data": {"modified": result.modified_count}})
         else:
             return jsonify({"code": 404, "msg": "未找到对应资源或内容未修改", "data": {}})
@@ -1659,6 +1673,9 @@ def update_question():
         doc_id = data.get("docID")
         update_fields = {}
 
+        old_doc = mongo_handler.get_resource_by_docID(doc_id, collection_name="edu_question")
+        old_kps = old_doc.get("knowledge_point", []) if old_doc else []
+
         # 仅允许更新以下字段
         for field in ["question", "answer", "analysis", "status", "type", "diff_level", "knowledge_point"]:
             if field in data:
@@ -1669,6 +1686,16 @@ def update_question():
 
         result = mongo_handler.update_question_by_id(doc_id, update_fields)
         if result and result.modified_count > 0:
+            new_kps = update_fields.get("knowledge_point", [])
+            if new_kps and set(new_kps) != set(old_kps):
+                neo4j_handler.bind_resource_to_entities(
+                    docID=doc_id,
+                    entity_names=new_kps,
+                    file_name=update_fields.get("file_name", old_doc.get("file_name", "")),
+                    resource_type="试题"
+                )
+                logger.info(f"知识点绑定成功：{doc_id} -> {new_kps}")
+
             return jsonify({"code": 200, "msg": "更新成功", "data": {"modified": result.modified_count}})
         else:
             return jsonify({"code": 404, "msg": "未找到对应试题或内容未修改", "data": {}})
@@ -1700,6 +1727,16 @@ def add_resource():
 
         # 插入到数据库
         inserted_id = mongo_handler.insert_document("geo_documents", document)
+
+        # ✅ 绑定图谱
+        if document["knowledge_point"] != []:
+            neo4j_handler.bind_resource_to_entities(
+                docID=doc_id,
+                entity_names=document["knowledge_point"],
+                file_name=document["file_name"],
+                resource_type=document["resource_type"]
+            )
+        logger.info(f"知识点绑定成功：{doc_id} -> {document['knowledge_point']}")
         return jsonify({"code": 200, "msg": "新增成功", "data": {"docID": doc_id, "inserted_id": str(inserted_id)}})
     except Exception as e:
         return jsonify({"code": 500, "msg": f"新增失败：{str(e)}", "data": {}})
@@ -1731,6 +1768,15 @@ def add_question():
 
         # 插入到数据库
         inserted_id = mongo_handler.insert_question("edu_question", question)
+
+        if question["knowledge_point"] != []:
+            neo4j_handler.bind_resource_to_entities(
+                docID=doc_id,
+                entity_names=question["knowledge_point"],
+                file_name=question["question"],
+                resource_type=question["resource_type"]
+            )
+        logger.info(f"知识点绑定成功：{doc_id} -> {question['knowledge_point']}")
         return jsonify({"code": 200, "msg": "新增成功", "data": {"docID": doc_id, "inserted_id": str(inserted_id)}})
     except Exception as e:
         return jsonify({"code": 500, "msg": f"新增失败：{str(e)}", "data": {}})
@@ -1747,6 +1793,8 @@ def delete_resource():
         # 删除对应文档
         result = mongo_handler.delete_document_by_id(doc_id, "geo_documents")
         if result and result.deleted_count > 0:
+            neo4j_handler.delete_resource_and_relations(doc_id)
+            logger.info(f"资源节点删除成功：{doc_id}")
             return jsonify({"code": 200, "msg": "删除成功", "data": {"deleted": result.deleted_count}})
         else:
             return jsonify({"code": 404, "msg": "未找到对应资源", "data": {}})
@@ -1765,6 +1813,8 @@ def delete_question():
         # 删除对应题目
         result = mongo_handler.delete_question_by_id(doc_id, "edu_question")
         if result and result.deleted_count > 0:
+            neo4j_handler.delete_resource_and_relations(doc_id)
+            logger.info(f"资源节点删除成功：{doc_id}")
             return jsonify({"code": 200, "msg": "删除成功", "data": {"deleted": result.deleted_count}})
         else:
             return jsonify({"code": 404, "msg": "未找到对应试题", "data": {}})

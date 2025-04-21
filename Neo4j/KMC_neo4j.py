@@ -35,6 +35,7 @@ from config.KMC_config import Config
 from neo4j import GraphDatabase, basic_auth
 
 
+
 class KMCNeo4jHandler:
     def __init__(self, config):
         try:
@@ -44,6 +45,7 @@ class KMCNeo4jHandler:
             self.neo4j_password = config.neo4j_password
             self.config = config
             self.logger = self.config.logger
+            self.neo4j_lock = threading.Lock()
 
             # 建立Neo4j连接
             self.driver = GraphDatabase.driver(
@@ -84,6 +86,7 @@ class KMCNeo4jHandler:
             logging.error("加载 JSON 文件时出错: {}".format(e))
             return None
 
+
     def import_graph(self, data):
         """
         导入图数据到 Neo4j 数据库。
@@ -92,7 +95,7 @@ class KMCNeo4jHandler:
             - graph: 三元组列表，每个三元组包含 subject, predicate, object
         """
         try:
-            with neo4j_lock, self.driver.session() as session:
+            with self.neo4j_lock, self.driver.session() as session:
                 session.write_transaction(self._import_graph, data)
             self.logger.info("数据已成功导入 Neo4j")
             return True
@@ -400,6 +403,21 @@ class KMCNeo4jHandler:
 
             self.logger.info(f"已将资源 docID={docID} 绑定到知识点：{entity_names}")
 
+    def delete_resource_and_relations(self, docID: str):
+        """
+        删除资源节点及其所有与知识点的“相关”关系。
+        """
+        try:
+            with self.driver.session() as session:
+                session.run("""
+                    MATCH (r:Resource {docID: $docID})
+                    OPTIONAL MATCH (e:Entity)-[rel:相关]->(r)
+                    DELETE rel, r
+                """, docID=docID)
+            self.logger.info(f"已删除资源节点 docID={docID} 及其相关关系")
+        except Exception as e:
+            self.logger.error(f"删除资源节点 docID={docID} 失败: {e}")
+
     def fuzzy_search_entities(self, kb_id: str, query: str, limit: int = 20):
         cypher = """
         MATCH (e:Entity)
@@ -431,41 +449,81 @@ class KMCNeo4jHandler:
             self.logger.info(f"已将 kb_id = {old_kb_id} 的 Entity 节点共 {count} 个，更新为：{new_kb_id}")
             return count
 
+    def import_triples_from_json(self, filepath: str) -> bool:
+        """
+        从 JSON 文件加载三元组并导入到 Neo4j。
+        JSON 文件应为列表，每项包含 subject, predicate, object。
+        实体节点均使用标签 Entity，关系边上的 type 属性存放 predicate。
+        返回 True 表示导入成功，False 表示失败。
+        """
+        # 加载原始三元组列表
+        triples = self.load_json(filepath)
+        if not isinstance(triples, list):
+            self.logger.error(f"无效的三元组文件格式: {filepath}")
+            return False
+
+        # 收集所有实体名称
+        entities = set()
+        for t in triples:
+            subj = t.get('subject')
+            obj  = t.get('object')
+            if not subj or not obj:
+                self.logger.warning(f"跳过不完整的三元组: {t}")
+                continue
+            entities.add(subj)
+            entities.add(obj)
+
+        # 构造 import_graph 所需的数据结构
+        data = {
+            "keywords": list(entities),
+            "graph": [
+                {"subject": t["subject"], "predicate": t["predicate"], "object": t["object"]}
+                for t in triples
+                if t.get("subject") and t.get("object")
+            ]
+        }
+
+        # 调用已有的 import_graph 方法执行导入
+        success = self.import_graph(data)
+        if success:
+            self.logger.info(f"已从 {filepath} 成功导入 {len(data['graph'])} 条三元组")
+        else:
+            self.logger.error(f"从 {filepath} 导入三元组失败")
+        return success
 
 
-if __name__ == "__main__":
-
-    config = Config()
-    config.load_config()  # 如果 Config 中没有此方法，可以删除这行
-    neo4j_handler = KMCNeo4jHandler(config)
-#     knowledge_point_name = "地方时"
-#     data = neo4j_handler.get_entity_details(knowledge_point_name)
-#     print(data)
-
-    # print(f"实体节点: {data['entity']}")
-    #
-    # print("\n相关实体关系:")
-    # for relation in data["entity_relations"]:
-    #     print(f"{data['entity']} -[{relation['relationship']}]-> {relation['entity']}")
-    #
-    # print("\n相关资源:")
-    # for res in data["resources"]:
-    #     print(f"资源文件名: {res['file_name']}, docID: {res['docID']}, 类型: {res['resource_type']}")
-    # neo4j_handler.update_entity_name("地球运动", "高中地理")
-    # default_values = {
-    #     "unit": "第一单元",
-    #     "kb_id": "高中地理",
-    #     "root_name": "高中地理知识图谱",
-    #     "difficulty": "",
-    #     "type": "概念型",
-    #     "teaching_requirements": ""
-    # }
-    #
-    # neo4j_handler.update_kb_id_for_entities("高中地理", "1911603842693210113")
-
-    # neo4j_handler.fill_missing_entity_fields(default_values)
-    # neo4j_handler.update_all_entity_root_name("选必一")
-    # neo4j_handler.clear_entity_fields("高中地理", ["root_name", "unit", "type"])
-    #
-    # neo4j_handler.close()
+# if __name__ == "__main__":
+#
+#     config = Config()
+#     config.load_config()  # 如果 Config 中没有此方法，可以删除这行
+#     neo4j_handler = KMCNeo4jHandler(config)
+#     neo4j_handler.import_triples_from_json("/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/选必一所有知识点.json")
+# #     knowledge_point_name = "地方时"
+# #     data = neo4j_handler.get_entity_details(knowledge_point_name)
+# #     print(data)
+#
+#     # print(f"实体节点: {data['entity']}")
+#     #
+#     # print("\n相关实体关系:")
+#     # for relation in data["entity_relations"]:
+#     #     print(f"{data['entity']} -[{relation['relationship']}]-> {relation['entity']}")
+#     #
+#     # print("\n相关资源:")
+#     # for res in data["resources"]:
+#     #     print(f"资源文件名: {res['file_name']}, docID: {res['docID']}, 类型: {res['resource_type']}")
+#     # neo4j_handler.update_entity_name("地球运动", "高中地理")
+#     default_values = {
+#         "unit": "",
+#         "kb_id": "高中地理",
+#         "root_name": "高中地理知识图谱",
+#         "difficulty": "",
+#         "type": "概念型",
+#         "teaching_requirements": ""
+#     }
+#
+#     # neo4j_handler.update_kb_id_for_entities("高中地理", "1911603842693210113")
+#     neo4j_handler.fill_missing_entity_fields(default_values)
+#     # neo4j_handler.update_all_entity_root_name("选必一")
+#     neo4j_handler.clear_entity_fields("高中地理", ["root_name", "unit", "type"])
+#     neo4j_handler.close()
 
