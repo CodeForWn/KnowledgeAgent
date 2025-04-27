@@ -57,6 +57,18 @@ rerank_model_path = config.rerank_model_path
 reranker = FlagReranker(rerank_model_path, use_fp16=True)
 
 
+def file_exists(path):
+    if path.startswith('http://') or path.startswith('https://'):
+        try:
+            response = requests.head(path, timeout=5)
+            return response.status_code == 200
+        except requests.RequestException as e:
+            logger.error(f"检查远程文件失败: {e}")
+            return False
+    else:
+        return os.path.exists(path)
+
+
 @app.route("/api/question_agent", methods=["POST"])
 def get_question_agent():
     try:
@@ -66,7 +78,7 @@ def get_question_agent():
         difficulty_level = data.get('difficulty_level', '普通')  # 难度等级
         question_type = data.get('question_type', '单选题')  # 题型
         question_count = data.get('question_count', 3)  # 题目数量
-        llm = data.get('llm', 'deepseek')
+        llm = data.get('llm', 'qwen')
         top_p = data.get('top_p', 0.8)
         temperature = data.get('temperature', 0.8)
         query = knowledge_point + "的地理定义和意义是什么？"
@@ -76,160 +88,152 @@ def get_question_agent():
 
         # 调用 get_entity_details 方法获取该知识点的详细信息
         result = neo4j_handler.get_entity_details(knowledge_point)
-        if not result or not result.get("resources"):
-            logger.info(f"知识点 {knowledge_point} 不存在于图谱中或未关联资源，直接使用大模型生成题目")
-            # 空资源情况下，仍构造 prompt
+        resources = result.get("resources", []) if result else []
+
+        if not resources:
+            logger.info(f"知识点 {knowledge_point} 无资源，直接走空相关内容构造prompt")
+            related_texts = []
+            spo = {}
             prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
                 knowledge_point=knowledge_point,
-                related_texts=[],  # 为空
-                spo={},  # 空结构
+                related_texts=related_texts,
+                spo=spo,
                 difficulty_level=difficulty_level,
                 question_type=question_type,
                 question_count=question_count
             )
             if llm.lower() == 'qwen':
-                response_generator = large_model_service.get_answer_from_Tyqwen_stream(prompt, top_p, temperature)
-                return Response(response_generator, content_type='text/plain; charset=utf-8')
+                response_text = large_model_service.get_answer_from_Tyqwen(prompt)
+                try:
+                    model_result = json.loads(response_text)
+                    logger.info(f"大模型返回原始内容是标准JSON")
+                    return jsonify({"code": 200, "msg": "success", "data": model_result})
+                except json.JSONDecodeError:
+                    logger.warning(f"大模型返回的不是标准JSON，原文: {repr(response_text)}")
+                    # 直接返回纯文本
+                    return Response(response_text, content_type='text/plain; charset=utf-8')
 
             if llm.lower() == 'deepseek':
-                response_generator = large_model_service.get_answer_from_deepseek_stream(prompt, top_p, temperature)
-                return Response(response_generator, content_type='text/plain; charset=utf-8')
+                response_text = large_model_service.get_answer_from_deepseek(prompt)
+                try:
+                    model_result = json.loads(response_text)
+                    logger.info(f"大模型返回原始内容是标准JSON")
+                    return jsonify({"code": 200, "msg": "success", "data": model_result})
+                except json.JSONDecodeError:
+                    logger.warning(f"大模型返回的不是标准JSON，原文: {repr(response_text)}")
+                    return Response(response_text, content_type='text/plain; charset=utf-8')
 
         logger.info(f"获取知识点 {knowledge_point} 的子图信息：{result}")
-        resources = result.get("resources", [])
 
-        # 返回 JSON 格式的结果
-        # logger.info(f"候选子图为：{result}")
-        # 创建一个空列表，用于存储所有资源处理后的 doc_list
+        # 有资源的话，处理资源
         combined_doc_list = []
         index_name = f"temp_kb_{knowledge_point}_{int(time.time())}"
+
         for res in resources:
             docID = res.get("docID")
-            # 从 MongoDB 查询该资源的详细信息（例如 file_path 等）
             resource_detail = mongo_handler.get_resource_by_docID(docID)
             logger.info(f"资源 docID={docID} 的详情信息：{resource_detail}")
+
             if not resource_detail:
                 logger.warning(f"资源未找到：docID = {docID}")
                 continue
 
-            if resource_detail:
-                # 提取文件路径和文件名（注意，文件名可以直接从 neo4j 的返回值中获取）
-                file_path = resource_detail.get("file_path", "")
-                file_name = resource_detail.get("file_name")
-                subject = resource_detail.get("subject")
-                resource_type = resource_detail.get("resource_type")
-                metadata = resource_detail.get("metadata", {})
-                diff_level = resource_detail.get("difficulty_level", "")
-                ques_type = resource_detail.get("question_type", "")
+            file_path = resource_detail.get("file_path", "")
+            file_name = resource_detail.get("file_name", "")
+            subject = resource_detail.get("subject", "")
+            resource_type = resource_detail.get("resource_type", "")
+            metadata = resource_detail.get("metadata", {})
 
-                # 判断文件是否存在
-                if not os.path.exists(file_path):
-                    logger.error(f"文件 {file_path} 不存在，跳过资源 {file_name}")
-                    continue
+            if not file_path:
+                logger.error(f"资源 file_path 为空：docID = {docID}")
+                continue
 
-                # ✅ 特殊处理：题库资源，直接返回全文作为接口输出
-                if resource_type == "试题" and diff_level == difficulty_level.strip() and ques_type == question_type.strip():
-                    try:
-                        if file_path.endswith(".docx"):
-                            doc = Document(file_path)
-                            paras = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
-                            question_text = "\n".join(paras)
-                            logger.info(f"命中试题资源，直接返回：{file_name}")
-                            return Response(question_text, content_type='text/plain; charset=utf-8')
-                        else:
-                            logger.warning(f"试题资源暂不支持格式：{file_path}")
-                            continue
-                    except Exception as e:
-                        logger.error(f"读取试题资源失败：{e}", exc_info=True)
-                        continue
-                # ✅ 其他资源：继续执行原有分段 + 索引 + 检索逻辑
+            # 检查远程文件或本地文件是否存在
+            if file_path.startswith('http://') or file_path.startswith('https://'):
                 try:
-                    # 使用文件处理模块对该文件进行分段处理
-                    doc_list = file_manager.process_pdf_file(file_path, file_name)
-                except Exception as e:
-                    logger.error(f"处理文件 {file_name} 时发生异常: {e}", exc_info=True)
+                    response = requests.head(file_path, timeout=5)
+                    if response.status_code != 200:
+                        logger.error(f"远程文件 {file_path} 不可访问，跳过资源 {file_name}")
+                        continue
+                except requests.RequestException:
+                    logger.error(f"远程文件 {file_path} 请求异常，跳过资源 {file_name}")
+                    continue
+            else:
+                if not os.path.exists(file_path):
+                    logger.error(f"本地文件 {file_path} 不存在，跳过资源 {file_name}")
                     continue
 
-                if doc_list:
-                    success = es_handler.create_temp_index(index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata)
-                    if success:
-                        logger.info(f"临时索引 {index_name} 创建成功")
-                        # 此处可以执行 ES 检索操作，例如：
-                        bm25_hits = es_handler.agent_search_bm25(index_name, query, ref_num=10)
-
-                        # 测试 Embed 检索：对索引中存储的文档进行向量检索
-                        embed_hits = es_handler.agent_search_embed(index_name, query, ref_num=10)
-
-                        combined_doc_list.extend(bm25_hits)
-                        combined_doc_list.extend(embed_hits)
-                    else:
-                        logger.error("临时索引创建失败")
-                        continue
-                else:
+            # 处理文件，创建临时索引
+            try:
+                doc_list = file_manager.process_pdf_file(file_path, file_name)
+                if not doc_list:
                     logger.error(f"文件处理失败：{file_name}")
-            else:
-                logger.error(f"未在MongoDB中找到 docID: {docID} 的资源信息")
+                    continue
 
+                success = es_handler.create_temp_index(index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata)
+                if not success:
+                    logger.error(f"临时索引创建失败：{index_name}")
+                    continue
+
+                logger.info(f"临时索引 {index_name} 创建成功")
+
+                bm25_hits = es_handler.agent_search_bm25(index_name, query, ref_num=10)
+                embed_hits = es_handler.agent_search_embed(index_name, query, ref_num=10)
+
+                combined_doc_list.extend(bm25_hits)
+                combined_doc_list.extend(embed_hits)
+
+            except Exception as e:
+                logger.error(f"处理文件 {file_name} 时发生异常: {e}", exc_info=True)
+                continue
+
+        # 删除临时索引
         es_handler.delete_index(index_name)
         logger.info(f"索引 {index_name} 已删除")
+
+        # 检查检索结果
         if not combined_doc_list:
-            return jsonify({"error": "没有成功检索到任何资源数据"}), 404
-        # logger.info(f"{combined_doc_list}")
+            logger.warning(f"检索到的片段为空，走空related_texts模式继续生成。")
+            related_texts = []
+            spo = {}
+        else:
+            # 过滤、去重、重排
+            filtered_combined_doc_list = [
+                doc for doc in combined_doc_list
+                if '_source' in doc and 'text' in doc['_source'] and doc['_source']['text'].strip()
+            ]
 
-        # 确保文档包含 text 字段
-        filtered_combined_doc_list = [
-            doc for doc in combined_doc_list
-            if '_source' in doc and 'text' in doc['_source'] and doc['_source']['text'].strip()
-        ]
+            if not filtered_combined_doc_list:
+                logger.warning("经过过滤后，没有有效的文档片段，走空related_texts。")
+                related_texts = []
+                spo = {}
+            else:
+                unique_docs = {doc['_source']['text']: doc for doc in filtered_combined_doc_list}.values()
+                ref_pairs = [[query, doc['_source']['text']] for doc in unique_docs]
 
-        if not filtered_combined_doc_list:
-            logger.warning("经过过滤后，没有有效的文档片段。")
-            return jsonify({"error": "没有有效的文档片段用于重排"}), 404
-        # 将所有检索到的结果组合，并去除重复的text片段
-        unique_docs = {
-            doc['_source']['text']: doc for doc in filtered_combined_doc_list
-        }.values()
-        # 为每个文档与查询组合成对以计算重排得分
-        ref_pairs = [[query, doc['_source']['text']] for doc in unique_docs]
+                if not ref_pairs:
+                    logger.warning("没有可供重排的文档对，走空related_texts。")
+                    related_texts = []
+                    spo = {}
+                else:
+                    scores = reranker.compute_score(ref_pairs, normalize=True)
+                    sorted_docs_with_scores = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
+                    threshold = 0.3
+                    final_docs = [doc for doc, score in sorted_docs_with_scores if score > threshold]
 
-        # 计算每对的重排得分并归一化
-        scores = reranker.compute_score(ref_pairs, normalize=True)
+                    if not final_docs:
+                        logger.warning(f"重排后无得分超过阈值 {threshold} 的片段，走空related_texts。")
+                        related_texts = []
+                        spo = {}
+                    else:
+                        related_texts = [doc['_source']['text'] for doc in final_docs]
+                        spo = result  # 保留原子图信息
 
-        # 根据得分排序
-        sorted_docs_with_scores = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
-
-        # 日志记录前5名最高分及对应文档的text
-        top5_info = [
-            {"score": score, "text": doc['_source']['text'][:100]}  # 截取前100个字符，避免日志过长
-            for doc, score in sorted_docs_with_scores[:5]
-        ]
-        logger.info(f"重排后得分最高的前5个结果：{json.dumps(top5_info, ensure_ascii=False, indent=2)}")
-        # 选择所有得分大于0.3的片段
-        threshold = 0.3
-        final_docs = [doc for doc, score in sorted_docs_with_scores if score > threshold]
-        final_scores = [score for doc, score in sorted_docs_with_scores if score > threshold]
-
-        if not final_docs:
-            logger.warning(f"重排后没有得分超过阈值 {threshold} 的文档片段。")
-            return jsonify({"error": f"重排后无得分超过阈值 {threshold} 的文档片段"}), 404
-
-        # 记录重排后的分值信息
-        logger.info(f"重排后超过阈值 {threshold} 的分值：{final_scores}")
-
-        # 更新 combined_doc_list 为最终的去重并筛选后的文档列表
-        combined_doc_list = final_docs
-        # 调用刚才定义的提示词方法，构建prompt：
-        related_texts = [doc['_source']['text'] for doc in combined_doc_list]
-        # 返回候选子图信息以及 ES 检索结果
-        result_data = {
-            "candidate_subgraph": result,
-            "related_texts": related_texts
-        }
-        # 生成完整提示词：
+        # 构造提示词，发送大模型
         prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
             knowledge_point=knowledge_point,
             related_texts=related_texts,
-            spo=result,
+            spo=spo,
             difficulty_level=difficulty_level,
             question_type=question_type,
             question_count=question_count
@@ -237,32 +241,28 @@ def get_question_agent():
 
         if llm.lower() == 'qwen':
             response_text = large_model_service.get_answer_from_Tyqwen(prompt)
-            result = json.loads(response_text)  # 假设返回的是 JSON 字符串
-            logger.info(f"大模型返回原始内容: {repr(response_text)}")
-
-            return jsonify({
-                "code": 200,
-                "msg": "success",
-                "data": result
-            })
+            try:
+                result = json.loads(response_text)
+                logger.info(f"大模型返回原始内容是标准JSON")
+                return jsonify({"code": 200, "msg": "success", "data": result})
+            except json.JSONDecodeError:
+                logger.warning(f"大模型返回的不是标准JSON，原文: {repr(response_text)}")
+                # 直接返回纯文本
+                return Response(response_text, content_type='text/plain; charset=utf-8')
 
         if llm.lower() == 'deepseek':
             response_text = large_model_service.get_answer_from_deepseek(prompt)
-            result = json.loads(response_text)  # 假设返回的是 JSON 字符串
-            logger.info(f"大模型返回原始内容: {repr(response_text)}")
-
-            return jsonify({
-                "code": 200,
-                "msg": "success",
-                "data": result
-            })
+            try:
+                result = json.loads(response_text)
+                logger.info(f"大模型返回原始内容是标准JSON")
+                return jsonify({"code": 200, "msg": "success", "data": result})
+            except json.JSONDecodeError:
+                logger.warning(f"大模型返回的不是标准JSON，原文: {repr(response_text)}")
+                return Response(response_text, content_type='text/plain; charset=utf-8')
 
     except Exception as e:
         logger.error(f"Error in get_question_agent: {e}", exc_info=True)
-        return jsonify({
-            "error": str(e),
-            "trace": traceback.format_exc()
-        }), 500
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 def highlight_answer_with_html(raw_answer: str, color: str = "#3D8BFF") -> str:
@@ -1641,6 +1641,8 @@ def filter_data():
 #     })
 
 # 资源库更新接口
+
+# 资源库更新接口
 @app.route("/api/resource", methods=["PUT"])
 def update_resource():
     try:
@@ -1650,7 +1652,14 @@ def update_resource():
 
         # 原 knowledge_point（用于对比）
         old_doc = mongo_handler.get_resource_by_docID(doc_id)
-        old_kps = old_doc.get("knowledge_point", []) if old_doc else []
+        old_kps_raw = old_doc.get("knowledge_point", []) if old_doc else []
+
+        # ✅ 对 old_kps 做清洗（防止旧数据是字符串、带中英文逗号）
+        clean_old_kps = []
+        for item in old_kps_raw:
+            if isinstance(item, str):
+                sub_items = [kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()]
+                clean_old_kps.extend(sub_items)
 
         # 处理 knowledge_point 字段（统一成干净的列表）
         if "knowledge_point" in data:
@@ -1666,6 +1675,8 @@ def update_resource():
             else:
                 knowledge_point_list = []
             update_fields["knowledge_point"] = knowledge_point_list
+        else:
+            knowledge_point_list = []
 
         # 仅支持修改以下字段
         for field in ["file_name", "resource_type", "status", "file_path", "folder_id"]:
@@ -1675,19 +1686,51 @@ def update_resource():
         if not doc_id or not update_fields:
             return jsonify({"code": 400, "msg": "参数缺失或无更新字段", "data": {}})
 
-        result = mongo_handler.update_document_by_id(doc_id, update_fields)
+        # ✅ 新增：检查真正要更新的字段是否和老数据一样
+        actual_update_fields = {}
+        for key, value in update_fields.items():
+            if key not in old_doc:
+                actual_update_fields[key] = value
+            else:
+                old_value = old_doc.get(key)
+
+                # ✅ 特别处理 knowledge_point字段
+                if key == "knowledge_point":
+                    clean_old_value = []
+                    if isinstance(old_value, list):
+                        for item in old_value:
+                            if isinstance(item, str):
+                                clean_old_value.extend([kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()])
+                    elif isinstance(old_value, str):
+                        clean_old_value = [kp.strip() for kp in re.split(r'[，,]', old_value) if kp.strip()]
+                    else:
+                        clean_old_value = []
+
+                    if set(value) != set(clean_old_value):
+                        actual_update_fields[key] = value
+                else:
+                    if old_value != value:
+                        actual_update_fields[key] = value
+
+        if not actual_update_fields:
+            return jsonify({"code": 200, "msg": "没有变化，无需更新", "data": {"modified": 0}})
+
+        result = mongo_handler.update_document_by_id(doc_id, actual_update_fields)
 
         if result and result.modified_count > 0:
-            new_kps = knowledge_point_list
-            if new_kps and set(new_kps) != set(old_kps):
-                # ✅ 先删除旧的绑定
+            new_kps = actual_update_fields.get("knowledge_point", knowledge_point_list)
+
+            # ✅ 比较新旧 knowledge_point 是否真正变化（统一用清洗后的）
+            if new_kps and set(new_kps) != set(clean_old_kps):
+                # 先删除旧绑定
                 with neo4j_handler.driver.session() as session:
                     session.run("""
-                                        MATCH (e:Entity)-[r:相关]->(res:Resource {docID: $docID})
-                                        DELETE r
-                                    """, docID=doc_id)
+                        MATCH (e:Entity)-[r:相关]->(res:Resource {docID: $docID})
+                        DELETE r
+                    """, docID=doc_id)
                     logger.info(f"已删除资源 docID={doc_id} 原有的知识点绑定关系")
 
+                # 重新绑定新的知识点
                 neo4j_handler.bind_resource_to_entities(
                     docID=doc_id,
                     entity_names=new_kps,
@@ -1695,12 +1738,15 @@ def update_resource():
                     resource_type=update_fields.get("resource_type", old_doc.get("resource_type", "课件"))
                 )
                 logger.info(f"知识点绑定成功：{doc_id} -> {new_kps}")
+
             return jsonify({"code": 200, "msg": "更新成功", "data": {"modified": result.modified_count}})
         else:
             return jsonify({"code": 404, "msg": "未找到对应资源或内容未修改", "data": {}})
     except Exception as e:
         return jsonify({"code": 500, "msg": f"更新失败：{str(e)}", "data": {}})
 
+
+# 试题库更新接口
 # 试题库更新接口
 @app.route("/api/question", methods=["PUT"])
 def update_question():
@@ -1710,7 +1756,17 @@ def update_question():
         update_fields = {}
 
         old_doc = mongo_handler.get_resource_by_docID(doc_id, collection_name="edu_question")
-        old_kps = old_doc.get("knowledge_point", []) if old_doc else []
+        if not old_doc:
+            return jsonify({"code": 404, "msg": "未找到对应试题", "data": {}})
+
+        old_kps_raw = old_doc.get("knowledge_point", [])
+
+        # ✅ 对 old_kps 做清洗（中英文逗号拆分，去空格）
+        clean_old_kps = []
+        for item in old_kps_raw:
+            if isinstance(item, str):
+                sub_items = [kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()]
+                clean_old_kps.extend(sub_items)
 
         # 处理 knowledge_point 字段（统一成干净的列表）
         if "knowledge_point" in data:
@@ -1737,24 +1793,42 @@ def update_question():
         if not doc_id or not update_fields:
             return jsonify({"code": 400, "msg": "参数缺失或无更新字段", "data": {}})
 
-        result = mongo_handler.update_question_by_id(doc_id, update_fields)
+        # ✅ 只挑出真正变化的字段
+        actual_update_fields = {}
+        for key, value in update_fields.items():
+            if key not in old_doc:
+                actual_update_fields[key] = value
+            else:
+                old_value = old_doc.get(key)
+                if key == "knowledge_point":
+                    if set(value) != set(clean_old_kps):
+                        actual_update_fields[key] = value
+                else:
+                    if old_value != value:
+                        actual_update_fields[key] = value
+
+        if not actual_update_fields:
+            logger.info(f"试题 docID={doc_id} 没有变化，无需更新")
+            return jsonify({"code": 200, "msg": "没有变化，无需更新", "data": {"modified": 0}})
+
+        result = mongo_handler.update_question_by_id(doc_id, actual_update_fields)
 
         if result and result.modified_count > 0:
-            new_kps = knowledge_point_list
-            if new_kps and set(new_kps) != set(old_kps):
-                # ✅ 先删除原有绑定
+            new_kps = actual_update_fields.get("knowledge_point", knowledge_point_list)
+            if new_kps and set(new_kps) != set(clean_old_kps):
+                # ✅ 删除原有绑定
                 with neo4j_handler.driver.session() as session:
                     session.run("""
-                                        MATCH (e:Entity)-[r:相关]->(res:Resource {docID: $docID})
-                                        DELETE r
-                                    """, docID=doc_id)
+                        MATCH (e:Entity)-[r:相关]->(res:Resource {docID: $docID})
+                        DELETE r
+                    """, docID=doc_id)
                     logger.info(f"已删除试题 docID={doc_id} 原有的知识点绑定关系")
 
-                # ✅ 再重新绑定新的知识点
+                # ✅ 重新绑定新的知识点
                 neo4j_handler.bind_resource_to_entities(
                     docID=doc_id,
                     entity_names=new_kps,
-                    file_name=update_fields.get("file_name", old_doc.get("file_name", "")),
+                    file_name=old_doc.get("question", ""),  # 试题以question字段做file_name
                     resource_type="试题"
                 )
                 logger.info(f"知识点绑定成功：{doc_id} -> {new_kps}")
@@ -1763,6 +1837,7 @@ def update_question():
         else:
             return jsonify({"code": 404, "msg": "未找到对应试题或内容未修改", "data": {}})
     except Exception as e:
+        logger.error(f"试题更新失败 docID={doc_id}：{str(e)}", exc_info=True)
         return jsonify({"code": 500, "msg": f"更新失败：{str(e)}", "data": {}})
 
 
@@ -1899,6 +1974,7 @@ def add_question():
     except Exception as e:
         return jsonify({"code": 500, "msg": f"新增失败：{str(e)}", "data": {}})
 
+
 # 资源库删除接口
 @app.route("/api/resource", methods=["DELETE"])
 def delete_resource():
@@ -2002,6 +2078,38 @@ def fuzzy_entity_search():
             "code": 500,
             "msg": "服务器内部错误",
             "data": []
+        })
+
+
+@app.route("/api/get_related_resources", methods=["POST"])
+def get_related_resources():
+    try:
+        data = request.get_json()
+        knowledge_point = data.get("knowledge_point", "")
+
+        if not knowledge_point:
+            return jsonify({"code": 400, "msg": "缺少知识点名称", "data": []})
+
+        # 调用你的方法获取详细信息
+        result = neo4j_handler.get_entity_details(knowledge_point)
+
+        if not result:
+            return jsonify({"code": 404, "msg": "未找到该知识点", "data": []})
+
+        resources = result.get("resources", [])
+
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": resources
+        })
+
+    except Exception as e:
+        logger.error(f"Error in get_related_resources: {e}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": "服务器内部错误",
+            "data": str(e)
         })
 
 
