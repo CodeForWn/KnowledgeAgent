@@ -227,12 +227,43 @@ class KMCNeo4jHandler:
             result = session.run(query, entity_name=entity_name).data()
             return [record["child_name"] for record in result]
 
+    def get_related_entities(self, entity_name):
+        """
+        获取通过 前置/包含/相关 关系连接的一跳 Entity 节点
+        """
+        query = """
+        MATCH (parent:Entity {name: $entity_name})-[r:RELATION|相关]->(child:Entity)
+        WHERE r.type IN ["前置", "包含", "相关"]
+        RETURN DISTINCT child.name AS child_name
+        """
+        with self.driver.session() as session:
+            result = session.run(query, entity_name=entity_name).data()
+            return [record["child_name"] for record in result]
+
     def build_predecessor_tree(self, root_entity, max_depth=5):
         def dfs(entity_name, depth):
             if depth > max_depth:
                 return {}
             children = self.get_one_hop_predecessors(entity_name)
             return {child: dfs(child, depth + 1) for child in children}
+
+        return {root_entity: dfs(root_entity, 1)}
+
+    def build_relation_subgraph(self, root_entity, max_depth=3):
+        visited = set()
+
+        def dfs(entity_name, depth):
+            if depth > max_depth:
+                return {}
+            if entity_name in visited:
+                return {}  # 防止回环
+            visited.add(entity_name)
+
+            related_entities = self.get_related_entities(entity_name)
+            subtree = {child: dfs(child, depth + 1) for child in related_entities}
+
+            visited.remove(entity_name)
+            return subtree
 
         return {root_entity: dfs(root_entity, 1)}
 

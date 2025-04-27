@@ -1300,7 +1300,7 @@ def generate_ppt_outline_stream():
         logger.info(f"[知识点详情] {knowledge_point} 的详细信息：{json.dumps(entity_details, ensure_ascii=False)}")
         entity_info = entity_details.get("entity", {})
         teaching_requirements = entity_info.get("teaching_requirements", "")
-        knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
+        knowledge_tree = neo4j_handler.build_relation_subgraph(knowledge_point)
         logger.info(f"[知识树] {knowledge_point} 的知识树结构：{json.dumps(knowledge_tree, ensure_ascii=False)}")
         pages = []
 
@@ -1460,16 +1460,105 @@ def get_filename_from_url(url):
 
 def clean_markdown(md_text: str) -> str:
     """
-    清除 Markdown 中的特殊符号，例如 ** 加粗、--- 分割线等
+    清除 Markdown 中的特殊符号，并标准化格式：
+    - 删除加粗符号 **内容**
+    - 删除分割线 ---
+    - 删除 Markdown 注释 <!-- ... -->
+    - 删除无意义短横线行（如 - ---、- -）
+    - 保留标准的标题和列表项
     """
     # 删除加粗符号 **内容**
     md_text = re.sub(r'\*\*(.*?)\*\*', r'\1', md_text)
-    # 删除分割线 ---
+
+    # 删除分割线 --- （连续3个及以上的-）
     md_text = re.sub(r'\n?-{3,}\n?', '\n', md_text)
+
     # 删除 Markdown 注释 <!-- ... -->
     md_text = re.sub(r'<!--.*?-->', '', md_text, flags=re.DOTALL)
-    # 可根据需要继续添加其他规则，如 * 列表等
-    return md_text.strip()
+
+    # 分行处理
+    lines = md_text.splitlines()
+    cleaned_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # 跳过空行
+        if not stripped:
+            continue
+
+        # 修正错误格式：如果是 "- - 正文"，变成 "- 正文"
+        if stripped.startswith("- - "):
+            cleaned_lines.append(f"- {stripped[4:].strip()}")
+            continue
+
+        # 删除完全无意义的行
+        if stripped in ["- ---", "- -", "-", "---"]:
+            continue
+
+        # 其他正常行保留
+        cleaned_lines.append(stripped)
+
+        # 删除多余连续空行（保险起见，这里其实已经不会出现了）
+    final_text = "\n".join(cleaned_lines)
+
+    return final_text.strip()
+
+def extract_markdown_from_response(response_text):
+    """
+    从大模型返回的文本中提取真正的markdown内容（从第一个#开始到最后）。
+    """
+    match = re.search(r'(# .*)', response_text, re.DOTALL)
+    if match:
+        markdown_content = match.group(1).strip()
+        return markdown_content
+    else:
+        # 如果没有匹配到 #，则返回完整内容防止丢失
+        return response_text.strip()
+
+def normalize_filled_markdown(markdown_text):
+    """
+    将提取出来的markdown内容规范化成标准格式：
+    # PPT标题
+    ## 章节标题
+    ### 内容页标题
+    - 正文内容
+    """
+    lines = markdown_text.splitlines()
+    normalized_lines = []
+    last_header_level = 0
+
+    for line in lines:
+        line = line.strip()
+
+        if not line:
+            continue  # 跳过空行
+
+        # 如果是标题
+        if re.match(r'^#{1,6} ', line):
+            level = len(re.match(r'^(#+)', line).group(1))
+            content = line[level:].strip()
+
+            # 规范层级
+            if level == 1:
+                normalized_lines.append(f"# {content}")
+                last_header_level = 1
+            elif level == 2:
+                normalized_lines.append(f"## {content}")
+                last_header_level = 2
+            elif level >= 3:
+                normalized_lines.append(f"### {content}")
+                last_header_level = 3
+        # 如果是像“一、二、三、四、”这种子标题，补充成四级标题
+        elif re.match(r'^[一二三四五六七八九十]+、', line):
+            normalized_lines.append(f"#### {line}")
+            last_header_level = 4
+        else:
+            # 普通正文，统一加 -
+            normalized_lines.append(f"- {line}")
+
+    return "\n".join(normalized_lines)
+
 
 @app.route("/api/generate_ppt_from_outline_and_render", methods=["POST"])
 def generate_and_render_ppt():
@@ -1491,7 +1580,7 @@ def generate_and_render_ppt():
 
         # 将大纲 JSON 转换为标准格式 Markdown
         outline_markdown = json_to_markdown(outline_json)
-        # logger.info(f"转换的markdown：{outline_markdown}")
+        logger.info(f"转换的markdown：{outline_markdown}")
 
         # 构造提示词
         prompt = prompt_builder.generate_ppt_from_outline_prompt(
@@ -1511,9 +1600,14 @@ def generate_and_render_ppt():
         else:
             return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
 
-        filled_markdown = response_text
-        # 清洗 markdown 中的特殊格式
-        cleaned_markdown = clean_markdown(filled_markdown)
+        # 1. 提取大模型返回的真正markdown
+        markdown_part = extract_markdown_from_response(response_text)
+
+        # 规范化标题/正文层级
+        normalized_markdown = normalize_filled_markdown(markdown_part)
+
+        # 最后统一清洗特殊符号
+        cleaned_markdown = clean_markdown(normalized_markdown)
 
         # ==== 保存 markdown 内容为文件 ====
         save_dir = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果/ppt内容结果"
@@ -1524,7 +1618,7 @@ def generate_and_render_ppt():
         logger.info(f"markdown内容已保存到：{save_path}")
 
         # 调用渲染 PPT 的方法，生成 PPT 并获取下载链接
-        ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=filled_markdown)
+        ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=cleaned_markdown)
 
         # 3. 下载 PPT 文件到本地（临时目录）
         TEMP_DIR = "/home/ubuntu/work/kmcGPT/temp/resource/"  # 或者你指定其他用于临时文件的路径
