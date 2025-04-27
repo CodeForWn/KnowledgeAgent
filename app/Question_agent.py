@@ -760,9 +760,11 @@ def generate_ppt_outline():
 
         # 教学要求 & 知识结构
         entity_details = neo4j_handler.get_entity_details(knowledge_point)
+        logger.info(f"[知识点详情] {knowledge_point} 的详细信息：{json.dumps(entity_details, ensure_ascii=False)}")
         entity_info = entity_details.get("entity", {})
         teaching_requirements = entity_info.get("teaching_requirements", "")
         knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
+        logger.info(f"[知识树] {knowledge_point} 的知识树结构：{json.dumps(knowledge_tree, ensure_ascii=False)}")
 
         # 构建 Markdown + 类型标记
         pages = []
@@ -1295,10 +1297,11 @@ def generate_ppt_outline_stream():
             return jsonify({"error": "教材内容为空或读取失败"}), 400
 
         entity_details = neo4j_handler.get_entity_details(knowledge_point)
+        logger.info(f"[知识点详情] {knowledge_point} 的详细信息：{json.dumps(entity_details, ensure_ascii=False)}")
         entity_info = entity_details.get("entity", {})
         teaching_requirements = entity_info.get("teaching_requirements", "")
         knowledge_tree = neo4j_handler.build_predecessor_tree(knowledge_point)
-
+        logger.info(f"[知识树] {knowledge_point} 的知识树结构：{json.dumps(knowledge_tree, ensure_ascii=False)}")
         pages = []
 
         if "主题" in components:
@@ -1570,6 +1573,16 @@ def filter_data():
         data = request.get_json(force=True)
         folder_id = data.get("folder_id")
 
+        # ✅ 特别处理 knowledge_point 字段（支持中英文逗号分隔）
+        knowledge_point_raw = data.get("knowledge_point", [])
+        if isinstance(knowledge_point_raw, list):
+            knowledge_point_list = []
+            for item in knowledge_point_raw:
+                if isinstance(item, str):
+                    sub_items = [kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()]
+                    knowledge_point_list.extend(sub_items)
+        else:
+            knowledge_point_list = []
 
         # 根据 folder_id 判断选择资源库或题库查询
         if folder_id != "1911604997812920321":
@@ -1579,7 +1592,7 @@ def filter_data():
                 "file_name": data.get("file_name", []),
                 "status": data.get("status", []),
                 "folder_id": folder_id,
-                "knowledge_point" : data.get("knowledge_point", []),
+                "knowledge_point" : knowledge_point_list,
             }
 
             # 调用资源库查询方法
@@ -1592,7 +1605,7 @@ def filter_data():
                 "type": data.get("type", []),
                 "diff_level": data.get("diff_level", []),
                 "status": data.get("status", []),
-                "knowledge_point" : data.get("knowledge_point", []),
+                "knowledge_point" : knowledge_point_list,
             }
 
             # 调用题库查询方法
@@ -1610,22 +1623,22 @@ def filter_data():
     except Exception as e:
         return jsonify({"code": 500, "msg": f"查询失败：{str(e)}", "data": {}})
 
-# 题库筛选查询接口
-@app.route("/api/question/filter", methods=["POST"])
-def filter_questions():
-    data = request.get_json(force=True)
-    filters = {
-        "kb_id": data.get("kb_id", ""),
-        "type": data.get("type", []),
-        "diff_level": data.get("diff_level", []),
-        "status": data.get("status", "")
-    }
-    results = mongo_handler.filter_questions(filters)
-    return jsonify({
-        "code": 200,
-        "msg": "success",
-        "data": [dict(r, _id=str(r["_id"])) for r in results]
-    })
+# # 题库筛选查询接口
+# @app.route("/api/question/filter", methods=["POST"])
+# def filter_questions():
+#     data = request.get_json(force=True)
+#     filters = {
+#         "kb_id": data.get("kb_id", ""),
+#         "type": data.get("type", []),
+#         "diff_level": data.get("diff_level", []),
+#         "status": data.get("status", "")
+#     }
+#     results = mongo_handler.filter_questions(filters)
+#     return jsonify({
+#         "code": 200,
+#         "msg": "success",
+#         "data": [dict(r, _id=str(r["_id"])) for r in results]
+#     })
 
 # 资源库更新接口
 @app.route("/api/resource", methods=["PUT"])
@@ -1639,8 +1652,23 @@ def update_resource():
         old_doc = mongo_handler.get_resource_by_docID(doc_id)
         old_kps = old_doc.get("knowledge_point", []) if old_doc else []
 
+        # 处理 knowledge_point 字段（统一成干净的列表）
+        if "knowledge_point" in data:
+            kp_raw = data["knowledge_point"]
+            if isinstance(kp_raw, str):
+                knowledge_point_list = [kp.strip() for kp in re.split(r'[，,]', kp_raw) if kp.strip()]
+            elif isinstance(kp_raw, list):
+                knowledge_point_list = []
+                for item in kp_raw:
+                    if isinstance(item, str):
+                        sub_items = [kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()]
+                        knowledge_point_list.extend(sub_items)
+            else:
+                knowledge_point_list = []
+            update_fields["knowledge_point"] = knowledge_point_list
+
         # 仅支持修改以下字段
-        for field in ["file_name", "resource_type", "status", "file_path", "knowledge_point", "folder_id"]:
+        for field in ["file_name", "resource_type", "status", "file_path", "folder_id"]:
             if field in data:
                 update_fields[field] = data[field]
 
@@ -1650,8 +1678,16 @@ def update_resource():
         result = mongo_handler.update_document_by_id(doc_id, update_fields)
 
         if result and result.modified_count > 0:
-            new_kps = update_fields.get("knowledge_point", [])
+            new_kps = knowledge_point_list
             if new_kps and set(new_kps) != set(old_kps):
+                # ✅ 先删除旧的绑定
+                with neo4j_handler.driver.session() as session:
+                    session.run("""
+                                        MATCH (e:Entity)-[r:相关]->(res:Resource {docID: $docID})
+                                        DELETE r
+                                    """, docID=doc_id)
+                    logger.info(f"已删除资源 docID={doc_id} 原有的知识点绑定关系")
+
                 neo4j_handler.bind_resource_to_entities(
                     docID=doc_id,
                     entity_names=new_kps,
@@ -1676,8 +1712,25 @@ def update_question():
         old_doc = mongo_handler.get_resource_by_docID(doc_id, collection_name="edu_question")
         old_kps = old_doc.get("knowledge_point", []) if old_doc else []
 
+        # 处理 knowledge_point 字段（统一成干净的列表）
+        if "knowledge_point" in data:
+            kp_raw = data["knowledge_point"]
+            if isinstance(kp_raw, str):
+                knowledge_point_list = [kp.strip() for kp in re.split(r'[，,]', kp_raw) if kp.strip()]
+            elif isinstance(kp_raw, list):
+                knowledge_point_list = []
+                for item in kp_raw:
+                    if isinstance(item, str):
+                        sub_items = [kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()]
+                        knowledge_point_list.extend(sub_items)
+            else:
+                knowledge_point_list = []
+            update_fields["knowledge_point"] = knowledge_point_list
+        else:
+            knowledge_point_list = []  # 防止后面引用出错
+
         # 仅允许更新以下字段
-        for field in ["question", "answer", "analysis", "status", "type", "diff_level", "knowledge_point"]:
+        for field in ["question", "answer", "analysis", "status", "type", "diff_level"]:
             if field in data:
                 update_fields[field] = data[field]
 
@@ -1685,9 +1738,19 @@ def update_question():
             return jsonify({"code": 400, "msg": "参数缺失或无更新字段", "data": {}})
 
         result = mongo_handler.update_question_by_id(doc_id, update_fields)
+
         if result and result.modified_count > 0:
-            new_kps = update_fields.get("knowledge_point", [])
+            new_kps = knowledge_point_list
             if new_kps and set(new_kps) != set(old_kps):
+                # ✅ 先删除原有绑定
+                with neo4j_handler.driver.session() as session:
+                    session.run("""
+                                        MATCH (e:Entity)-[r:相关]->(res:Resource {docID: $docID})
+                                        DELETE r
+                                    """, docID=doc_id)
+                    logger.info(f"已删除试题 docID={doc_id} 原有的知识点绑定关系")
+
+                # ✅ 再重新绑定新的知识点
                 neo4j_handler.bind_resource_to_entities(
                     docID=doc_id,
                     entity_names=new_kps,
@@ -1711,6 +1774,22 @@ def add_resource():
         # 生成 docID
         doc_id = mongo_handler.generate_docid()
 
+        # 处理 knowledge_point 字段（支持逗号分隔字符串）
+        knowledge_point_raw = data.get("knowledge_point", [])
+
+        if isinstance(knowledge_point_raw, str):
+            knowledge_point_list = [kp.strip() for kp in re.split(r'[，,]', knowledge_point_raw) if kp.strip()]
+        elif isinstance(knowledge_point_raw, list):
+            knowledge_point_list = []
+            for item in knowledge_point_raw:
+                if isinstance(item, str):
+                    # 还要小心：有的列表元素本身是"洋流,海洋水"这种，需要再拆分
+                    sub_items = [kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()]
+                    knowledge_point_list.extend(sub_items)
+                else:
+                    continue
+        else:
+            knowledge_point_list = []
         # 设置默认值并填充字段
         document = {
             "docID": doc_id,
@@ -1722,24 +1801,45 @@ def add_resource():
             "created_at": datetime.datetime.utcnow(),
             "subject": data.get("subject", ""),
             "folder_id": data.get("folder_id", ""),
-            "knowledge_point": data.get("knowledge_point", [])
+            "knowledge_point": knowledge_point_list
         }
 
         # 插入到数据库
         inserted_id = mongo_handler.insert_document("geo_documents", document)
+        if not inserted_id:
+            return jsonify({"code": 500, "msg": "MongoDB插入失败", "data": {}}), 500
 
-        # ✅ 绑定图谱
-        if document["knowledge_point"] != []:
-            neo4j_handler.bind_resource_to_entities(
-                docID=doc_id,
-                entity_names=document["knowledge_point"],
-                file_name=document["file_name"],
-                resource_type=document["resource_type"]
-            )
-        logger.info(f"知识点绑定成功：{doc_id} -> {document['knowledge_point']}")
-        return jsonify({"code": 200, "msg": "新增成功", "data": {"docID": doc_id, "inserted_id": str(inserted_id)}})
+        logger.info(f"[资源新增成功] docID={doc_id}")
+
+        # 绑定资源到知识点（只绑定存在的）
+        if knowledge_point_list:
+            try:
+                neo4j_handler.bind_resource_to_entities(
+                    docID=doc_id,
+                    entity_names=knowledge_point_list,
+                    file_name=document["file_name"],
+                    resource_type=document["resource_type"]
+                )
+            except Exception as e:
+                logger.error(f"[知识点绑定异常] docID={doc_id}，错误：{str(e)}", exc_info=True)
+
+        # 最后返回成功响应
+        return jsonify({
+            "code": 200,
+            "msg": "新增成功",
+            "data": {
+                "docID": doc_id,
+                "inserted_id": str(inserted_id)
+            }
+        })
+
     except Exception as e:
-        return jsonify({"code": 500, "msg": f"新增失败：{str(e)}", "data": {}})
+        logger.error(f"[新增资源失败] 错误信息: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": f"新增失败：{str(e)}",
+            "data": {}
+        })
 
 # 题库新增接口
 @app.route("/api/question", methods=["POST"])
@@ -1748,6 +1848,19 @@ def add_question():
         data = request.get_json(force=True)
         # 生成 docID
         doc_id = mongo_handler.generate_docid()
+
+        # 处理 knowledge_point 字段（统一成干净的列表）
+        knowledge_point_raw = data.get("knowledge_point", [])
+        if isinstance(knowledge_point_raw, str):
+            knowledge_point_list = [kp.strip() for kp in re.split(r'[，,]', knowledge_point_raw) if kp.strip()]
+        elif isinstance(knowledge_point_raw, list):
+            knowledge_point_list = []
+            for item in knowledge_point_raw:
+                if isinstance(item, str):
+                    sub_items = [kp.strip() for kp in re.split(r'[，,]', item) if kp.strip()]
+                    knowledge_point_list.extend(sub_items)
+        else:
+            knowledge_point_list = []
 
         # 设置默认值并填充字段
         question = {
@@ -1763,21 +1876,26 @@ def add_question():
             "subject": data.get("subject", ""),
             "kb_id": data.get("kb_id", ""),
             "folder_id": data.get("folder_id", "1911604997812920321"),
-            "knowledge_point": data.get("knowledge_point", []),
+            "knowledge_point": knowledge_point_list
         }
 
         # 插入到数据库
         inserted_id = mongo_handler.insert_question("edu_question", question)
 
-        if question["knowledge_point"] != []:
-            neo4j_handler.bind_resource_to_entities(
-                docID=doc_id,
-                entity_names=question["knowledge_point"],
-                file_name=question["question"],
-                resource_type=question["resource_type"]
-            )
-        logger.info(f"知识点绑定成功：{doc_id} -> {question['knowledge_point']}")
+        if knowledge_point_list:
+            try:
+                neo4j_handler.bind_resource_to_entities(
+                    docID=doc_id,
+                    entity_names=knowledge_point_list,
+                    file_name=question["question"],
+                    resource_type="试题"
+                )
+                logger.info(f"知识点绑定成功：{doc_id} -> {knowledge_point_list}")
+            except Exception as e:
+                logger.error(f"知识点绑定异常：{str(e)}", exc_info=True)
+
         return jsonify({"code": 200, "msg": "新增成功", "data": {"docID": doc_id, "inserted_id": str(inserted_id)}})
+
     except Exception as e:
         return jsonify({"code": 500, "msg": f"新增失败：{str(e)}", "data": {}})
 
@@ -1800,6 +1918,7 @@ def delete_resource():
             return jsonify({"code": 404, "msg": "未找到对应资源", "data": {}})
     except Exception as e:
         return jsonify({"code": 500, "msg": f"删除失败：{str(e)}", "data": {}})
+
 
 # 题库删除接口
 @app.route("/api/question", methods=["DELETE"])
@@ -1866,8 +1985,8 @@ def fuzzy_entity_search():
     try:
         kb_id = request.args.get("kb_id", "")
         query = request.args.get("query", "")
-        if not kb_id or not query:
-            return jsonify({"code": 400, "msg": "参数 kb_id 或 query 缺失", "data": []})
+        if not kb_id:
+            return jsonify({"code": 400, "msg": "参数 kb_id 缺失", "data": []})
 
         matched_entities = neo4j_handler.fuzzy_search_entities(kb_id, query)
 

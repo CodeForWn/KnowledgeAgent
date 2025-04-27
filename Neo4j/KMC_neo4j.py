@@ -166,10 +166,10 @@ class KMCNeo4jHandler:
 
     def get_predecessor_tree(self, entity_name):
         query = """
-        MATCH (parent:Entity {name: $entity_name})-[:RELATION {type: "前置"}]->(child:Entity)
+        MATCH (parent:Entity {name: $entity_name})-[:RELATION {type: "前置于"}]->(child:Entity)
         OPTIONAL MATCH path = (child)-[:RELATION*]->(leaf:Entity)
-        WHERE ALL(r IN relationships(path) WHERE r.type = "前置")
-          AND NOT (leaf)-[:RELATION {type: "前置"}]->()
+        WHERE ALL(r IN relationships(path) WHERE r.type = "前置于")
+          AND NOT (leaf)-[:RELATION {type: "前置于"}]->()
         RETURN child.name AS child_name,
                collect(DISTINCT {name: leaf.name}) AS leaves
         """
@@ -220,7 +220,7 @@ class KMCNeo4jHandler:
 
     def get_one_hop_predecessors(self, entity_name):
         query = """
-        MATCH (parent:Entity {name: $entity_name})-[:RELATION {type: "前置"}]->(child:Entity)
+        MATCH (parent:Entity {name: $entity_name})-[:RELATION {type: "前置于"}]->(child:Entity)
         RETURN child.name AS child_name
         """
         with self.driver.session() as session:
@@ -391,17 +391,36 @@ class KMCNeo4jHandler:
         - entity_names: 要绑定的知识点名称列表
         - file_name/resource_type: 可选，补充 Resource 节点属性
         """
+
+        bound_entities = []  # ✅ 记录成功绑定的知识点
+        skipped_entities = []  # ✅ 记录不存在的知识点
+
         with self.driver.session() as session:
             for name in entity_names:
-                session.run("""
-                    MERGE (e:Entity {name: $entity_name})
-                    MERGE (r:Resource {docID: $docID})
-                    SET r.file_name = $file_name,
-                        r.resource_type = $resource_type
-                    MERGE (e)-[:相关]->(r)
-                """, entity_name=name, docID=docID, file_name=file_name, resource_type=resource_type)
+                # ✅ 1. 先检查图谱中是否存在该知识点Entity节点
+                result = session.run("""
+                                MATCH (e:Entity {name: $entity_name})
+                                RETURN e
+                            """, entity_name=name).single()
 
-            self.logger.info(f"已将资源 docID={docID} 绑定到知识点：{entity_names}")
+                if result:
+                    # ✅ 2. 如果Entity存在，则执行绑定
+                    session.run("""
+                        MERGE (e:Entity {name: $entity_name})
+                        MERGE (r:Resource {docID: $docID})
+                        SET r.file_name = $file_name,
+                            r.resource_type = $resource_type
+                        MERGE (e)-[:相关]->(r)
+                    """, entity_name=name, docID=docID, file_name=file_name, resource_type=resource_type)
+
+                    bound_entities.append(name)  # 记录成功绑定的节点
+                else:
+                    skipped_entities.append(name)
+
+        # ✅ 3. 绑定完成后，统一打印日志
+        self.logger.info(f"资源 docID={docID} 成功绑定的知识点有：{bound_entities}")
+        if skipped_entities:
+            self.logger.warning(f"资源 docID={docID} 以下知识点不存在，跳过绑定：{skipped_entities}")
 
     def delete_resource_and_relations(self, docID: str):
         """
@@ -418,18 +437,31 @@ class KMCNeo4jHandler:
         except Exception as e:
             self.logger.error(f"删除资源节点 docID={docID} 失败: {e}")
 
-    def fuzzy_search_entities(self, kb_id: str, query: str, limit: int = 20):
-        cypher = """
-        MATCH (e:Entity)
-        WHERE e.kb_id = $kb_id AND toLower(e.name) CONTAINS toLower($query)
-        RETURN e.name AS name
-        LIMIT $limit
-        """
-        parameters = {
-            "kb_id": kb_id,
-            "query": query,
-            "limit": limit
-        }
+    def fuzzy_search_entities(self, kb_id: str, query: str, limit: int = 50):
+        if query.strip() == "":
+            # query 为空字符串时，返回该kb_id下的所有知识点
+            cypher = """
+            MATCH (e:Entity)
+            WHERE e.kb_id = $kb_id
+            RETURN e.name AS name
+            """
+            parameters = {
+                "kb_id": kb_id
+            }
+        else:
+            # 正常模糊查询
+            cypher = """
+            MATCH (e:Entity)
+            WHERE e.kb_id = $kb_id AND toLower(e.name) CONTAINS toLower($query)
+            RETURN e.name AS name
+            LIMIT $limit
+            """
+            parameters = {
+                "kb_id": kb_id,
+                "query": query,
+                "limit": limit
+            }
+
         with self.driver.session() as session:
             result = session.run(cypher, parameters)
             return [record["name"] for record in result]
@@ -521,7 +553,7 @@ class KMCNeo4jHandler:
 #         "teaching_requirements": ""
 #     }
 #
-#     # neo4j_handler.update_kb_id_for_entities("高中地理", "1911603842693210113")
+    # neo4j_handler.update_kb_id_for_entities("高中地理", "1911603842693210113")
 #     neo4j_handler.fill_missing_entity_fields(default_values)
 #     # neo4j_handler.update_all_entity_root_name("选必一")
 #     neo4j_handler.clear_entity_fields("高中地理", ["root_name", "unit", "type"])
