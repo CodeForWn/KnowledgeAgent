@@ -690,48 +690,69 @@ class LargeModelAPIService:
                     # 处理流式输出的数据格式
                     # 检查是否是 [DONE] 标志
                     if content == "[DONE]":
-                        yield '{"code": 200, "msg": "success", "data": {"text": "finish!"}}'
+                        yield '{"code": 200, "msg": "success", "data": {"text": "finish!"}}\n'
                         break  # 停止流式输出
 
                     # 返回每个chunk的内容，格式为 JSON
                     yield f'{{"code": 200, "msg": "success", "data": {{"text": "{accumulated_text}"}}}}\n'
 
-config = Config(env='production')
-config.load_config("/home/ubuntu/work/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
-# 创建ElasticSearchHandler实例
-llm_builder = LargeModelAPIService(config)
-# 定义要发送给 deepseek 模型的 prompt
-prompt = [
-        {
-            "role": "user",
-            "content": "你好"
-        },
-        {
-            "role": "assistant",
-            "content": "你好，我是 internvl"
-        },
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Describe the image please"
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": "https://static.openxlab.org.cn/internvl/demo/visionpro.png"
-                    }
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": "https://static.openxlab.org.cn/puyu/demo/000-2x.jpg"
-                    }
-                }
-            ]
-        }
-    ]
-llm_builder.get_answer_from_internvl_stream(prompt)
+
+    def get_answer_from_qwenvl_stream(self, prompt):
+        client = OpenAI(
+            api_key="sk-072837472de74c139551100f63906bd8",  # 直接填你的API KEY
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 通义千问VL的接口地址
+        )
+
+        # 发起流式请求
+        completion = client.chat.completions.create(
+            model="qwen2.5-vl-32b-instruct",  # 通义千问多模态视频理解模型
+            messages=prompt,
+            stream=True,
+        )
+
+        # 用于累计内容的变量
+        accumulated_text = ""
+
+        # 处理流式输出
+        for chunk in completion:
+            if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if hasattr(delta, 'content'):
+                    content = delta.content
+                    self.logger.info("收到新的chunk内容: %s", content)
+                    accumulated_text += content
+
+                    if content == "[DONE]":
+                        yield '{"code": 200, "msg": "success", "data": {"text": "finish!"}}\n'
+                        break
+
+                    yield f'{{"code": 200, "msg": "success", "data": {{"text": "{accumulated_text}"}}}}\n'
+
+
+
+# config = Config(env='production')
+# config.load_config("/home/ubuntu/work/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
+# # 创建ElasticSearchHandler实例
+# llm_builder = LargeModelAPIService(config)
+# # # 定义要发送给 deepseek 模型的 prompt
+# prompt = [
+#         {
+#             "role": "user",
+#             "content": [
+#                 {
+#                     "type": "video_url",
+#                     "video_url": {
+#                         "url": "http://119.45.164.254/resource/%E4%B8%AD%E5%B0%8F%E5%AD%A6%E8%AF%BE%E7%A8%8B/%E9%AB%98%E4%B8%AD%20%E5%9C%B0%E7%90%86/%E9%80%89%E4%BF%AE2-2/%E4%B8%BB%E9%A2%985/%E9%98%9C%E6%96%B0%E5%B8%82.mp4"
+#                     }
+#                 },
+#                 {
+#                     "type": "text",
+#                     "text": "这段视频的内容是什么？"
+#                 }
+#             ]
+#         }
+#     ]
+# for res in llm_builder.get_answer_from_qwenvl_stream(prompt):
+#     print(res)
 
 
