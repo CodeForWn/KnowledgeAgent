@@ -729,12 +729,7 @@ class LargeModelAPIService:
                     yield f'{{"code": 200, "msg": "success", "data": {{"text": "{accumulated_text}"}}}}\n'
 
 
-
-# config = Config(env='production')
-# config.load_config("/home/ubuntu/work/kmcGPT/KMC/config/config.json")  # 指定配置文件的路径
-# # 创建ElasticSearchHandler实例
-# llm_builder = LargeModelAPIService(config)
-# # # 定义要发送给 deepseek 模型的 prompt
+#
 # prompt = [
 #         {
 #             "role": "user",
