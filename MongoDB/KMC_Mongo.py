@@ -98,6 +98,37 @@ class KMCMongoDBHandler:
             self.logger.error("查询 docID {} 出错: {}".format(docID, e))
             return None
 
+    def get_folder_id_by_docID(self, docID):
+        """
+        根据 docID 查询 MongoDB 中的资源详细信息。
+        先在 geo_documents 查找，如果找不到，再去 edu_question 查找。
+        """
+        try:
+            # 先查 geo_documents
+            collection = self.db["geo_documents"]
+            resource_info = collection.find_one({"docID": docID})
+
+            if resource_info:
+                if "_id" in resource_info:
+                    resource_info["_id"] = str(resource_info["_id"])
+                return resource_info
+
+            # 如果在 geo_documents 没找到，查 edu_question
+            collection = self.db["edu_question"]
+            resource_info = collection.find_one({"docID": docID})
+
+            if resource_info:
+                if "_id" in resource_info:
+                    resource_info["_id"] = str(resource_info["_id"])
+                return resource_info
+
+            # 都找不到
+            return None
+
+        except Exception as e:
+            self.logger.error(f"查询 docID {docID} 出错: {e}")
+            return None
+
     @staticmethod
     def read_pdf(file_path):
         """
@@ -194,6 +225,7 @@ class KMCMongoDBHandler:
             detailed_resources.append(res)
         return detailed_resources
 
+
     def filter_documents(self, filters: dict, collection_name="geo_documents"):
         """根据多条件筛选资源库数据（resource_type != 试题）"""
         query = {
@@ -204,7 +236,12 @@ class KMCMongoDBHandler:
         if filters.get("folder_id"):
             query["folder_id"] = filters["folder_id"]
         if filters.get("file_name"):
-            query["file_name"] = {"$in": filters["file_name"]}
+            # ✅ 改成模糊匹配（多个关键词之间是 OR 关系）
+            file_name_patterns = filters["file_name"]
+            if isinstance(file_name_patterns, list) and file_name_patterns:
+                query["$or"] = [{"file_name": {"$regex": fn, "$options": "i"}} for fn in file_name_patterns]
+        if filters.get("docID"):
+            query["docID"] = filters["docID"]  # ✅ 新增
         if filters.get("status"):
             query["status"] = {"$in": filters["status"]}
         if filters.get("knowledge_point"):
@@ -212,7 +249,7 @@ class KMCMongoDBHandler:
             if isinstance(kp_values, list) and kp_values:
                 query["knowledge_point"] = {"$in": kp_values}
 
-        return list(self.db[collection_name].find(query))
+        return list(self.db[collection_name].find(query).sort("created_at", -1))
 
     def filter_questions(self, filters: dict, collection_name="edu_question"):
         """根据多条件筛选题库数据（resource_type = 试题）"""
@@ -227,12 +264,14 @@ class KMCMongoDBHandler:
             query["type"] = {"$in": filters["type"]}
         if filters.get("diff_level"):
             query["diff_level"] = {"$in": filters["diff_level"]}
+        if filters.get("docID"):
+            query["docID"] = filters["docID"]  # ✅ 新增
         if filters.get("status"):
             query["status"] = {"$in": filters["status"]}
         if filters.get("knowledge_point"):
             query["knowledge_point"] = {"$in": filters["knowledge_point"]}
 
-        return list(self.db[collection_name].find(query))
+        return list(self.db[collection_name].find(query).sort("created_at", -1))
 
     def update_document_by_id(self, doc_id, update_fields, collection_name="geo_documents"):
         try:
@@ -269,11 +308,37 @@ class KMCMongoDBHandler:
         except Exception as e:
             self.logger.error(f"删除试题失败 docID={doc_id}：{e}")
             return None
-# if __name__ == '__main__':
-#     # 示例用法
-#     config = Config()  # 假设 Config 类中包含mongodb_host、mongodb_port、mongodb_database、logger等配置项
-#     config.load_config()
-#     mongo_handler = KMCMongoDBHandler(config)
+
+
+    # ✅ 新增：列出 geo_documents 中 folder_id 为空的 docID
+    def get_documents_with_empty_folder_id(self, collection_name="geo_documents"):
+        try:
+            collection = self.db[collection_name]
+            query = {
+                "$or": [
+                    {"folder_id": {"$exists": False}},
+                    {"folder_id": ""},
+                    {"folder_id": None}
+                ]
+            }
+            documents = collection.find(query, {"docID": 1, "_id": 0})
+            empty_folder_docIDs = [doc["docID"] for doc in documents if "docID" in doc]
+            self.logger.info(f"找到 {len(empty_folder_docIDs)} 个 folder_id 为空的文档")
+            return empty_folder_docIDs
+        except Exception as e:
+            self.logger.error(f"查询 folder_id 为空的文档出错: {e}")
+            return []
+
+if __name__ == '__main__':
+    # 示例用法
+    config = Config()  # 假设 Config 类中包含mongodb_host、mongodb_port、mongodb_database、logger等配置项
+    config.load_config()
+    mongo_handler = KMCMongoDBHandler(config)
+    # ✅ 调用新增的方法
+    empty_folder_docIDs = mongo_handler.get_documents_with_empty_folder_id()
+    print(f"共有 {len(empty_folder_docIDs)} 个空 folder_id 的文档")
+    for doc_id in empty_folder_docIDs:
+        print(doc_id)
 #
 #     # 示例：根据 docID 查询资源信息并读取全文内容
 #     test_docID = "0033-8784-3716"

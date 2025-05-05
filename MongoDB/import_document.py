@@ -4,6 +4,7 @@ import datetime
 import sys
 import os
 import random
+import re
 from pymongo import MongoClient
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
@@ -214,6 +215,17 @@ def update_all_kb_ids(mongo_handler):
     print(f"🎉 共更新 kb_id 字段 {total_updated} 条记录。")
 
 
+def clean_question_text(question_text):
+    """
+    清理题干开头的题号，如 '1.', '18.', '（1）', '（18）'。
+    """
+    if not question_text:
+        return question_text
+    # 正则去除开头数字. 或 （数字）
+    new_text = re.sub(r'^\s*(\d+\.\s*|（\d+）\s*)', '', question_text)
+    return new_text.strip()
+
+
 if __name__ == '__main__':
     # 加载配置并创建 MongoDB 连接对象
     config = Config()
@@ -251,4 +263,28 @@ if __name__ == '__main__':
     #
     # print(f"✅ edu_questions 集合已初始化")
 
+    # mongo_handler.close()
+    # try:
+    #     # 处理 edu_question 集合
+    #     collection = mongo_handler.db[collection_name_ques]
+    #     questions = collection.find({})
+    #     updated_count = 0
+    #
+    #     for question in questions:
+    #         doc_id = question.get("docID")
+    #         original_text = question.get("question", "")
+    #         cleaned_text = clean_question_text(original_text)
+    #
+    #         if cleaned_text != original_text:
+    #             # 更新MongoDB中的数据
+    #             collection.update_one({"_id": question["_id"]}, {"$set": {"question": cleaned_text}})
+    #             updated_count += 1
+    #             print(f"已处理 docID={doc_id}")
+    #
+    #     print(f"处理完成，总共更新了 {updated_count} 条记录。")
+    #
+    # except Exception as e:
+    #     print(f"处理过程中出现错误: {e}")
+    #
+    # finally:
     mongo_handler.close()

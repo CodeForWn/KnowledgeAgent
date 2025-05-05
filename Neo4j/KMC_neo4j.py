@@ -33,6 +33,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
 from neo4j import GraphDatabase, basic_auth
+from MongoDB.KMC_Mongo import KMCMongoDBHandler
 
 
 
@@ -144,7 +145,8 @@ class KMCNeo4jHandler:
                collect(DISTINCT {
                    docID: res.docID, 
                    file_name: res.file_name, 
-                   resource_type: res.resource_type
+                   resource_type: res.resource_type,
+                   folder_id: res.folder_id
                }) as resources
         """
 
@@ -415,7 +417,7 @@ class KMCNeo4jHandler:
             return updated_props
 
     def bind_resource_to_entities(self, docID: str, entity_names: list, file_name: str = "",
-                                  resource_type: str = "课件"):
+                                  resource_type: str = "", folder_id: str = "", kb_id: str = "1911603842693210113"):
         """
         将某一资源绑定到多个知识点（Entity 节点），建立“相关”关系。
         - docID: Resource 节点的唯一标识
@@ -440,9 +442,11 @@ class KMCNeo4jHandler:
                         MERGE (e:Entity {name: $entity_name})
                         MERGE (r:Resource {docID: $docID})
                         SET r.file_name = $file_name,
-                            r.resource_type = $resource_type
+                            r.resource_type = $resource_type,
+                            r.folder_id = $folder_id,
+                            r.kb_id = $kb_id
                         MERGE (e)-[:相关]->(r)
-                    """, entity_name=name, docID=docID, file_name=file_name, resource_type=resource_type)
+                    """, entity_name=name, docID=docID, file_name=file_name, resource_type=resource_type, folder_id=folder_id, kb_id=kb_id)
 
                     bound_entities.append(name)  # 记录成功绑定的节点
                 else:
@@ -554,12 +558,237 @@ class KMCNeo4jHandler:
             self.logger.error(f"从 {filepath} 导入三元组失败")
         return success
 
+    def fetch_main_tree(self, root_name="高中地理"):
+        query = """
+            MATCH path = (root:Entity {name: $root})-[:RELATION*1..]->(child:Entity)
+            WHERE ALL(r IN relationships(path) WHERE r.type = "前置于" OR r.type = "包含")
+            WITH collect(nodes(path)) AS all_nodes, collect(relationships(path)) AS all_rels
+            UNWIND all_nodes AS nodes_list
+            UNWIND nodes_list AS node
+            UNWIND all_rels AS rels_list
+            UNWIND rels_list AS rel
+            RETURN 
+                collect(DISTINCT node.name) AS node_names,
+                collect(DISTINCT {parent: startNode(rel).name, child: endNode(rel).name}) AS edges
+            """
+        with self.driver.session() as session:
+            result = session.run(query, root=root_name).single()
+            if result:
+                node_names = set(result["node_names"])
+                edges = [(edge["parent"], edge["child"]) for edge in result["edges"]]
+                return node_names, edges
+            else:
+                return set(), []
 
-# if __name__ == "__main__":
+    # 查询所有知识点节点
+    def fetch_all_knowledge_points(self):
+        query = "MATCH (n:Entity) RETURN n.name AS name"
+        with self.driver.session() as session:
+            result = session.run(query)
+            return [record["name"] for record in result]
+
+    # 查询所有前置于、包含的关系
+    def fetch_all_valid_edges(self):
+        query = """
+        MATCH (a:Entity)-[r:RELATION]->(b:Entity)
+        WHERE r.type = '前置于' OR r.type = '包含'
+        RETURN a.name AS parent, b.name AS child
+        """
+        with self.driver.session() as session:
+            result = session.run(query)
+            return [(record["parent"], record["child"]) for record in result]
+
+    def group_resources_by_type(self):
+        """
+        查询所有Resource节点，按照resource_type分类，列出docID和file_name
+        """
+        try:
+            query = """
+            MATCH (r:Resource)
+            RETURN r.resource_type AS resource_type, r.docID AS docID, r.file_name AS file_name
+            """
+            grouped = {}
+
+            with self.driver.session() as session:
+                result = session.run(query)
+                for record in result:
+                    resource_type = record["resource_type"] if record["resource_type"] else "未知类型"
+                    docID = record["docID"]
+                    file_name = record["file_name"]
+
+                    if resource_type not in grouped:
+                        grouped[resource_type] = []
+                    grouped[resource_type].append({
+                        "docID": docID,
+                        "file_name": file_name
+                    })
+
+            return grouped
+        except Exception as e:
+            self.logger.error(f"查询Resource节点失败: {e}")
+            return {}
+
+    def update_resources(self):
+        mongo_handler = KMCMongoDBHandler(config)
+        with self.driver.session() as session:
+            # 查询所有Resource节点
+            result = session.run("""
+                MATCH (r:Resource)
+                RETURN id(r) AS node_id, r.docID AS docID
+            """)
+
+            update_count = 0
+            delete_count = 0
+
+            for record in result:
+                node_id = record["node_id"]
+                docID = record["docID"]
+
+                if not docID:
+                    continue  # 跳过没有docID的节点
+
+                # 查询MongoDB中是否存在资源
+                resource_info = mongo_handler.get_folder_id_by_docID(docID)
+
+                if resource_info:
+                    folder_id = resource_info.get("folder_id", None)
+                    if folder_id:
+                        # 更新Neo4j节点，加上folder_id字段
+                        session.run("""
+                            MATCH (r:Resource)
+                            WHERE id(r) = $node_id
+                            SET r.folder_id = $folder_id
+                        """, node_id=node_id, folder_id=folder_id)
+                        update_count += 1
+                    else:
+                        print(f"[警告] docID {docID} 找到了资源但没有folder_id，跳过更新。")
+                else:
+                    # MongoDB不存在，删除Resource节点及其与Entity的关系
+                    session.run("""
+                        MATCH (r:Resource)
+                        WHERE id(r) = $node_id
+                        OPTIONAL MATCH (r)-[rel]-()
+                        DELETE rel, r
+                    """, node_id=node_id)
+                    delete_count += 1
+
+            print(f"✅ 更新了 {update_count} 个 Resource 节点的 folder_id")
+            print(f"✅ 删除了 {delete_count} 个无效 Resource 节点")
+
+    def update_file_names(self):
+        mongo_handler = KMCMongoDBHandler(config)
+        with self.driver.session() as session:
+            # 查询所有 folder_id = 1911604997812920321 的 Resource节点
+            result = session.run("""
+                MATCH (r:Resource)
+                WHERE r.folder_id = '1911604997812920321'
+                RETURN id(r) AS node_id, r.docID AS docID
+            """)
+
+            update_count = 0
+            missing_in_mongo = 0
+
+            for record in result:
+                node_id = record["node_id"]
+                docID = record["docID"]
+
+                if not docID:
+                    continue  # 跳过没有docID的节点
+
+                # 去 MongoDB 的 edu_question 集合中查询
+                resource_info = mongo_handler.db["edu_question"].find_one({"docID": docID})
+
+                if resource_info:
+                    question_text = resource_info.get("question", None)
+                    if question_text:
+                        # 更新 Neo4j 中 file_name 字段
+                        session.run("""
+                            MATCH (r:Resource)
+                            WHERE id(r) = $node_id
+                            SET r.file_name = $new_file_name
+                        """, node_id=node_id, new_file_name=question_text[:500])  # 限制一下长度，防止太长
+                        update_count += 1
+                    else:
+                        print(f"[警告] docID {docID} 在Mongo中找到了，但question字段为空，跳过")
+                else:
+                    print(f"[警告] docID {docID} 不存在于Mongo的edu_question集合中")
+                    missing_in_mongo += 1
+
+            print(f"✅ 成功更新了 {update_count} 个 Resource 节点的 file_name")
+            print(f"⚠️ 有 {missing_in_mongo} 个 docID 在MongoDB中未找到或无question字段")
+
+if __name__ == "__main__":
+    config = Config()
+    config.load_config()  # 如果 Config 中没有此方法，可以删除这行
+    neo4j_handler = KMCNeo4jHandler(config)
+    neo4j_handler.update_resources()
+    mongo_handler = KMCMongoDBHandler(config)
+    neo4j_handler.update_file_names()
+    neo4j_handler.close()
+    mongo_handler.close()
+
+    grouped_resources = neo4j_handler.group_resources_by_type()
+    # 保存到 /home/ubuntu/work/kmcGPT/KMC/Neo4j/resource_summary.json
+    save_path = "/home/ubuntu/work/kmcGPT/KMC/Neo4j/resource_summary.json"
+    try:
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(grouped_resources, f, ensure_ascii=False, indent=2)
+        print(f"资源分类结果已成功保存到：{save_path}")
+    except Exception as e:
+        print(f"保存文件失败: {e}")
+
+
+
+#     def check_and_clean_orphan_resources():
+#         try:
+#             with neo4j_handler.driver.session() as session:
+#                 # 查询所有Resource节点及其docID
+#                 query = "MATCH (r:Resource) RETURN r.docID AS docID"
+#                 result = session.run(query)
+#                 resource_docids = [record["docID"] for record in result if record["docID"]]
 #
-#     config = Config()
-#     config.load_config()  # 如果 Config 中没有此方法，可以删除这行
-#     neo4j_handler = KMCNeo4jHandler(config)
+#             total = len(resource_docids)
+#             deleted_count = 0
+#             skipped_count = 0
+#
+#             print(f"共检测到 {total} 个 Resource 节点，开始检查...")
+#
+#             for idx, docID in enumerate(resource_docids, 1):
+#                 if not docID:
+#                     continue
+#
+#                 # 查询MongoDB中是否存在该docID（优先资源库，再查题库）
+#                 filters = {
+#                     "kb_id": "1911603842693210113",
+#                     "docID": docID
+#                 }
+#                 documents = mongo_handler.filter_documents(filters)
+#                 questions = mongo_handler.filter_questions(filters)
+#                 exists_in_mongo = documents or questions
+#
+#                 if exists_in_mongo:
+#                     skipped_count += 1
+#                     continue
+#
+#                 # ✅ 每次自己开session删除，避免Session closed问题
+#                 with neo4j_handler.driver.session() as session:
+#                     delete_query = """
+#                             MATCH (r:Resource {docID: $docID})
+#                             OPTIONAL MATCH (r)<-[rel:相关]-(e:Entity)
+#                             DELETE rel, r
+#                             """
+#                     session.run(delete_query, docID=docID)
+#                     deleted_count += 1
+#
+#                 if idx % 50 == 0:
+#                     print(f"已处理 {idx}/{total}，已删除 {deleted_count} 个孤立资源")
+#
+#             print(f"检查完成，总资源数: {total}，跳过: {skipped_count}，删除: {deleted_count}")
+#
+#         except Exception as e:
+#             print(f"清理过程中发生错误: {e}")
+#
+#     check_and_clean_orphan_resources()
 #     neo4j_handler.import_triples_from_json("/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/选必一所有知识点.json")
 # #     knowledge_point_name = "地方时"
 # #     data = neo4j_handler.get_entity_details(knowledge_point_name)
@@ -577,7 +806,7 @@ class KMCNeo4jHandler:
 #     # neo4j_handler.update_entity_name("地球运动", "高中地理")
 #     default_values = {
 #         "unit": "",
-#         "kb_id": "高中地理",
+#         "kb_id": "1911603842693210113",
 #         "root_name": "高中地理知识图谱",
 #         "difficulty": "",
 #         "type": "概念型",
@@ -585,8 +814,7 @@ class KMCNeo4jHandler:
 #     }
 #
     # neo4j_handler.update_kb_id_for_entities("高中地理", "1911603842693210113")
-#     neo4j_handler.fill_missing_entity_fields(default_values)
-#     # neo4j_handler.update_all_entity_root_name("选必一")
-#     neo4j_handler.clear_entity_fields("高中地理", ["root_name", "unit", "type"])
-#     neo4j_handler.close()
+    # neo4j_handler.fill_missing_entity_fields(default_values)
+    # neo4j_handler.update_all_entity_root_name("选必一")
+    # neo4j_handler.clear_entity_fields("高中地理", ["root_name", "unit", "type"])
 

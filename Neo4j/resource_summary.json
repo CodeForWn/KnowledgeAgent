@@ -1,0 +1,710 @@
+{
+  "图片": [
+    {
+      "docID": "3072-4851-8963",
+      "file_name": "岩浆岩.png"
+    },
+    {
+      "docID": "4262-4398-4703",
+      "file_name": "大陆西部气压带、风带的季节移动示意图.png"
+    },
+    {
+      "docID": "5177-0306-1719",
+      "file_name": "地下水埋藏条件示意图.png"
+    },
+    {
+      "docID": "5921-7201-1449",
+      "file_name": "山脉的隆起与夷平过程.png"
+    },
+    {
+      "docID": "8589-6045-1183",
+      "file_name": "沉积岩.png"
+    },
+    {
+      "docID": "9954-0056-1372",
+      "file_name": "地质构造示意图.png"
+    },
+    {
+      "docID": "7069-2370-0403",
+      "file_name": "北半球气旋与天气状况.png"
+    },
+    {
+      "docID": "9469-8279-8553",
+      "file_name": "被寒潮冻坏的美人蕉.png"
+    },
+    {
+      "docID": "6987-9418-8382",
+      "file_name": "北半球反气旋与天气状况.png"
+    },
+    {
+      "docID": "6589-4485-2536",
+      "file_name": "冷锋天气.png"
+    },
+    {
+      "docID": "7685-3843-0810",
+      "file_name": "梅雨卫星云图.png"
+    },
+    {
+      "docID": "3536-9374-3068",
+      "file_name": "气象卫星云图.png"
+    },
+    {
+      "docID": "6563-0883-7455",
+      "file_name": "天气形势图.png"
+    },
+    {
+      "docID": "7920-8026-2939",
+      "file_name": "三圈环流.png"
+    },
+    {
+      "docID": "4213-7040-3422",
+      "file_name": "暖锋天气.png"
+    },
+    {
+      "docID": "6328-7959-6949",
+      "file_name": "亚洲东部夏季风形成示意图.png"
+    },
+    {
+      "docID": "0691-7716-2319",
+      "file_name": "长江上中下游的河水补给.png"
+    },
+    {
+      "docID": "6523-9757-1315",
+      "file_name": "北纬30-60度从沿海到内陆的自然带.png"
+    },
+    {
+      "docID": "4873-6300-9717",
+      "file_name": "全球海洋表层洋流分布.png"
+    },
+    {
+      "docID": "4742-9709-7958",
+      "file_name": "全球水平衡.png"
+    },
+    {
+      "docID": "3091-7893-1081",
+      "file_name": "全球板块分布及运动.png"
+    },
+    {
+      "docID": "4114-8749-6057",
+      "file_name": "不同地区河流净流量的季节变化.png"
+    },
+    {
+      "docID": "8253-8229-4228",
+      "file_name": "东经20度附近的自然带.png"
+    },
+    {
+      "docID": "7999-3918-0288",
+      "file_name": "河流水与地下水相互补给示意图.png"
+    },
+    {
+      "docID": "2724-1185-1251",
+      "file_name": "世界陆地自然带分布.png"
+    },
+    {
+      "docID": "3361-0683-0095",
+      "file_name": "沃克环流.png"
+    },
+    {
+      "docID": "3373-6194-1525",
+      "file_name": "热量条件对自然景观的影响.png"
+    },
+    {
+      "docID": "9964-9353-2344",
+      "file_name": "中国三大自然区.png"
+    },
+    {
+      "docID": "7080-4134-5106",
+      "file_name": "煤的形成.png"
+    },
+    {
+      "docID": "5931-5231-1189",
+      "file_name": "自然环境各要素相互关系图.png"
+    },
+    {
+      "docID": "8379-9608-2490",
+      "file_name": "岩石圈的物质循环.png"
+    },
+    {
+      "docID": "8482-5888-2044",
+      "file_name": "行星风系和世界洋流分布模式.png"
+    }
+  ],
+  "教材": [
+    {
+      "docID": "7142-6035-2984",
+      "file_name": "高中地理 选择性必修一 自然地理基础.pdf"
+    }
+  ],
+  "课件": [
+    {
+      "docID": "3646-9040-5169",
+      "file_name": "常见天气系统—气旋、反气旋 第三课时.pptx"
+    },
+    {
+      "docID": "7431-4375-9628",
+      "file_name": "常见天气系统—准静止锋、梅雨、寒潮 第二课时.pptx"
+    },
+    {
+      "docID": "4019-2050-1564",
+      "file_name": "常见天气系统—冷、暖锋 第一课时.pptx"
+    },
+    {
+      "docID": "0358-6109-5944",
+      "file_name": "陆地水体及其相互关系.pptx"
+    },
+    {
+      "docID": "7116-9691-6515",
+      "file_name": "洋流.pptx"
+    },
+    {
+      "docID": "6959-5445-5915",
+      "file_name": "地球自转示意图3.png"
+    },
+    {
+      "docID": "0564-1549-9443",
+      "file_name": "气压带和风带的形成.pptx"
+    },
+    {
+      "docID": "1969-8159-0034",
+      "file_name": "气压带和风带对气候的影响.pdf"
+    },
+    {
+      "docID": "8961-7104-9963",
+      "file_name": "常见天气系统.pptx"
+    },
+    {
+      "docID": "4360-3300-9208",
+      "file_name": "地球运动的地理意义 正午太阳高度角+四季和五带.pptx"
+    },
+    {
+      "docID": "7018-4688-4251",
+      "file_name": "昼夜长短的变化.pptx"
+    },
+    {
+      "docID": "8731-3538-0872",
+      "file_name": "海陆分布对气压带和风带的影响 第二课时.pptx"
+    },
+    {
+      "docID": "1548-0819-7805",
+      "file_name": "塑造地表形态的力量.pptx"
+    },
+    {
+      "docID": "8788-7109-7108",
+      "file_name": "地球的自转和公转 第一课时.pptx"
+    },
+    {
+      "docID": "2483-2298-8118",
+      "file_name": "地球的自转和公转.pptx"
+    },
+    {
+      "docID": "2604-9166-5412",
+      "file_name": "自然环境的整体性.pdf"
+    },
+    {
+      "docID": "4267-5450-1626",
+      "file_name": "陆地水体及其相互关系.pdf"
+    },
+    {
+      "docID": "6193-4208-3730",
+      "file_name": "地球的自转和公转 第一课时.pptx"
+    },
+    {
+      "docID": "7979-4060-9170",
+      "file_name": "认识区域.pptx"
+    }
+  ],
+  "试题": [
+    {
+      "docID": "6774-1539-8016",
+      "file_name": "如果你站在北极上空俯视地球，观察到的地球自转方向是（　　）A. 顺时针B. 逆时针C. 先顺后逆D. 不确定方向"
+    },
+    {
+      "docID": "5120-8879-7471",
+      "file_name": "读图“某日太阳光照地球示意图”，回答下列问题。（10分）\n\n（1）该图所示日期黄赤交角的度数是 ______ 。（1分）\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgUAAAF5CAIAAACA9s59AAAgAElEQVR4Aex991tUWbru/RvO88zM6ek006Nt99i2bcI2k0QRBMlIpogKSM5JJEoOkoPkWEUVoYqCIgdJ5kAQUMk5R0Ht+1jvcd0SbQfQOd3Td38/FLs2O9W31/re9eX/8wtFFAcoDlAcoDhAceCXX/4PxQSKAxQHKA5QHKA48AuFB9QgoDhAcYDiAMUBcIDSD6iRQHGA4gDFAYoDrzlA4QE1DigOUBygOEBx4DUHKDygxgHFAYoDFAcoDrzmAIUH1DigOEBxgOIAxYHXHKDwgBoHFAcoDlAcoDjwmgMUHlDjgOIAxQGKAxQHXnOAwgNqHFAcoDhAcYDiwGsOUHhAjQOKAxQHKA5QHHjNAQo"
+    },
+    {
+      "docID": "2617-9802-8433",
+      "file_name": "南美洲玻利维亚实际首都及最大城市拉巴斯与上海时差 12 小时，其所在的时区为\nA. 西四区 B. 西五区 C. 西八区 D. 零时区"
+    },
+    {
+      "docID": "1075-4465-0961",
+      "file_name": "①～③三地中，              地的地方时是正午 12 时，            地水平运动的物体向右偏。（2分）"
+    },
+    {
+      "docID": "0665-9747-4509",
+      "file_name": "2019 国庆 70 周年庆祝大会阅兵仪式于北京时间 10 月 1 日上午 10 时在北京天安门广场举行。在澳大利亚悉尼（东十区）的中国留学生观看实况转播的时间是\nA. 9 月 30 日 21 时 B. 9 月 31 日 21 时 C. 10 月 1 日 11 时 D. 10 月 1 日 12 时"
+    },
+    {
+      "docID": "0036-1265-7817",
+      "file_name": "里约热内卢（西三区）的留学生观看了 10:00（北京时间）开始举行的国庆 70 周年阅兵仪式视频直播，当地开播时间为\nA. 10 月 1 日 5:00 B. 10 月 1 日 15:00 C. 9 月 30 日 23:00 D. 10 月 1 日 21:00"
+    },
+    {
+      "docID": "1413-9540-5970",
+      "file_name": "图中太阳直射的纬线是 ______ ，全球正午太阳高度的分布规律是 ______ 。该图所示日期可能为 ______ 或 ______ 。（4分）"
+    },
+    {
+      "docID": "4940-6503-6652",
+      "file_name": "一艘船从西向东跨越国际日期变更线时，以下哪种情况会发生？（　　）A. 日期减少一天B. 时间增加一小时C. 经度数值减小<br>D. 纬度位置改变"
+    },
+    {
+      "docID": "9918-5526-8195",
+      "file_name": "英国伦敦为 15 时 45 分时，北京时间是\nA. 22 时 45 分 B. 7 时 45 分 C. 23 时 45 分 D. 6 时 45 分"
+    },
+    {
+      "docID": "5563-8275-5944",
+      "file_name": "关于地转偏向力对地球自然现象的影响，下列哪些描述是正确的？\nA. 影响河流两岸侵蚀程度\nB. 改变大气环流模式\nC. 直接导致昼夜温差变化\nD. 影响洋流的流向与分布"
+    },
+    {
+      "docID": "5669-9011-1303",
+      "file_name": "北京时间采用的是东八区的时间，如果此时北京时间为14:00，那么位于西五区的纽约时间应该是___；若一架飞机从北京出发飞往纽约，飞行时间为14小时，则飞机到达纽约时，纽约当地时间为___。"
+    },
+    {
+      "docID": "5622-7588-6349",
+      "file_name": "王教授某日乘坐飞机从悉尼到西安，飞机着陆时正值日落。下表为该航班信息。据此回答下题。<br>王教授乘坐的航班实际飞行时间和当天悉尼日落时的当地时间分别为（）<br>A．6小时25分钟<br>B．10小时25分钟<br>C．18：59<br>D．18：01"
+    },
+    {
+      "docID": "7009-7001-5750",
+      "file_name": "该图所示日期过后，若北京市昼逐渐变长、夜逐渐变短，则太阳直射点位于 ______ 半球，并向 ______ 方向移动，正午天安门广场的旗杆影长变 ______ 。（3分）"
+    },
+    {
+      "docID": "2804-9911-1595",
+      "file_name": "地球自转速度在下列哪个纬度位置最快？（　　）A. 赤道B. 北纬30°C. 南纬60°D. 北极点"
+    },
+    {
+      "docID": "7003-5252-6067",
+      "file_name": "地转偏向力对地球上的物体运动方向产生影响。在北半球，沿水平方向运动的物体其运动方向会向哪个方向偏转？（　　）<br><br>A. 向东偏<br>B. 向西偏<br>C. 向右偏<br>D. 向左偏"
+    },
+    {
+      "docID": "6206-7894-6990",
+      "file_name": "当地时间正午12点时，下列哪项最可能正确？（　　）A. 北京时间为12点  B. 伦敦时间为12点  C. 纽约时间为12点  D. 日本时间为13点"
+    },
+    {
+      "docID": "2129-7693-7027",
+      "file_name": "为应对全球新冠肺炎疫情，二十国集团（G20）于北京时间 2020 年 3 月 26 日 20:00 召开历史首次网络视频峰会。下列参会国家的首都中，此时处于正午时分的是\nA. 莫斯科（东三区） B. 伦敦（零时区） C. 墨西哥城（西六区） D. 东京（东九区）"
+    },
+    {
+      "docID": "3020-9716-7429",
+      "file_name": "读二分二至日地球在公转轨道上的位置示意图（甲图）和地球的光照示意图（乙图，阴影部分为黑夜），回答下列问题。（10分）\n\n（1）乙图表示的北半球的节气为______，为甲图中数字______所代表的位置。（2分）\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA8IAAAFVCAIAAACrdcEoAAAgAElEQVR4Aey9d1xU1/b//bxubm5iYkOwpV9jkpvEFmMssddo1NgLRcQoFpQ2Q++9SC/SRBRhaANDFUURKQMCKiAIofeZYWB6H2YGHy/r5/nOBTV2Qff6Qw9rTtn7vQ9nFvt89lr/331kiAAigAggAogAIoAIIAKIACLwjAT+v2fcH+2OCCACiAAigAggAogAIoAIIAL3URiNbgJEABFABBABRAARQAQQAUTgmQmgMPqZkaEDEAFEABFABBABRAARQAQQARRGo3sAEUAEEAFEABFABBABRAAReGYCKIx+ZmToAEQAEUAEEAFEAB"
+    },
+    {
+      "docID": "0345-7683-6344",
+      "file_name": "北京时间 2019 年 2 月 5 日（春节）0 点，电影《流浪地球》在中国内地上映。该片讲述了不久的将来太阳即将毁灭，人类开启“流浪计划”，地球最终泊入宜居轨道——比邻星轨道，成为比邻星的行星。电影《流浪地球》开始上映时，下列说法正确的是\nA. 洛杉矶（西八区）的市民正在吃晚饭 B. 伦敦（零时区）的中学生正在晨跑 C. 巴西利亚（西三区）的市民正在午休 D. 悉尼（东十区）的市民正在看日落"
+    },
+    {
+      "docID": "6669-6275-5911",
+      "file_name": "北京时间 2019 年 4 月 10 日 21 时 07 分，人类首张黑洞照片在全球六地同步发布。除了上海和台北外，其他四地在黑洞照片发布时\nA. 华盛顿（西五区）夜幕深沉 B. 圣地亚哥（西四区）太阳初升 C. 布鲁塞尔（零时区）中午刚过 D. 东京（东九区）华灯初上"
+    },
+    {
+      "docID": "6639-5632-0379",
+      "file_name": "北京时间2020年3月26日晚8时，G20历史上首次领导人视频峰会正式开始。\n在全球抗击疫情的关键时刻，峰会传递了各国团结合作应对疫情的积极信号。\n关于此次峰会开始时的叙述，正确的是\nA. 美、加、巴西等美洲国家刚华灯初上\nB. 英、法、德等西欧国家领导应刚吃好早餐\nC. 此时全球大致都处于2020年3月26日\nD. 此时全球大致一半处于3月26日，一半处于3月25日"
+    },
+    {
+      "docID": "1760-2042-9256",
+      "file_name": "某跨国企业在世界各地的分支机构工作时间均为当地时间8：30-17：30。\n如果该企业的上海分公司需要和洛杉矶（西八区）分公司召开网络视频会议，为了不影响员工正常下班，该会议应该安排在北京时间()\nA. 8：30-9：30\nB. 10：30-11：30\nC. 12：30-13：30\nD. 16：30-17：30"
+    },
+    {
+      "docID": "2891-2239-6083",
+      "file_name": "读下图，在摩尔曼斯克恰好看到太阳从正北方地平线上升起时，北京时间是()\nA. 5时50分\nB. 9时10分\nC. 13时10分\nD. 17时50分\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARcAAACnCAIAAAC0DI9CAAAgAElEQVR4Aex9Z0BUydIoJ0yEYchRBARUDIiYc8LFhGIOGFkDuqJiXrOYs4sRFAUzqGBAMGEEI5IXkCggmSHODBPOGd5c6u35zjcDLIa97/3Y/gE9fTpUd1dVV1dXV2s0/Bv+HYF/R+DHRkDjx4r/W/rfEfh3BBr+paJ/keDfEfjREfiXin50BP8t/+8I/EtF/+LAvyPwoyPwLxX96Aj+W/7fEfiZVKRQKAiCIElSoRaoxIaGBnqcnpFKpyc2F6cyUxVSKVREpaxKepNzTy9C5W9oaFAoFPBXoVCQfwWI04uoZKM+/VXi//6HdKp+KgLpVENUhKpHPaJSVj1DkylQiv4Xsn"
+    },
+    {
+      "docID": "5437-7161-1681",
+      "file_name": "如图为地球公转示意图。在①②③④四个位置中，地球到太阳的距离最远的是()\nA. ①\nB. ②\nC. ③\nD. ④\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANUAAABvCAIAAAD0cxLHAAAgAElEQVR4Ae29B1hTyfc/TO696Qm9SBVsVLGtYkVFWRULWLE3XFTsqyCKiyAKSG8BpEdqBKkBQQSRvipSVETFLqygFOkkueHFnf8vm1fBrwVkXXIfHp55JnOnnPnMOWfOnDlXqEfwCCgwdBQQGrqmBS0LKNAjwJ8ABENJAQH+hpL6grYF+BNgYCgpIMDfl1Kfw+Gw/35YLBaHw+ns7GSz2V/6sqBcPxQQ4K8fwnySzWazr169umDBgkWLFrW2thoaGhYVFX1SSpDxdRQQ4K9veqEoyv3k2bNnDwzDFy5cuHXrFoIgWVlZKN/Td0WC3M9SQIC/fsnDYrE6Ojra2tpaWlpaW1sbGxubmpr27dunoqI"
+    },
+    {
+      "docID": "9710-2471-4330",
+      "file_name": "图中①线表示某日全球不同纬度正午太阳高度分布状况。\n该日太阳直射点位于()\nA. 赤道\nB. 南回归线\nC. 北回归线\nD. 南极圈\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOUAAAB0CAIAAAD1kWKnAAAgAElEQVR4Ae19d1hTSfc/ufemEEKAhE5ABaSIVAGxYVs7oihYwVUR24u6FpS1IZZFxPbaV1zsXYq9d8Wyusoqa8NOUTqhpNzCLz/Os/fJgwTQBMT3y/wBk7lnZs4587lnzsydolXZHJo18ONoQOvHYbWZ02YNVNaBV4IgSJL8Uk8URVVWVlL/BojDX5Ik4Wm1XGRVqJbY/PN/XgMkScrlclVA+lrx68ArSZIEQVTDH6AUavoXsf//P6TgOK4K4jWmfy3HzfQ/lgbkcvmgQYNyc3M10vo145WiKIApSZJ9+/a9fPkySZI4jhMEsWnTpsiqsGDBgnnz5kVEREyePPnZs2eTJ09esmTJv"
+    },
+    {
+      "docID": "9203-5124-3995",
+      "file_name": "右图为北纬40度正午太阳高度和昼夜长短示意图，该图表示的节气是()\nA. 春分\nB. 夏至\nC. 秋分\nD. 冬至\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAN4AAABvCAIAAAAMk+kwAAAgAElEQVR4Ae19CVhV1dr/ns98mEcRJ5wnRLScy3Ii5ymH0hxz+iqzW3q7NmmZA7ey7Ks0h7JSUxTNSutW4kRXEQQREJBRZs7hcOCcw9l7H/7A72vd8wf1ag6guR8ens1m7bXXetdvvetd77So6gfXAwo0SQpQTbJVDxr1gALVD6D5AARNlAIPoFl/YOS6y1F3kfvq6mrcO/9GGfK+LMt4Qn7LsizVXQ6Ho7q6Gr+rq6slSSKFyesPbupR4AE06xGkFkDADTB05cqVtLS0xMTEnTt3jh079uGHH9bpdAqFQvnHpfjjUqlUvr6+48aNW7Bgweuvv/71119HRUVlZWUBiMA0+VhFRQU+RJ48uKlHgf"
+    },
+    {
+      "docID": "6304-2240-8767",
+      "file_name": "地球由③向②运动的过程中，太阳直射点在______半球，并向______运动。（2分）"
+    },
+    {
+      "docID": "0006-4689-7807",
+      "file_name": "读某地正午太阳高度和昼夜长短变化示意图，可以判断观测者位于()\nA. 北半球，50°N某地\nB. 北半球，40°N某地\nC. 南半球，50°N某地\nD. 南半球，40°N某地正午太阳高度\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAACNCAIAAABT6oOEAAAgAElEQVR4Aex9B1hUR9f/3n73bmV3WXqTJlgJorGA2CNGAfXVqNhLLFHfRJMYu0aNbzRYYjQascQSk6ixl4gliiVGxS6KRkDpnWVZdvfe5b9wvtxv/zSplvfzPj44O3fuzJkzvzkzc+bMGUHJ2+ctB14zDgheM3rekvOWAyVvQfkWBK8dB96C8rVrkrcEvQXlWwy8dhx4C8rXrkneEvQWlG8x8Npx4C0oX7smeUvQW1CWcBxnMplYluX+eUwmE0T+E1GaAGIMBgPHcWzZw79lWRYSvMVTg3DgLShLTGVPXFzcX3/99ccff7Asq9PpHj16pNPpcn"
+    },
+    {
+      "docID": "6067-7459-7098",
+      "file_name": "某日，当东经90°的地方时为6月10日12:00时，一艘位于西经60°的轮船测得太阳高度角达到当日最大。\n此时，船长立即向位于本初子午线的伦敦某港口发送电报。\n港口收到电报时的当地时间和日期是？\n选项：\nA. 6月10日2:00\nB. 6月10日6:00\nC. 6月9日22:00\nD. 6月10日14:00"
+    },
+    {
+      "docID": "8843-8915-7014",
+      "file_name": "12月18日，上海的正午太阳高度（）\nA. 达到一年中最小值\nB. 达到一年中最大值\nC. 在逐日减小\nD. 在逐日增大"
+    },
+    {
+      "docID": "7453-6741-0411",
+      "file_name": "下列传统节日中，上海（31°N）正午太阳高度最小的是（）\nA. 清明节\nB. 元宵节\nC. 端午节\nD. 中秋节"
+    },
+    {
+      "docID": "6532-4750-4766",
+      "file_name": "港珠澳大桥全长55公里，是目前世界上最长的跨海大桥。如图为记者在国庆节当天港珠澳大桥上拍摄的日出照片，据此判断其相机镜头的朝向是（）\nA. 正东\nB. 正南\nC. 东南\nD. 东北\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAABlCAIAAAAgZY0CAAAgAElEQVR4Aey9B3Rc5bnvnXPut+69pwApGBcVq/cymhlN77333ptGo5lR7713yeqybEuWezcG29TQWyCEhJIAKTeQHJKcBAI4NhCMJe737kfe6ASO11HOut+5WR9az9q83nvPaLR/+/+0993DNz7/+udv/Ap842/88////eOvr69/jfBv/ib4GuHXCP/mr8Df/B/wtQq/Rvg3fwX+5v+Ar1X4NcK/+SvwN/8HfK3CrxH+zV+B/+N/wPr6+tra2vrNn88///zmcOO/X94D5699jr1wbW39+me3+JRfq/AWF+c/e2h9ff3atWsfffTRp59+euPGjc8//"
+    },
+    {
+      "docID": "2382-7049-4625",
+      "file_name": "北京时间2021年10月16日0时23分53秒，搭载神州13号载人飞船的长征二号F遥十三运载火箭，在酒泉卫星发射中心点火发射成功。6时56分，神州十三号成功对接空间站，9时58分，航天员翟志刚、王亚平、叶光富先后进入天和核心舱。据此完成1-2题。<br>1．空间站24小时内可看到多次日出日落是因为（   ）<br>A．空间站飞行速度较快\tB．受太阳方位的影响<br>C．空间站自转速度较慢\tD．受日地距离的影响<br>2．酒泉能够成为我国卫星发射基地的优势是（   ）<br>A．纬度低，地球自转线速度大，可节省燃料<br>B．气候干燥，晴天多云量少，大气透明度高<br>C．海陆交通便利，有利于设备运输<br>D．海拔高，地球自转角速度大，初始速度快"
+    },
+    {
+      "docID": "7130-3346-4836",
+      "file_name": "乙图所示时刻太阳直射点的坐标是______。（1分）"
+    },
+    {
+      "docID": "3898-1849-9013",
+      "file_name": "如图为郑州某校学生在春分日当天面向正东方向拍摄的照片。据图推断，照片拍摄时间可能是（）\nA. 9:00\nB. 12:00\nC. 15:00\nD. 18:00\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEEAAABOCAIAAADww+zHAAAgAElEQVRoBbV7CZwU1bV37fu+dVV19b53T+89PcPMsG8DiOCCikQBE+OuMcblJaImKOqLC4riU/PcNRqIQAQEd4hbhKCiETSyqjAM+8AMzPQyX2rKzMdnYmLey3d/9au5c6u66vzvPefcsxXQ399/6NChL7/8csuWLZ9//vnWrVvf/+D9DRs2vPfee++8/c7atWs/2vjRvn37du78orOzc+WLL65cuXLFihXLl6949tnnHnrooXvvXbBw4QO/+tWvnnzyqUWLFi1fvnzp0mUv2G35iyvtm1988cVVq1atWLHC7rz44ssvvbR69eoVK1Y8//ySRYsWr1ix4vXXX3/hh"
+    },
+    {
+      "docID": "7823-7569-8150",
+      "file_name": "乙图中 A、B、C、D 四地的正午太阳高度按由大到小的次序排列，依次是______。（1分）"
+    },
+    {
+      "docID": "9976-2696-7537",
+      "file_name": "上海市（北纬31°）第一座居民区光伏电站于2016年在曹杨新村街道建立。为保证光伏电板能接收到更多的太阳辐射，提高发电率，光伏电板朝向及与地面的夹角应为（）\nA. 北方、约54°\nB. 北方、约8°\nC. 南方、约54°\nD. 南方、约8°"
+    },
+    {
+      "docID": "7070-4684-2971",
+      "file_name": "右图为极地俯视图，图中甲-乙一丙线为晨昏线，虚线分别表示极圈和回归线。图中甲、乙、丙、丁四地最早进入新一天的是（）\nA. 甲\nB. 乙\nC. 丙\nD. 丁\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMoAAAChCAIAAAAJNLdmAAAgAElEQVR4AZy8ebAk91Xv2f9MDES8eINky5K6b9++fdeqW7f2fcvMyn3f96ys/e5ry37mYcIYLGHLxp55EUNgPAEOBjxj4DHjhc3GMAjjwWBAGNkGP8wQNuB5SJYa40WLbckT55dVt1uWiPfmVXwj41d5s29Xd33ye87vnN8vrxTL5VKlWq3Va/Vmo9luNruNRqfeaNfqrWq1Wa01q7VWrdFudvBWF292sFYXb7SxWrNTb3Ua7W6zgyNhjTZWb+G1JlZrdKuNTrnerNSbcFmz00Cq1VuVarNSbVRrzXqj/X2q1VqVaiP5abXWqNYb1VodfapGvdGsNRq1OjpZh0G90W"
+    },
+    {
+      "docID": "7578-8030-1004",
+      "file_name": "上海昼夜逐日接近等长期间（）\nA. 太阳直射点始终由北向南移动\nB. 南极圈白昼时间逐日变长\nC. 赤道正午太阳高度逐日增大\nD. 上海正午太阳高度逐日减小"
+    },
+    {
+      "docID": "5903-2919-0211",
+      "file_name": "预计2020年10月底前后，我国将发射嫦娥五号探测器，实施首次月球采样返回。发射时下列卫星发射中心白昼时间最长的是（）\nA. 酒泉卫星发射中心\nB. 西昌卫星发射中心\nC. 太原卫星发射中心\nD. 文昌卫星发射中心\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPcAAAD8CAIAAAAkKaXHAAAgAElEQVR4Ae1dd2BUxdbfvXdbNo2QhBBAQgmCgIAgoCgK+HhifQpIUYqIgChFQVGfBVEfKPKoStFPQcXQFWkKGECkl0BAAgQCKaSX3WSz5e4t++XLzzfffbspm2R3cze5+wdM7p07c+ac35w5c+bMjMIh/2QONHQOKBp6A+X2yRxwyChvjCDgOM7hcPA8LwgCx3Esy/I8z3Ecz/Msy3IcJwgCnjgcDpZl/Z1HMsr9XYK1oR9otpf/eJ5fsGDB3//+94EDB27cuNFc/rPb7SUlJUC/IAgOhwP/1qYyCXwjo1wCQqgnElavXt25"
+    },
+    {
+      "docID": "2234-7711-7849",
+      "file_name": "当地球公转由①到③的过程中，A 地昼长变化规律为______，当地球公转由③到①的过程中，B 点的正午太阳高度的变化规律为______。（2分）"
+    },
+    {
+      "docID": "8423-9002-6241",
+      "file_name": "乙图所示日期，B 点的昼长为______小时，该地的日出时刻为地方时______时。（2 分）"
+    },
+    {
+      "docID": "6453-0892-4327",
+      "file_name": "芬兰的罗瓦涅米位于北极圈上，被称为“圣诞老人的故乡”，每年圣诞前后世界各地游客都会前来观赏浪漫的极光。以下地球光照示意图，与这段时间最接近的是（）"
+    },
+    {
+      "docID": "9547-7762-4166",
+      "file_name": "下图为某日太阳光照示意图（阴影代表黑夜）。下列四地中，当天日落最迟的是（）\nA. 莫斯科\nB. 上海\nC. 新加坡\nD. 悉尼\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIcAAABhCAIAAABzmCXCAAAgAElEQVR4Ae29d1gU2dYvfCQ2dCR1oKGbJufcJMk5SU6SBFEUERQBJYhKEAkqiggGgoggoAiSBFRUQEByEIYgKiqmUQfJqdvbD/sdHi6G4zh65rzf/dYfsKtq1+6q9dth7ZXqX5/+C4j6J4Fn+fPof/5TKJT5+fn3798/f/7848eP4Ox/wVP/wkf41y9s+7ubplKpFArl/wV2fydL/klUAAyLi4uvX7+uq6urra2dmZmhUqng0VcKn7/JyiUqlbqwsDA2NtbX1/f69evp/5um/m+aWSZQBZTn5ubm5+cXFhYW/yTKn/SNLrLy658/2KdPn75x4xfrf/HkP4nK4uLihw8f7t69u2vXLiMj"
+    },
+    {
+      "docID": "2533-7031-4377",
+      "file_name": "读图回答下列问题：（10分）\n\n（1）判断图中字母所代表的物质名称：（3分）\nA．_____________；B．______________；C．______________。\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAnAAAAEHCAIAAAChvuwQAAAgAElEQVR4Aex9d0BTSff2pEISCF2agqISOlbsigV7L2tf17K6oq6ussoKWCiuiq5YAHt9l8W+VgQruiIqoiJFEKQo0msgkP7xY969330TEoMESGDmD5075cyZZy73yZlyBohRQAggBBACCAGEAEKgyQiAJktAAhACCAGEAEIAIYAQECNCRS8BQgAhgBBACCAElIAAIlQlgIhEIAQQAggBhABCABEqegcQAggBhABCACGgBAQQoSoBRCRC9RHgcrm5ubk5OTm3bt3as2fPmzdvcnJyiouLVV9zpCFCACGgLgggQlWXkUJ6NhoBkUhUWVn55csXX1/fpU"
+    },
+    {
+      "docID": "9062-1143-9568",
+      "file_name": "右图为某日地球昼夜分布示意图。图中阴影部分代表黑夜，虚线代表极圈与回归线，箭头代表地球自转方向。该日最可能是（）\nA. 3月21日\nB. 6月22日\nC. 9月23日\nD. 12月22日\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGwAAABbCAIAAAAZe/ePAAAgAElEQVR4Ae28B1gU1/r4H9ndqdsou8v2Rll6790Su1Gj11QTo7HdJCYG/RtLjPcmahKj0VgxFowdMBaMqDGgqCCKHRSR3tkCLGwv/Nw9yYaLgCXl3v/zfOeZB2Zmz8yc+cx73nLOe+aF7v9b/jCBF/7wFf7vAt3/BYhWq9VsNlut1sfxW61Wi33p89fHy/+PHPnvQDSZTH1iMpvNCoXi/PnzRqOxzwL/I9R6VeMvhNgnBat9AeJmMpn0en1XV1dnZ6dSqVSpVGq1uqqqaseOHWq1GpR0/O1V7/+p3b8WIuAIGqlOp6uvry8sLLx48eKJEycyMj"
+    },
+    {
+      "docID": "6800-3537-2777",
+      "file_name": "图中箭头表示物质相互转化的条件，其含义分别是（4分）\n①____________________；② ____________________；\n③____________________；④_____________________。"
+    },
+    {
+      "docID": "4845-0905-1763",
+      "file_name": "含有化石的岩石代号是________，花岗岩的岩石代号最有可能是________。（2 分）"
+    },
+    {
+      "docID": "6132-5620-9847",
+      "file_name": "如图为太阳光照示意图，图中A、B、C、D各点中，白昼最长的是（）\nA. A\nB. B\nC. C\nD. D\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAACcCAIAAAAGbVsyAAAgAElEQVR4Aey9eTzVT/s//n2nVUWRsu/Hvu9Etoho00KktEeSpIUWS5QkW0qlpE1laVGIUqJkF2UNZd8PjoOz+/m47l6fc5/Dcerd+/51f2r+OI95zZm5ZuZ6PV/XzFxzzTX/b+RnhKqqKgqF8jMo/aHxhwO0HPh/tAk/9JyRkUEikX6o6J9CfzgwCQd+DkY/fPhAIpH+iNJJmP3n7x/iwM/BaF9f3z8EUAqFQiKR8Hg8gUCgfAs/1NM/hX4aB4hEIgaD6e/vJxKJaDS6sbGxtbWVSCT+tAr+ndDPweg/B9Dh4eHS0tKAgIDbt2/X1dUBSv+9C3+e/qMcIJPJnz9/Pnz48JkzZz5+/HjlypUdO3YcOXK"
+    },
+    {
+      "docID": "2335-0643-3022",
+      "file_name": "右图为“某日地球局部光照图（阴影部分为黑夜）”。该日，甲、乙两地地理现象正确的是（）\nA. 甲地日出时间比乙地早\nB. 甲地日落时间比乙地晚\nC. 乙地昼比甲地短\nD. 乙地地方时早于甲地\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHkAAABzCAIAAAAzAzp4AAAgAElEQVR4Ae2dCXQcxZn49wV2A4/9k7DLtRyWZeuWLI3u+5zR3HfP9PT0fXdPd89965Zl4RN8kWAMDoFwrAnXkpgr4Cx5hCPhMn4QgwFhcDDY+LZlW5ZG/8hKvHnhiBcPDsm6Xj29nlLXfFW/+earr76q6vmn6fPpXBH4p3Ml6Lyc6fOsz50SnGd9nvW5I3DuJJ3X6/Oszx2BcyfpvF6fZ33uCJw7SdnU66mpqePHj0+eSkeOHDl8+PDJkyczmcy56823W1J2WGcymZMnT7777rsrV67cvHnznj17HnnkkdHR0S1btkxNTZ3HPasDWWM9MTHxw"
+    },
+    {
+      "docID": "7579-1456-3666",
+      "file_name": "右图是“太阳光照射地球示意图”，此时，北半球正值夏至日，此节气之后的三个月变化规律内，下列叙述正确的是（）\nA. 甲乙两地昼长都渐短\nB. 甲乙两地昼长都渐长\nC. 甲地昼长渐短，乙地昼长不变\nD. 甲地昼长不变，乙地昼长渐短\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIcAAABfCAIAAABN6EMfAAAgAElEQVR4Ae19B3hTR7b/e5uQbMJm2WxIpYVAMOCKe5ObXHDvxr33gqtkWV26ul1X3R1TQwIkhAAphBYIJPQQOpiACc10YmNwk+S/pdno02cbcBJ2X/7ve+fzB3NH9045vztzzpw5c+5/Df0f/fk48F9/vib9X4uG/g+VP+NL8L8EFb1erzOS3kg6nW5wcFCr1f4ZWT6ONv0vQaWvr2/btm0MBmP9+vUdHR1NTU01NTXbt2/X6/XjYMKf7pb/P1ABI+AJLNZqtTt37gwODvbx8VmxYgVJkmFhYd98880THvnTQWHWoP"
+    },
+    {
+      "docID": "6940-5368-9964",
+      "file_name": "如图为“一年中某段时间晨线与昏线交点的运动轨迹”图，当交点从②移向④期间，下列变化规律现象可确定的是（）\nA. 北半球各地白昼变短\nB. 上海的正午太阳高度不断增大\nC. 南半球各地白昼变长\nD. 上海的昼夜长短差异不断增大\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARQAAACHCAIAAABYlzF3AAAgAElEQVR4Aex9CTyU2/9/5pln9hnMjLHv+xpCSdkjimhV3LKk5UZ7qW7abrduWigVbdqXWyFpk5QiayQRUlEoyb4vM48/c77Nd77I1qDf//q8eunMeT7PWT7nvJ+zfc7nM6Z9lAYlAQRB7t275+joePLkSSaTWVxcfOLEidmzZ69evToxMbGhoWFQqY6+9H9JAmOGrbAIm0B2IMz9l7sYCNIO/nEzczOMbLi5ubmuro7FYoWFhc2bN+/ixYt37tzx8PBwdHQMDg5+9+5dS0sLgiAjW8jR3IdBAsMEHgRBvn37dv/+/cD"
+    },
+    {
+      "docID": "0038-7693-0549",
+      "file_name": "读地球光照图，此刻北京时间是（）\nA. 6月22日，6时\nB. 6月22日，22时\nC. 12月22日，6时\nD. 12月22日，22时\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJQAAABwCAIAAAB3i84XAAAgAElEQVR4Aex9eTyV2/r499YpdaKUSpnncdtmMs9kykxFkZkSKVEyREVU6JRCkkTIrJIhIXNknsfM87wNe+q3r+dz92d/qM753ts5997P7/v8wdrvft+11/s8az3rmdf/fP0/+K/FwP/81478/wb+9f+I9188Cf6PeP9HvP9CDODxeBwO19PTk5eX19/fj1+H+fn5yclJHA4HH//DX+v/35WHx+MnJiaCgoKUlJRevnw5Ojra0NDw+fPnxsbG0dHRwcFBLBb73008HA6HXYeVlRUUCoXD4aqqqjIyMuD68joQ74E719bWysrKXr9+jUajUSjUysoKTGT4lngzZh2IF/F4/J+KKVh"
+    },
+    {
+      "docID": "5763-7098-2777",
+      "file_name": "读如图（图中阴影区表示黑夜），此时北京时间是（）\nA.8时\nB.12时\nC.16时\nD.20时\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAIAAAC2BqGFAAAgAElEQVR4Ae19B1RUSdb/d77Z9H17zqfjzO6ME9VddRwREVEQEDCAog5jQBwMZBropklN5+73OkdocpSMgiiCoCQDUcdRR8QEigoGEBQBkUzT1X/o+k9vL6HBGWXcc7znHahXr17dW793362q+25V/5fyPc0IAv81I1zeM1G+B3qGlOA90O+BniEEZojNe41+D/QMITBDbN5r9HugZwiBGWLz7mo0AEChUAAVKVQEAJghVN4Cm3cX6N7e3qdPn3Z0dHR1dbW0tPT09CgUireAwAxV+e4CferUqXXr1iEIkpSUtG/fvnPnzr3X6LeiFGlpabNnz7aysnJ3d9fT08vOzn4P9FsBOjU1ddasWR9++OHcuXNXrVp1"
+    },
+    {
+      "docID": "6146-3956-7328",
+      "file_name": "如图为某日光照图，阴影代表黑夜，此时北京时间是（）\nA. 6时\nB. 18时\nC. 20时\nD. 12时\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAL8AAABrCAIAAACpJ8RoAAAgAElEQVR4Aey9dVhbyRo//rvr2+3ubXcry1IB2tLiVpzikpAgQQIEgktxtwLFrVDc3a24JsFCIARtqdCtU6EOhRYnJPzyMM/my4N0K3Tvvd/nO3/AZM6cmTkzn/Oed9555f9b/X/p/83Ap87A//epN/7v3UelUldXVylribou/e89yX/NiP+vRQ+AB4VCWVpampmZeffu3Zs3b54/f/5iLb18+fLFixeTk5Nv376dn59fXl5eWVkB8PqvWZr/gYH8z6OHTkQoFMr8/PyzZ89u3LiBxWI9PDzMzMx0dHSkpKQkJCQkJSXPnDkjupbExcUlJCTExcXP/JWkpKSUlJTMzc2jo6N7e3tv3rz58uXLpaUleuP"
+    },
+    {
+      "docID": "2193-4362-5622",
+      "file_name": "变质岩质地致密，密度较大，颗粒定向排列，形成________构造。（1分）"
+    },
+    {
+      "docID": "1788-3044-8879",
+      "file_name": "如图为某日太阳光照图，阴影部分为夜半球。据图判断，此时北京时间为（）\nA. 6月22日12:00\nB. 6月22日17:00\nC. 12月22日6:00\nD. 12月22日18:00\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJUAAABhCAIAAABQw3QXAAAgAElEQVR4Ae19CViTx9b/VdkSCCFhC1nIBiFACASSkH3f9z2BsAiotS7X2k17W1uvt9e22q/WVv2qtlq92lpr1apobauIK4r7UrUKWgXEFdnXhL8wX/PwKfpZ6+3yf+55eMJk3nnnnZzfnJkzZ86c9y/9/6E/Mwf+8mdu/H/a3v8f/P7cneA/+P0Hvz83B/7crf+P/P0Hvz83B/7crf895c/3M7W3t1+4cKG+vv7Pzcvfo/W/J359fX1NTU3btm2bNGkSl8udOHGi3+//PZjwJ37m74Ofz+fr7u4+e/bsa6+9lpqaGhMTQ6VSP/3008dkpN/v9/l8"
+    },
+    {
+      "docID": "6732-7605-4518",
+      "file_name": "列以极点为中心的地图中，箭头表示地球自转方向，阴影部分与非阴影分别属于两个不同的日期，若此时北京的日期为4月7日，则N点的区时是（）\nA. 4月7日12时\nB. 4月6日24时\nC. 4月6日6时\nD. 4月7日6时\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIcAAAB6CAIAAAAaideaAAAgAElEQVR4Ae19eTzU2xv/t1XKvmQbjGVmmH3GmBlGGPtORFIo3ehSkps23USpKClbyhZZskSFQgvdtFiuoojSohSJ7PvM+M2v87vz8lIk3Pvtfn+dPzhzPufznHOe91mf8zzP5z9jsw4sFuvjx4937txhMpksFmtsbKyvr+/+/fs3btx49uwZk8lsbW3Nycmpr6+/f//+p0+f2traMjMzo6Ojm5qamExmb2/v/fv3k5OTa2pqHn0O5eXlBQUFo6OjLS0tBQUFzc3NtbW1mzZtKioq+vDhw82bN9PS0tra2gYGBurr61++fAk"
+    },
+    {
+      "docID": "2275-1496-5873",
+      "file_name": "下列关于地球运动的叙述，正确的是（）\nA. 地球到达远日点之后太阳直射点继续向北移动\nB. 地球上任何地点自转角速度均为15°/小时\nC. 地球围绕地轴自转\nD. 地轴与黄道面的交角为23°26′\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKoAAABlCAIAAABSqu+0AAAgAElEQVR4Ae19d1xTWdPwkuTeFEoIvfdeQ5GmINjWFeygq2Lvioq7q7uuumtZxfLYxd67qGBFUFBARZqoFBsiIFV6CRCS3JsvL/N5f/dNQmD34X1/37fPzh9wcu65p8ycM2fOzJy534j/gf9gDHzzHzz2f4Yu/of8/9GT4B/y/0P+/2gM/EcPvk+rH/8KfD4f6wZZnH0tgss+Iue0t7dDSQzDcByHv+QC/6T/NzHwJ8jP4/Hq6+tFIhGGYbJd7OjoqKurk/uIXLi5uZnH4xUWFopEIpgH5Kf/pP+XMdBX8peWloaFhaWlpX358uWHH35IS"
+    },
+    {
+      "docID": "6395-1694-2603",
+      "file_name": "下图为某日光照图（阴影部分表示夜半球），关于图中四地表述正确的是（）\nA. 甲地线速度最大\nB. 乙地角速度最大\nC. 丙地白昼时间最长\nD. 丁地正午太阳高度最大\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGkAAABcCAIAAADiVwxzAAAgAElEQVR4Ae18d1SU19Z3mF6ZwjCdKQzTC1NgCjDAAEMZem+CYhckscUWNZaoSUysMUajMeYmxnJtMdYYWwxqbNhFYy+I0qVN5UPO+85ioTfRJO+9+da6549Z55mnnLN/z25n732eN7r/9s3j8Tidzm3btoWEhAwZMmTOnDlLetukSZNKSkoiIyNtNtvSpUurq6tbW1v/ndS88e8c7A+P5Xa729vbd+3aNXny5MrKytGjR1dWVk6YMGHFihUbNmw4c+ZMY2Oju7f94SH+wI3/f2DX3d3t8Xjsdvu9e/du3LhRU1Nz/fr1W7duNTQ0dHR0eDyeP0D5n7/lb4Gd0"
+    },
+    {
+      "docID": "6079-9187-3966",
+      "file_name": "第24届冬季奥运会计划将于2022年2月4日～2月20日在北京和张家口举行。在此期间（）\nA. 温哥华昼长夜短\nB. 北京、张家口正午太阳高度逐渐减小\nC. 阿尔贝维尔白昼时间逐日增长\nD. 盐湖城阴雨连绵"
+    },
+    {
+      "docID": "2616-4285-2682",
+      "file_name": "2020年东京夏奥会原定于7月24日～8月9日举行，此期间（）\nA. 北半球各地昼短夜长\nB. 北半球各地正午太阳高度增大\nC. 地球公转速度渐快\nD. 南极地区极夜范围不断扩大"
+    },
+    {
+      "docID": "9404-5461-0069",
+      "file_name": "图为太阳光照射地球表面的示意图，这一天（）\nA. 太阳直射点在赤道附近并向北移动\nB. 北半球各地正午太阳高度全年最大\nC. 我国各地白昼时间达到一年中最长\nD. 北极圈内的地区能够见到极光现象\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALAAAACQCAIAAAAneXY/AAAgAElEQVR4Aey9B1xU17b4H5ly+pwzvZczfYapDG3oHcEGWFDE3nvL1USNLRY01ti7sWA0KGoQu6jRYGyIWLAhdlGx0at/8NzLx3+8971785Jb3vvtz/7onjNnDmfO+u611157rT2fvf9/5f89gY+ewGcftf/jm/X19Y2NjR9/jca/lPfv3/+lSf3/vvnET+vHH/4/2f5fBcSbN2/q6+s/lmNdXX1NTU11dU1lZVV5eUVFReW7d2WVlZXV1VU1NdV1dbV1dbWNjQ3v37fUjz/9f7H9nw0E1dkb/lKqqqoqKipu3bq1Z8+e3bt3z58/v3+/gd"
+    },
+    {
+      "docID": "5075-9313-0796",
+      "file_name": "读如图，当太阳直射点从①运动到③的过程中（）\nA. 上海正午太阳高度先变小后变大\nB. 北京市民看到日落时影子朝向东北\nC. 北极圈内极昼范围先变小后变大\nD. 地球公转速度先变慢后变快\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALAAAACQCAIAAAAneXY/AAAgAElEQVR4Aey9B1xU17b4H5ly+pwzvZczfYapDG3oHcEGWFDE3nvL1USNLRY01ti7sWA0KGoQu6jRYGyIWLAhdlGx0at/8NzLx3+8971785Jb3vvtz/7onjNnDmfO+u611157rT2fvf9/5f89gY+ewGcftf/jm/X19Y2NjR9/jca/lPfv3/+lSf3/vvnET+vHH/4/2f5fBcSbN2/q6+s/lmNdXX1NTU11dU1lZVV5eUVFReW7d2WVlZXV1VU1NdV1dbV1dbWNjQ3v37fUjz/9f7H9nw0E1dkb/lKqqqoqKipu3bq1Z8+e3bt3z58/v3+/gd1Ten"
+    },
+    {
+      "docID": "4767-9435-0759",
+      "file_name": "如图示意海南岛的位置。6月22日，与海口相比，三亚（）\nA. ①②\nB. ①④\nC. ②③\nD. ②④\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMoAAACnCAIAAADfbVR7AAAgAElEQVR4Ae29CXxM1/s/fufOPpksIkkjISJNELWLvaitlKIorX3XItr6SFsRe5XWUirUUrWV4qNKaZRQVUGRWhISqcgue2Ymmcnsc2f+PvP+Of/7jSyDLBNyXl7j5Nxzz/Kc933Oc57znOdQlpc1MAxjMpkMBgPDMGq1OjU1taioiE0MkzVYLBadTodsZrOZYRij0Wi2BsYaLBaL2Ww2mUxmszkhIWH79u1nzpzR6/Vms9loNJI8KBl/GgwGs9nMrutFjVMvascq7BfDMBaLJTY29sMPPxwxYoSDg0O/fv3IW3K5fMuWLWFhYdOmTQsPD9fr9SaTyWKxGI3Gv//+e9WqVeHh4cuXL09ISACGzGbzH3/8"
+    },
+    {
+      "docID": "1727-7451-8266",
+      "file_name": "读北半球夏至日的太阳光照示意图，下列叙述正确的是（）\n①自此日后，北半球夜渐长，昼渐短\n②自此日后，南半球夜渐长，昼渐短\n③甲地昼夜始终等长\n④乙地昼夜始终等长\nA. ①④\nB. ①③\nC. ②③\nD. ③④\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARQAAADCCAIAAAAHAqqoAAAgAElEQVR4AexdB3wUVf6ftrvp9F6kCggCgvWw33k2UDnU89Q7BXu7A0VFpYichU7KZnuZmZ22fVNJQnohBdIISSB0QlVaCKm7mz+zP53LQaQoIN6f+exnM5l982bmvd93fr/f9/3e7yEdN7YbLXCjBX5RCyC/6KwbJ91ogRst0HEDPL8nIfD7/V6v1+fzdXR0+P1+uHXfT1tzc7M/sEGB39OD/T7v9QZ4fk/91tbW1tjY2NzcfPLkyZaWlra2Nr/f39bWdvr06ebm5paWltOnT7e3twOEfk8P9vu81xvg+T31m9frfe655/r27Rs"
+    },
+    {
+      "docID": "8941-5961-3902",
+      "file_name": "2022 年 10 月 16 日上午 10 时，中国共产党第二十次全国代表大会在北京人民大会堂开幕。此时在纽约（西五区）的华人华侨观看二十大开幕式现场直播，是当地时间是（  ）\nA. 10 月 17 日 22:00    B. 10 月 16 日 22:00    C. 10 月 15 日 21:00    D. 10 月 15 日 9:00"
+    },
+    {
+      "docID": "4755-2554-9286",
+      "file_name": "4 月 18 日 15：15（当地时间），一架飞机从英国伦敦西思罗国际机场起飞，约 11 小时后到达上海浦东国际机场，到达时的北京时间约为（  ）\nA．19 日 2:15        B．19 日 10:15      C．19 日 11:15     D．20 日 2:15"
+    },
+    {
+      "docID": "7728-9254-9758",
+      "file_name": "中国某航空公司的飞机在北京时间 4 月 18 日 15: 00 从上海直飞洛杉矶（西八区），于当地时间 4 月 18 日 10：00 到达．该飞机的飞行时间是（  ）\nA．19 小时           B．11 小时          C．8 小时          D．15 小时"
+    },
+    {
+      "docID": "8785-0536-8640",
+      "file_name": "某乘客乘航班从悉尼（150°E）当地时间 11 时起飞，约 9 小时后抵达广州。乘客抵达广州时的北京时间大约是（  ）\nA．12 点       B．15 点       C．18 点    D．21 点"
+    },
+    {
+      "docID": "3088-7592-3263",
+      "file_name": "2023 年 4 月 3 日北京时间 7 时 45 分，中国东方航空公司一架飞机飞行了 6 小时 30 分钟后，在上海浦东国际机场稳稳降落，标志着有关部门协助滞留巴厘岛中国游客回国的工作全部顺利完成。该飞机在印尼（东七区）当地起飞的时间为（  ）\nA. 2:15               B. 1:15             C. 0:15              D. 23:15"
+    },
+    {
+      "docID": "9111-3352-7051",
+      "file_name": "假设国际各大黄金市场都是在当地时间 9:00-15:00 之间进行交易。某投资者 14:00 在上海购买了一批黄金，10 小时后价格有了大幅上涨，他想马上卖掉手中的黄金，应该选择的交易市场是（  ）\nA. 纽约（74°W）   B. 苏黎世（8°E）   C. 香港（114°E）  D.伦敦（0°）"
+    },
+    {
+      "docID": "7128-0119-2158",
+      "file_name": "若黄道面与赤道面之间的交角变小，以下地理现象正确的是（  ）\nA．寒带范围变小                       B．上海正午太阳高度变小 \nC．温带范围变小                       D．上海正午太阳高度变大"
+    },
+    {
+      "docID": "1264-0836-1145",
+      "file_name": "下图为地球公转示意图，当地球处于 A、B 之间时，下列叙述正确的是（  ）\nA．北极圈内极昼范围逐日扩大             B．北极圈内极夜范围逐日扩大 \nC．北极圈内极昼范围逐日缩小             D．北极圈内极夜范围逐日缩小\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAaQAAADeCAIAAAD94ONxAAAgAElEQVR4Aex9+VdbR5b/90+Y75kzv80vPdNnes7MOd2TTndOL+l0d9JZnM1JJ46TOE6ceF+wjVkM2GAwq212MPsOEggkhNhXse/7jhBCgAQI7SuLEPR3mtupb+WppPcQctwL7we76tbnfu6tW6XLW+rV+z//5/g4jsBxBI4j8I8QgT8dHwwisP/dg6iBQ4gAhkKcZ39/316LFmCv4kiCUznC/F3K3dVxnOe5DxatM3+XQ8mwU39O5gyh/+AwJtMIxxwlXDjPc//9HKUjf826eJCP4ifO89wHi9aZo/T0b"
+    },
+    {
+      "docID": "8046-4401-6283",
+      "file_name": "地球上纬度相同的地方（  ）\nA．地方时相同                            B．区时相同 \nC．正午太阳高度角相同                    D．日出时间相同"
+    },
+    {
+      "docID": "2278-2361-1334",
+      "file_name": "2023 年 4 月 10 日，上海（  ）\nA．正午太阳高度将变小          B．地转偏向力将变大 \nC．日出方位为东南           D．昼长夜短"
+    },
+    {
+      "docID": "6517-9268-3504",
+      "file_name": "在上海听到电台报北京时间 12 点整时，太阳位于其（  ）\nA．正南方   B．东南方   C．西南方   D．西北方"
+    },
+    {
+      "docID": "8898-4558-5168",
+      "file_name": "某地一年中正午太阳光下人影始终朝向北方，则该地可能位于（  ）\nA．里约热内卢（约 23°S, 43°W）          B．新加坡（约 10N,103°E）\nC．北京（约 40°N,116°E）            D．海口（约 20°N,110°E）"
+    },
+    {
+      "docID": "8053-2109-7075",
+      "file_name": "下图中①线表示某日全球不同纬度正午太阳高度分布状况，该日是（  ）\nA．春分日        B．夏至日         C．秋分日          D．冬至日"
+    },
+    {
+      "docID": "9630-3726-5540",
+      "file_name": "右图为北半球“四地连续 2 个月昼长变化图”。读图判断图示两月最可能是（  ）\nA．1 月、2 月        B．4 月、5 月    \nC．6 月、7 月        D．9 月、10 月\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAN0AAAERCAIAAABw+zU2AAAgAElEQVR4AexdZ0AUV9cmiSbRSJGli4AgKIqCBLFhx95rjL1hsGJF7Iq9gLFgL1gooiAKqCiKIAiKNFFBmiiK9M4ubP18vW/udzPn7jLqauLrzg8988xzzj1z7sPdqXeUJIpFUYF/XwWU/n0pKTJSVECi0KVCBP/GCih0+W/sFUVOX5kuxWIxmz6DNIhQ40AaRCQSCQQhwp4GM4HRIAK9qC1Saf9+UKHLv/UR7H6IULv/U2h/y+D9CowGEehFTYxK+/eDCl3+rY9g90OE2v2fQvtbBu9XYDSIQC9qYlTavx9U6PJvfQS7HyLU7v8U2t8ye"
+    },
+    {
+      "docID": "0127-0357-3782",
+      "file_name": "右图所示某日昼夜长短分布示意图，图中阴影部分表示夜长，下列说法正确的是（  ）\nA．地球位于公转轨道的近日点               \nB．太阳直射南回归线 \nC．太阳直射北回归线                       \nD．太阳直射赤道\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAAESCAIAAACpd129AAAgAElEQVR4Aex9d1xUV9r/+8ZsTLLJJ5vdTfGN0TQ3m2hiiRo1bmwxIIgRFRWRIr33oQ0wTKENvTeR3nuT3nvvvfc2wDAzDNPAH6/n3bvzG2DmYkiCeu8fcO6Z557znOee7z3tKf/1BLkQCSAS+NUS+K9fXQJSACIBRAJPECAhnQCRwDZIAAHSNggRKQKRAAIkpA8gEtgGCSBA2gYhIkUgEkCAhPQBRALbIAEESNsgRKQIRAIIkJA+gEhgGySAAGkbhIgUgUgAARLSBxAJbIMEECBtgxCRIhAJIEBC+gA"
+    },
+    {
+      "docID": "7692-7270-7866",
+      "file_name": "右图为地球某时刻太阳光照图，图中晨昏线与经线重合，此时太阳直射点的地理坐标是（  ）\nA. 23°26’N   120°E\nB. 23°26’S    150°E \nC. 0°         150°E            \nD. 0°         120°E\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPYAAAEFCAIAAABfAY2cAAAgAElEQVR4Aex9B1yT1/4+K4GEEPZGEJQ9ZCnIUFFUNogCAiZAQkgY1mrbW711Ulvr6PBaW29ra3cdrXvhddRaW6249144GGEEstdf8tyefz4giKPj/ur5+ME37zzveZ/zPc93nO8x0D4vz1vg/3QLGPyffrvnL/e8BbTPIf4cBP/HW+A5xP+Pf+Dnr/cc4s8GAxqNRqVSaTQahUIhk8mUSuWxY8f+9a9/3blzZ9myZenp6R9//PHGjRs3bNjQ1NSkVqs1Gs2zefDzuzyqBZ5D/FEt9DjHN"
+    },
+    {
+      "docID": "0570-0963-6155",
+      "file_name": "在美国纽约(74°W)的华人华侨开始收看春节联欢晚会现场直播的当地时间(区时)是（  ）\nA．2月10日7时  B．2月11日7时  C．2月12日7时  D．2月11日19时"
+    },
+    {
+      "docID": "8173-8752-2631",
+      "file_name": "读下面光照图（阴影处为黑夜），说出四幅图中，正确表示北半球夏至日的是（  ）"
+    },
+    {
+      "docID": "4588-7148-1794",
+      "file_name": "我国将在位于罗斯海特拉诺湾的难言岛建设第五个南极科考站。图中标注的四个科考站中，一年中有极昼，并且极昼时间最短的是（  ）\nA. 中国新站选址区      \nB. 中山站           \nC. 昆仑站               \nD. 长城站\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEYCAIAAABp9FyZAAAgAElEQVR4Aey9WXAbSZYgSLO2nY/5mR3bnzWr3rZus96e2dmjx2p6e617pqqm6+qq6qwjKytTmUoplalMpVInKVI3JVEUSYn3TYL3BZAACN4HeIuneAMkSBAECIAAQYA4iPtGBALcCjjlckUEkKKqrWeycmAy6vm73/PwcA8Pd48ELdNPo9EwoY9xFCooUpBQPD4VsqFALFWAh5HKiNRqtfGtM1JjqYpjHTrPKMuIjC8CqRSA0WHIE58K2VDgLXx7CxFokSIb3+E3oULNAKDoPxGVkTmWQkbfYjHH98"
+    },
+    {
+      "docID": "7429-3181-1514",
+      "file_name": "2022 年 11 月 20 日至 12 月 18 日卡塔尔世界杯期间，上海和北京相比较（  ）\nA．北京昼比上海长                   B．上海正午人影先朝北再朝南 \nC．上海正午太阳高度始终小于北京     D．两城市都昼短夜长，昼渐短夜渐长"
+    },
+    {
+      "docID": "0432-6360-1361",
+      "file_name": "五一劳动节将至，五一过后的一个月，上海昼夜长短状况及变化趋势是（  ）\nA．昼短夜长，昼变长                B．昼短夜长，昼变短 \nC．昼长夜短，昼变长                D．昼长夜短，昼变短"
+    },
+    {
+      "docID": "8870-9055-3491",
+      "file_name": "地球上昼夜长短变化幅度最大的地区是（  ）\nA．温带地区   B．高纬地区   C．低纬地区  D．回归线附近"
+    },
+    {
+      "docID": "8818-7302-4132",
+      "file_name": "联欢晚会开始时，全球处于2月11日的理论范围是（  ）\nA．一半  B．三分之一  C．四分之三  D．全球"
+    },
+    {
+      "docID": "7932-2408-9601",
+      "file_name": "下图是某一时刻全球昼夜状况分布图，阴影部分表示黑夜，此时的北京时间大约是（  ）\nA．3 点            B．6 点             C．9 点              D．12 点\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEYCAIAAABp9FyZAAAgAElEQVR4Aey9WXAbSZYgSLO2nY/5mR3bnzWr3rZus96e2dmjx2p6e617pqqm6+qq6qwjKytTmUoplalMpVInKVI3JVEUSYn3TYL3BZAACN4HeIuneAMkSBAECIAAQYA4iPtGBALcCjjlckUEkKKqrWeycmAy6vm73/PwcA8Pd48ELdNPo9EwoY9xFCooUpBQPD4VsqFALFWAh5HKiNRqtfGtM1JjqYpjHTrPKMuIjC8CqRSA0WHIE58K2VDgLXx7CxFokSIb3+E3oULNAKDoPxGVkTmWQkbfYjHH981utyf85v33P/zkE8q/U2fPUj"
+    },
+    {
+      "docID": "3662-8809-2965",
+      "file_name": "某同学对我国某地（120°E）每天的日出时间进行了一段时间的持续观测与记录，绘成右图，图中a这一天可能是（  ）\nA. 5 月 1 日             B. 10 月 1 日 \nC. 4 月 5 日             D. 1 月 1 日 \n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAATYAAACiCAIAAABEXnYfAAAgAElEQVR4Ae19e0BOWff/oShCSi6plES5ZSaXSu50UbqhuxTphinyhl7MEAqVosS40xjTYIwhNAyZMV5ECSEJXXTveaqn5345v97W713fMyWXPPVEZ/9R+zlnn73XXnt/9l577bXXJiZPnky2KPB4PPhO0BBIkhSJRCRJslgskiTFYjG8hWRMJlMoFEokEixKKBRiYoFAQJIk/IXnNTU1kJLP58NzkiT5fD5JkrW1tZC5SCRCGjBbkiQlEomoIVAf0nGaA58pB4hJZmYfSzqLxRKJRBwOBz8Ui8WA"
+    },
+    {
+      "docID": "7858-6523-5324",
+      "file_name": "2017 年某日我国东部三个地点日出日落的时间（北京时间）如下表所示，则三个地点纬度的排列由高到低依次是（  ）\n地点 日出时间 日落时间\n① 6:48 18:30 \n② 6:20 17:51 \n③ 6:46 18:05\nA．①②③  B． ②①③  C． ③②①   D． ②③①\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA0UAAACsCAIAAAA7RpA1AAAgAElEQVR4Ae2dCVAU19r+p6YoyoICy1hGy7hUNHGNmsREk5jFmGvcDYjbQFQCKKjggmggLlwXJJG44IKKCK5R3FhUZFMUjKiJiriiIgIf61/hg/lm7tz5+rv9rwFmpudMz0z3TM+gzNOVit2n3/Oec349T/XTpxdENBbbEqBePXn4QmbbNjm0RtU+e1Kl4BBoKERZdu9uhdzQXpSDQAuBf9//f7M+eB55hXp17793ryhf8svLrAf/S7Hg+b+q63W/B5SMGlQSnvyv/2EJoGnq35"
+    },
+    {
+      "docID": "4221-5176-8868",
+      "file_name": "下图为我国北纬 40°附近某中学 11 月 9 日某时刻朝南教室一隅的照片。照片的拍摄时间是（  ）\nA．6：00 \nB．10：00 \nC．14：00 \nD．18：00 \n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAW0AAAE7CAIAAACZtEefAAAgAElEQVR4Aeydd1xU17r+z/3dz7knttgrdmNBeu+9d2YoShmk2Y01MWosMbESY4u9JDbQ2AAVC0VQsGAHFbHTUXrvkN9lPc6b5QwQsZx77rl5/tiu2bNnz2ac9Z3nfde71v5byF/66xP46xP46xP4gE/g6NGjf/vb3/6moKCgpKRkamoqFArHjRvn7u4+jgkNd3d3FxcXV1fXcePGubi42NvbOzk5ubm5CQQCFxcXoVDo4ODg7Ozs6urq4uKCF7q5uaGBs7mLRTs/SkMoFFpaWhobG+PabG1tDQ0NNTQ0Ro0aJSMjM2LEiDFjxvTs2VNNTU1bW1tLS0tBQe"
+    },
+    {
+      "docID": "6019-7597-2867",
+      "file_name": "“二十四节气——国人通过观察太阳周年运动而形成的实践知识体系及实践”列入联合国教科文组织人类非物质文化遗产代表作名录，二十四节气划分使用的周期是（  ）\nA.太阳日           B.恒星日            C.回归年         D.恒星年"
+    },
+    {
+      "docID": "5971-3742-5708",
+      "file_name": "北京时间 2022 年 1 月 15 日，位于南太平洋岛国汤加王国境内洪阿哈阿帕伊岛海底火山（175.38°W，20.57°S）发生猛烈喷发，岩浆沿着岩石圈破裂带上升喷出地表，在地表冷凝结晶而形成的岩石是（  ）\nA. 玄武岩          B. 大理岩          C. 石灰岩          D. 花岗岩"
+    },
+    {
+      "docID": "2161-8432-6639",
+      "file_name": "此时A点的区时是（  ）\nA．7月8日12时  B．7月7日24时  C．7月8日6时  D．7月8日16时\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgUAAAIHCAIAAACANrhRAAAgAElEQVR4Aex9eViaZ7r+77/zx1wz5zpnrumZOT2d6fTqmelMl5kmTZs2a5O0adIsTdIkzWYWE/clatz3fUVBEdxQcEfcEBUVVFREFAUXVJR9ERQEBBHc+7uGd8IhpksmMWmSfs8fKPrxft97vx/v/b3v8zz38/++hQxCAEIAQgBCAELg22//HwQChACEAIQAhACEwLcQH0A3AYQAhACEAIQAQABaH0B3ws8Lgc3vt58XEFBvIQQeQgDig4cggf7wUiPw/XSw+VL3G+ochMCPIwDxwY9jBB3xMiEA+GDDzmwM8TJ1E+oLhMBjIADxwWOABn3kBUYA4oMXePCgS3/KCEB88JQBhpp/zhCA+OA5GxDoc"
+    },
+    {
+      "docID": "3024-4511-4633",
+      "file_name": "浙江舟山群岛的普陀山有一块著名的“金刚宝石”，看似摇摇欲坠，实则稳如泰山。据调查，该岩石是地质时期岩浆在地下冷凝而成。 下列岩石中与“金刚宝石”成因相同的是（  ）\nA.石灰岩    B.花岗岩    C.玄武岩    D.大理岩\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUIAAADACAIAAAD+wP2sAAAgAElEQVR4Aey9919b6Z02nH9h391sNmXf2WQzySSTfabYMx6Px93GNmAMmGJ6bwJElxCghioSEkJIIJAAIYrovWPAxoCNjQvYHhv33m1cMNiAPW+4r9G9imeSze7zPO8nm+z1gzhIR9LROfd1f9v1vc8PduzYsWrVqt/85jc///nPf/zjH/8jwY9+9KOf/vSn//zP//wzgp/85Cc/JvjJT37yUwI8///bI770JzbgYP6cR9s7Vv7iQ/70I93ffrf/1M/8ZwL7t9DTaP/k/2z/zxn4L5yBH//4xz/84Q9/9KMfvffe"
+    },
+    {
+      "docID": "7813-9986-4585",
+      "file_name": "此时北京时间是（  ）\nA．7月8日15时  B．7月8日14时  C．7月8日20时  D．7月7日14时"
+    },
+    {
+      "docID": "7939-8167-2071",
+      "file_name": "燃烧的“石头”——煤属于（  ）\nA．侵入岩           B．喷出岩 \nC．沉积岩           D．变质岩"
+    },
+    {
+      "docID": "3307-3205-1379",
+      "file_name": "嶂石岩地貌为中国三大砂岩地貌之一，主要由易于风化的薄层砂岩和页岩形成，形成绵延数公里的岩墙峭壁。以下对于嶂石岩的岩石特征以下说法正确的是（  ）\nA. 岩石矿物颗粒定向排列                   B. 可能含有化石 \nC. 岩石表面多气孔                         D. 具有明显的片理构造"
+    },
+    {
+      "docID": "0956-0320-6546",
+      "file_name": "新西兰西海岸有著名的地质景观“薄饼岩”，它是由数以百计的硬石灰岩和软砂岩组成的，因形似层层薄饼，故而得名。按岩石成因分类，该处岩石为（  ）\nA．喷出岩               B．侵入岩   \nC．变质岩               D．沉积岩\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAATwAAAC6CAIAAAC8+WYgAAAgAElEQVR4Aey9d3Acx50GiipX3V1d3VXdlV1X57uybOlkK1qSaVG0TUq0GEUKJAGKATnHRdhF2kWOC2ARFnERFznnnImccyQRicAkUgxgBHN4D/1x2sMFBsTKVN3Vq/f9Mdvzm56e2Zn++hc6jEr7emhl0PYqkLejo6OToKOjo729va2trYMDyLZ2y5H9ZbFr8ysr6eJAt5LgKKarhwNKFs+Zneu6b0qu7PPkys/1HrnkXOWsVwdXZa/Wvr/tKZv/b2e+mmKq+WZ/WzjQrCSaONC4Oais+/9bWlpaW1"
+    },
+    {
+      "docID": "3372-9790-5557",
+      "file_name": "大理石是一种常见的建筑材料，该岩石是由下列哪种岩石变质而来的（  ）\nA.石灰岩     B.砂岩       C.页岩        D.花岗岩"
+    },
+    {
+      "docID": "1764-8727-7391",
+      "file_name": "历史上，苏州人利用当地砚瓦山的岩石做原料生产优质砚台。这种岩石岩性致密，呈薄板状。该岩石可能是（  ）\nA．喷出岩   B．侵入岩   C．沉积岩   D．变质岩"
+    },
+    {
+      "docID": "3448-3467-4709",
+      "file_name": "干热岩主要分布在火山活动或地壳较薄的地带，是致密不渗透的高温岩体，普遍埋藏于地下 3~10 千米处。干热岩地区通过注入凉水、吸收岩体热量转化成蒸汽，可用于发电、供暖等。干热岩最可能是（  ）\n①沉积岩      ②变质岩     ③喷出岩    ④侵入岩 \nA．①②    B．①③    C．②③    D．②④"
+    },
+    {
+      "docID": "3184-0733-4414",
+      "file_name": "右图中能够反映页岩形成过程的代码是（  ）\nA．①  \nB．②  \nC．③  \nD．④\n<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWUAAAFaCAIAAABJy9uUAAAgAElEQVR4Aey9d1hbV5o/TmZmM5vfPM/uzswzO9lkZrPZSWYnk2/isZNx7DjujgED7sYFMB0cOogORqZjOojeQfTee+9dgEA0CZAAUSWQhIQQQvoFrsEyxUioIPA9f0hX957znvd8zrkfvec9TYINBhABEAEQAe4QkOAuGhgLRABEAESADfIF2AhABEAEuEUA5AtukQLjgQiACIB8AbYBEAEQAW4RAPmCW6TAeCACIAIgX4BtAEQARIBbBEC+4BYpMB6IAIgAyBfvThtgLgyUxXlCrSzMTE1NISYQU1MTiI1XfO0I5d3BACwpfwiAfMEffkclNaU30eKRvIFfTieezqEzeawuzk71gbZf3TST4zZ4CSKwOwIgX+yO"
+    },
+    {
+      "docID": "1552-6906-6045",
+      "file_name": "在同纬度地区，相对位置偏东的地点，要比偏西的地点 --------地球自转、地方时----简单\nA．先看到日出  B．后看到日出  C．时刻晚  D．时刻相同"
+    },
+    {
+      "docID": "7955-1293-2857",
+      "file_name": "当地时间某日 14 时，一架飞机从东京国际机场（东 9 区）起飞，大约 3 小时后抵达上海浦东国际机场，到达时的北京时间约为 --------区时计算----简单\nA．14 时  B．15 时  C．16 时  D．17 时"
+    },
+    {
+      "docID": "9334-1152-8813",
+      "file_name": "大数据显示，城市机动车流量变化在一定程度上可体现城市的生活节奏。机动车流量百分比是指某时段机动车流量占当日机动车总流量的比例。如图为甲城市工作日机动车流量变化图。甲城市所处时区是--------区时计算与实际生活相结合---中等\nA．西二区  B．西十区  C．东十区  D．东二区<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAb0AAAC+CAIAAAAur0YJAAAgAElEQVR4Ae29eVxN2/8/vs2E972mJKRB40UUlTIlKlfkKvOUKSFjpHBlCJfiGipKk9KgkqhEZqXSoDTPoVmDRnXqnL1/vu3fXY/92Wfa53TKibX+qLXXfq3Xeq3nWvt51rwQDDqIAEQAIgAR4AUBhBdhKAsRgAhABCACGORNWAkgAhABiABvCEDe5A0vKA0RgAhABCBvwjoAEYAIQAR4QwDyJm94QWmIAEQAIgB5E9YBiABEACLAGwKQN3nDC0pDBCACEAHIm7AOQAQgAhAB3hC"
+    },
+    {
+      "docID": "8778-3113-7620",
+      "file_name": "某乘客乘航班从悉尼（150°E）当地时间 11 时起飞，约 9 小时后抵达广州。乘客抵达广州时的北京时间大约是------ 时区、区时----简单\nA．12 点  B．15 点  C．18 点  D．21 点"
+    },
+    {
+      "docID": "4433-2129-0292",
+      "file_name": "4 月 11 日 15：15（当地时间），一架飞机从英国伦敦西思罗国际机场起飞，约 11 小时后到达上海浦东国际机场，到达时的北京时间约为 --------区时计算----简单\nA．12 日 2:15  B．12 日 10:15  C．12 日 11:15  D．13 日 2:15"
+    },
+    {
+      "docID": "5879-4949-8515",
+      "file_name": "关于日界线及其对时间和日期的影响，下列说法正确的有？\nA. 国际日界线完全沿180°经线划分  \nB. 东十二区比西十二区早一天  \nC. 自然日界线是地方时为0时的经线  \nD. 日界线的弯折与国家和地区使用方便有关"
+    },
+    {
+      "docID": "2262-2950-8088",
+      "file_name": "关于日界线及其对时间的影响，下列说法正确的有？\nA. 国际日界线完全沿180°经线划分  \nB. 东十二区比西十二区早一天  \nC. 自然日界线是地方时为0时的经线  \nD. 日界线弯折是为了避开陆地和行政区域"
+    },
+    {
+      "docID": "6107-1688-7248",
+      "file_name": "关于日界线及其相关现象，下列说法正确的有？\nA. 国际日界线完全与180°经线重合 \nB. 东十二区比西十二区早一天  \nC. 自然日界线是地方时为0时的经线 \nD. 跨越国际日界线需调整日期但不改变时间"
+    },
+    {
+      "docID": "5851-5459-0428",
+      "file_name": "从北极上空俯视，地球自转的方向是（　　）\nA. 顺时针 \nB. 逆时针  \nC. 自东向西  \nD. 不确定"
+    },
+    {
+      "docID": "3148-6609-5647",
+      "file_name": "当格林威治时间为6时，下列城市地方时为12时的是（　　）\nA. 伦敦 \nB. 莫斯科  \nC. 北京  \nD. 洛杉矶"
+    },
+    {
+      "docID": "9436-9007-8084",
+      "file_name": "当格林威治时间为12时时，北京时间为（　　）\nA. 4时 \nB. 8时  \nC. 20时  \nD. 0时"
+    },
+    {
+      "docID": "8920-1900-4039",
+      "file_name": "地球自转产生的地转偏向力对大气环流和洋流影响显著，以下哪种现象与其无关？（　　）<br><br>A. 北半球河流右岸侵蚀  <br>B. 赤道暖流向西流动  <br>C. 南亚夏季风的形成  <br>D. 昼夜交替周期变化"
+    },
+    {
+      "docID": "5893-9152-3583",
+      "file_name": "下列现象中，由非地带性差异造成的是（　　）  <br>A. 赤道附近的高山冰雪  <br>B. 撒哈拉沙漠的炎热干燥  <br>C. 亚马逊平原的热带雨林  <br>D. 温带地区的四季变化"
+    },
+    {
+      "docID": "0973-9491-0551",
+      "file_name": "地球在公转过程中，由于地轴倾斜角度的影响，导致不同季节太阳直射点的变化。下列哪一项正确描述了夏至日时北半球的日照情况？（　　）<br><br>A. 太阳直射南回归线<br>B. 北极圈内出现极夜现象<br>C. 昼长达到一年中最长<br>D. 赤道地区昼夜平分"
+    },
+    {
+      "docID": "6482-7686-7153",
+      "file_name": "在全球气候变化背景下，下列哪项最能体现城市热岛效应加剧对城市规划提出的挑战？（　　）<br><br>A. 增加绿地面积<br>B. 提高建筑密度<br>C. 扩大工业区规模<br>D. 减少公共交通工具"
+    },
+    {
+      "docID": "5689-6331-3619",
+      "file_name": "1. 下列地形中，由流水侵蚀作用形成的是（　　）<br><br>A. 黄土高原  <br>B. 长江三峡  <br>C. 内蒙古高原  <br>D. 四川盆地"
+    },
+    {
+      "docID": "0793-9692-8465",
+      "file_name": "1. 地球自转方向从北极上空看为逆时针，下列现象与此无关的是（　　）<br><br>A. 昼夜交替周期  <br>B. 北半球河流右岸侵蚀  <br>C. 赤道低气压带形成  <br>D. 极地东风向西偏移"
+    },
+    {
+      "docID": "1912-0317-7177",
+      "file_name": "1. 下列关于沉积岩的特征描述，正确的是（　　）<br><br>A. 沉积岩由岩浆冷却凝固形成  <br>B. 具有明显的层理构造  <br>C. 通过变质作用直接形成  <br>D. 石英岩是典型的沉积岩"
+    }
+  ]
+}

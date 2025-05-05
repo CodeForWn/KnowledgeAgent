@@ -1922,7 +1922,7 @@ def image2text_stream():
                 if message_content and len(message_content) == 1 and 'text' in message_content[0]:
                     messages.append({
                         "role": "user",
-                        "content": message_content[0]["text"]
+                        "content": message_content[0]["text"]+ "不要使用MarkDown格式输出！"
                     })
                 elif message_content:
                     # 如果有图片和文字，返回数组形式
@@ -1941,7 +1941,9 @@ def image2text_stream():
         def generate_stream_response():
             # 使用你的方法获取流式输出
             for part in large_model_service.get_answer_from_internvl_stream(messages, top_p, temperature):
-                yield part  # 返回流式内容
+                if not part.endswith('\n'):
+                    part += '\n'
+                yield part
 
         return Response(generate_stream_response(), content_type='application/json; charset=utf-8')
 
@@ -2176,6 +2178,63 @@ def poem_text():
             'status': 'error',
             'error': f'写诗时发生错误: {str(e)}'
         }), 500
+
+
+@app.route('/api/video2text_stream', methods=['POST'])
+def video2text_stream():
+    try:
+        data = request.json
+        query = data.get('query')
+
+        # 判断用户输入是列表
+        messages = []
+        if isinstance(query, list):
+            for item in query:
+                message_content = []
+
+                # 如果有文字部分
+                if 'text' in item and isinstance(item['text'], str):
+                    message_content.append({"type": "text", "text": item['text']})
+
+                # 如果有视频部分
+                if 'video' in item and isinstance(item['video'], str):
+                    # 如果只有视频，自动填充 text
+                    if not any(c['type'] == 'text' for c in message_content):
+                        message_content.append({"type": "text", "text": "请描述这段视频"})
+                    message_content.append({
+                        "type": "video_url",
+                        "video_url": {"url": item['video']}
+                    })
+
+                if message_content and len(message_content) == 1 and 'text' in message_content[0]:
+                    messages.append({
+                        "role": "user",
+                        "content": message_content[0]["text"] + "不要使用MarkDown格式输出！"
+                    })
+                elif message_content:
+                    messages.append({
+                        "role": "user",
+                        "content": message_content
+                    })
+                else:
+                    return jsonify({"error": "每个条目必须包含有效的 text 或 video 字段"}), 400
+        else:
+            return jsonify({"error": "query 必须是一个列表"}), 400
+
+        logger.info(f"构建的提示词: {messages}")
+
+        # 流式响应生成器
+        def generate_stream_response():
+            for part in large_model_service.get_answer_from_qwenvl_stream(messages):
+                if not part.endswith('\n'):
+                    part += '\n'
+                yield part
+
+        return Response(generate_stream_response(), content_type='application/json; charset=utf-8')
+
+    except Exception as e:
+        logger.error(f"处理请求时发生错误: {str(e)}")
+        return jsonify({"error": "内部服务器错误", "details": str(e)}), 500
 
 
 # 确保线程在 Flask 应用启动前就启动
