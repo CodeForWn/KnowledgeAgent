@@ -128,7 +128,10 @@ def create_task(token: str, title: str, markdown_text: str) -> str:
         "type": "7",  # markdown 粘贴生成
         "title": title,
         "content": markdown_text,
-        "id": ""
+        "page": 2,
+        "group": 9,
+        "scene": 20,
+        "tone": 40
     }
     response = requests.post(TASK_URL, headers=headers, data=payload)
     data = response.json()

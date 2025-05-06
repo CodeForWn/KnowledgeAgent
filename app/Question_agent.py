@@ -1386,15 +1386,60 @@ def generate_pages_stream(context):
 
     if "习题" in components:
         all_kps = collect_all_nodes(knowledge_tree)
-        exercise_pages = render_exercise_pages_grouped_by_kp(all_kps, level=2)
-        for ex_idx, ex_page in enumerate(exercise_pages, 1):
-            ex_json_str = json.dumps({
-                "code": 200,
-                "msg": "success",
-                "data": ex_page
-            }, ensure_ascii=False)
-            logger.info(f"[习题页] 第 {ex_idx} 题输出：{ex_json_str[:100]}...")
-            yield ex_json_str + "\n"
+        seen = set()
+        ex_idx = 1
+        max_exercises = 2  # 限制输出前5道题
+
+        for point in all_kps:
+            if ex_idx > max_exercises:
+                break
+
+            docIDs = neo4j_handler.get_resource_docIDs(point)
+            for docID in docIDs:
+                if ex_idx > max_exercises:
+                    break
+
+                res = mongo_handler.get_resource_by_docID(docID, collection_name="edu_question")
+                if not res or res.get("folder_id") != "1911604997812920321":
+                    continue
+                try:
+                    question = res.get("question", "").strip()
+                    answer = res.get("answer", "").strip()
+                    analysis = res.get("analysis", "").strip()
+                    if not question or not answer:
+                        continue
+
+                    key = (question[:30], answer[:30])
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    page_content = f"【题目】\n{question}\n\n【答案】\n{answer}"
+                    if analysis:
+                        page_content += f"\n\n【解析】\n{analysis}"
+
+                    ex_page = {
+                        "label": "习题",
+                        "type": "main",
+                        "title": point,
+                        "content": page_content,
+                        "addAble": True,
+                        "deleteAble": True,
+                        "children": []
+                    }
+
+                    ex_json_str = json.dumps({
+                        "code": 200,
+                        "msg": "success",
+                        "data": ex_page
+                    }, ensure_ascii=False)
+                    logger.info(f"[习题页] 第 {ex_idx} 题内容预览：{json.dumps(ex_page, ensure_ascii=False)[:100]}...")
+                    yield ex_json_str + "\n"
+                    ex_idx += 1
+
+                except Exception as e:
+                    logger.warning(f"[习题页] 处理 docID: {docID} 时异常：{e}")
+                    continue
 
 
 def process_page(idx, page, context):
@@ -1725,6 +1770,43 @@ def extract_markdown_from_response(response_text):
         # 如果没有匹配到 #，则返回完整内容防止丢失
         return response_text.strip()
 
+def restructure_markdown(raw_markdown: str, knowledge_point: str) -> str:
+    """
+    规范化 Markdown：
+    - 强制标题为：# {知识点} 教学课件
+    - ## 为章节标题，自动编号
+    - ### 为内容标题，自动编号 1.1.1 等
+    - 正文必须以 - 开头
+    """
+    lines = raw_markdown.strip().splitlines()
+    result_lines = [f"# {knowledge_point} 教学课件"]
+
+    chapter_idx = 0
+    content_idx = 0
+    sub_content = {}
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("# "):
+            continue  # 忽略旧标题
+        if line.startswith("##"):
+            chapter_idx += 1
+            content_idx = 0
+            sub_content[chapter_idx] = 0
+            title = line.lstrip("#").strip()
+            result_lines.append(f"## {chapter_idx} {title}")
+        elif line.startswith("###"):
+            content_idx += 1
+            sub_content[chapter_idx] += 1
+            title = line.lstrip("#").strip()
+            result_lines.append(f"### {chapter_idx}.{content_idx}.{sub_content[chapter_idx]} {title}")
+        else:
+            result_lines.append(f"- {line}" if not line.startswith("-") else line)
+
+    return "\n".join(result_lines)
+
 def normalize_filled_markdown(markdown_text):
     """
     将提取出来的markdown内容规范化成标准格式：
@@ -1769,6 +1851,146 @@ def normalize_filled_markdown(markdown_text):
     return "\n".join(normalized_lines)
 
 
+def optimize_ppt_markdown(original_markdown, knowledge_point):
+    """
+    优化PPT Markdown格式，符合以下严格结构：
+
+    # PPT标题
+    ## 章节标题
+    ### 内容页标题
+    #### 正文标题 (可选)
+    - 正文内容
+    - 正文内容
+
+    Args:
+        original_markdown (str): 原始markdown文本
+        knowledge_point (str): 知识点名称
+
+    Returns:
+        str: 优化后的markdown文本
+    """
+    if not original_markdown:
+        return f"# {knowledge_point}教学课件\n\n## 引言\n\n- 暂无内容"
+
+    lines = original_markdown.splitlines()
+    optimized_lines = []
+
+    # 标记是否已添加PPT标题
+    has_title = False
+
+    # 处理每一行
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # 跳过空行
+        if not line:
+            i += 1
+            continue
+
+        # 处理标题行
+        if line.startswith('#'):
+            header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+            if header_match:
+                level = len(header_match.group(1))
+                content = header_match.group(2).strip()
+
+                # 处理第一个标题 - 必须是PPT总标题
+                if not has_title:
+                    optimized_lines.append(f"# {knowledge_point}教学课件")
+                    has_title = True
+                    # 如果这是H1标题，跳过；否则继续处理
+                    if level == 1:
+                        i += 1
+                        continue
+
+                # 处理其他级别标题
+                if level == 2:  # 章节标题
+                    optimized_lines.append(f"## {content}")
+                elif level == 3:  # 内容页标题
+                    optimized_lines.append(f"### {content}")
+                else:  # 其他级别标题转为正文标题(H4)
+                    optimized_lines.append(f"#### {content}")
+
+        # 处理中文序号标题(如"一、"、"二、"等)
+        elif re.match(r'^[一二三四五六七八九十]+、', line):
+            optimized_lines.append(f"#### {line}")
+
+        # 处理列表项
+        elif line.startswith('- ') or line.startswith('* '):
+            optimized_lines.append(line.replace('*', '-', 1))
+
+        # 处理普通文本行
+        else:
+            # 避免添加标题后就没有任何内容的情况
+            if i > 0 and any(lines[i - 1].startswith('#') for _ in range(1, 5)):
+                optimized_lines.append(f"- {line}")
+            else:
+                optimized_lines.append(f"- {line}")
+
+        i += 1
+
+    # 如果没有找到H1标题，在开头添加
+    if not has_title:
+        optimized_lines.insert(0, f"# {knowledge_point}教学课件")
+
+    # 规范化格式：添加适当的空行
+    formatted_lines = []
+    prev_line_is_header = False
+
+    for line in optimized_lines:
+        # 检查当前行是否是标题
+        is_header = line.startswith('#')
+
+        # 如果前一行是标题，并且当前行不是标题，添加一个空行
+        if prev_line_is_header and not is_header:
+            formatted_lines.append("")
+
+        # 如果当前行是标题，并且前一行不是空行和标题起始行，在当前行前添加一个空行
+        if is_header and formatted_lines and formatted_lines[-1] != "" and not prev_line_is_header:
+            formatted_lines.append("")
+
+        # 添加当前行
+        formatted_lines.append(line)
+
+        # 更新标记
+        prev_line_is_header = is_header
+
+    # 确保标题后有内容
+    final_lines = []
+    i = 0
+    while i < len(formatted_lines):
+        line = formatted_lines[i]
+        final_lines.append(line)
+
+        # 检查是否是标题行
+        if line.startswith('#'):
+            # 向前查找，确保标题后有内容
+            has_content = False
+            j = i + 1
+            while j < len(formatted_lines) and not formatted_lines[j].startswith('#'):
+                if formatted_lines[j].strip() and not formatted_lines[j].startswith('#'):
+                    has_content = True
+                    break
+                j += 1
+
+            # # 如果标题后没有内容，添加一个默认列表项
+            # if not has_content:
+            #     if line.startswith("# "):
+            #         final_lines.append("")
+            #         final_lines.append(f"- 本课件介绍{knowledge_point}的概念与应用")
+            #     elif line.startswith("## "):
+            #         final_lines.append("")
+            #         final_lines.append("- 本章节包含重要知识点")
+            #     elif line.startswith("### "):
+            #         final_lines.append("")
+            #         final_lines.append("- 关键内容与要点")
+
+        i += 1
+
+    return "\n".join(final_lines)
+
+
 @app.route("/api/generate_ppt_from_outline_and_render", methods=["POST"])
 def generate_and_render_ppt():
     try:
@@ -1786,10 +2008,13 @@ def generate_and_render_ppt():
 
         # 读取教材内容
         textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
-
+        # 提取习题部分
+        exercise_items = [item for item in outline_json if item.get("label") == "习题"]
+        # 提取非习题部分
+        non_exercise_items = [item for item in outline_json if item.get("label") != "习题"]
         # 将大纲 JSON 转换为标准格式 Markdown
-        outline_markdown = json_to_markdown(outline_json)
-        logger.info(f"转换的markdown：{outline_markdown}")
+        outline_markdown = json_to_markdown(non_exercise_items)
+        # logger.info(f"转换的markdown：{outline_markdown}")
 
         # 构造提示词
         prompt = prompt_builder.generate_ppt_from_outline_prompt(
@@ -1809,25 +2034,44 @@ def generate_and_render_ppt():
         else:
             return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
 
-        # 1. 提取大模型返回的真正markdown
+        # # 1. 提取大模型返回的真正markdown
+        # markdown_part = extract_markdown_from_response(response_text)
+        #
+        # # 规范化标题/正文层级
+        # normalized_markdown = normalize_filled_markdown(markdown_part)
+        #
+        # # 最后统一清洗特殊符号
+        # cleaned_markdown = clean_markdown(normalized_markdown)
         markdown_part = extract_markdown_from_response(response_text)
+        cleaned_markdown = optimize_ppt_markdown(markdown_part, knowledge_point)
 
-        # 规范化标题/正文层级
-        normalized_markdown = normalize_filled_markdown(markdown_part)
+        # 3. 将习题部分转换为Markdown并添加到大模型生成的内容后
+        exercise_markdown = ""
+        for exercise_item in exercise_items:
+            # 添加二级标题：习题
+            exercise_markdown += f"\n\n## 习题\n\n"
 
-        # 最后统一清洗特殊符号
-        cleaned_markdown = clean_markdown(normalized_markdown)
+            # 添加三级标题：习题标题
+            if exercise_item.get("title"):
+                exercise_markdown += f"### {exercise_item.get('title')}\n\n"
 
+            # 添加习题内容 - 整个习题内容作为一个列表项
+            content = exercise_item.get("content", "")
+            if content.strip():
+                # 确保内容前后有适当的空行
+                exercise_markdown += f"- {content.strip()}\n\n"
+
+        final_markdown = cleaned_markdown + exercise_markdown
         # ==== 保存 markdown 内容为文件 ====
         save_dir = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果/ppt内容结果"
         os.makedirs(save_dir, exist_ok=True)  # 确保目录存在
         save_path = os.path.join(save_dir, f"{knowledge_point}_ppt.md")
         with open(save_path, "w", encoding="utf-8") as f:
-            f.write(cleaned_markdown)
+            f.write(final_markdown)
         logger.info(f"markdown内容已保存到：{save_path}")
 
         # 调用渲染 PPT 的方法，生成 PPT 并获取下载链接
-        ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=cleaned_markdown)
+        ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=final_markdown)
 
         # 3. 下载 PPT 文件到本地（临时目录）
         TEMP_DIR = "/home/ubuntu/work/kmcGPT/temp/resource/"  # 或者你指定其他用于临时文件的路径

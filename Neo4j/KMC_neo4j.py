@@ -235,7 +235,7 @@ class KMCNeo4jHandler:
         """
         query = """
         MATCH (parent:Entity {name: $entity_name})-[r:RELATION|相关]->(child:Entity)
-        WHERE r.type IN ["前置", "包含", "相关"]
+        WHERE r.type IN ["前置于", "包含", "相关"]
         RETURN DISTINCT child.name AS child_name
         """
         with self.driver.session() as session:
