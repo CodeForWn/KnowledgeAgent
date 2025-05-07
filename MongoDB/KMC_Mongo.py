@@ -329,16 +329,16 @@ class KMCMongoDBHandler:
             self.logger.error(f"查询 folder_id 为空的文档出错: {e}")
             return []
 
-if __name__ == '__main__':
-    # 示例用法
-    config = Config()  # 假设 Config 类中包含mongodb_host、mongodb_port、mongodb_database、logger等配置项
-    config.load_config()
-    mongo_handler = KMCMongoDBHandler(config)
-    # ✅ 调用新增的方法
-    empty_folder_docIDs = mongo_handler.get_documents_with_empty_folder_id()
-    print(f"共有 {len(empty_folder_docIDs)} 个空 folder_id 的文档")
-    for doc_id in empty_folder_docIDs:
-        print(doc_id)
+# if __name__ == '__main__':
+#     # 示例用法
+#     config = Config()  # 假设 Config 类中包含mongodb_host、mongodb_port、mongodb_database、logger等配置项
+#     config.load_config()
+#     mongo_handler = KMCMongoDBHandler(config)
+#     # ✅ 调用新增的方法
+#     empty_folder_docIDs = mongo_handler.get_documents_with_empty_folder_id()
+#     print(f"共有 {len(empty_folder_docIDs)} 个空 folder_id 的文档")
+#     for doc_id in empty_folder_docIDs:
+#         print(doc_id)
 #
 #     # 示例：根据 docID 查询资源信息并读取全文内容
 #     test_docID = "0033-8784-3716"

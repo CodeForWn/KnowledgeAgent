@@ -2517,7 +2517,9 @@ def add_question():
                     docID=doc_id,
                     entity_names=knowledge_point_list,
                     file_name=question["question"],
-                    resource_type="试题"
+                    resource_type="试题",
+                    folder_id=question["folder_id"],
+                    kb_id=question["kb_id"]
                 )
                 logger.info(f"知识点绑定成功：{doc_id} -> {knowledge_point_list}")
             except Exception as e:
@@ -2579,6 +2581,7 @@ def bind_resource_to_entities():
         entity_names = data.get("entity_names", [])
         file_name = data.get("file_name", "")
         resource_type = data.get("resource_type", "课件")
+        folder_id = data.get("folder_id", "")
 
         if not docID or not entity_names:
             return jsonify({"code": 400, "msg": "参数 docID 或 entity_names 缺失", "data": {}}), 400
@@ -2587,7 +2590,8 @@ def bind_resource_to_entities():
             docID=docID,
             entity_names=entity_names,
             file_name=file_name,
-            resource_type=resource_type
+            resource_type=resource_type,
+            folder_id=folder_id
         )
 
         return jsonify({
@@ -2705,6 +2709,69 @@ def get_full_knowledge_tree():
             "code": 200,
             "msg": "success",
             "data": tree
+        })
+
+    except Exception as e:
+        import traceback
+        logger.error(f"生成知识点树失败: {e}", exc_info=True)
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
+@app.route("/api/knowledge_tree/all_new", methods=["GET"])
+def get_full_knowledge_tree_new():
+    try:
+        root_name = "高中地理"
+        all_nodes, all_edges = neo4j_handler.fetch_all_valid_edges_new()
+
+        from collections import defaultdict
+
+        # 构建 parent → children 和 child → parents 映射
+        children_map = defaultdict(list)
+        parent_map = defaultdict(set)
+        for parent, child in all_edges:
+            children_map[parent].append(child)
+            parent_map[child].add(parent)
+
+        visited = set()
+
+        def dfs(node_name):
+            if node_name in visited:
+                return None
+            visited.add(node_name)
+            children = []
+            for child in children_map.get(node_name, []):
+                subtree = dfs(child)
+                if subtree:
+                    children.append(subtree)
+            return {
+                "name": node_name,
+                "children": children
+            }
+
+        # 主树
+        main_tree = dfs(root_name)
+
+        # 构建剩余子树（如“黄道”）
+        remaining_nodes = all_nodes - visited
+        detached_trees = []
+        for node in remaining_nodes:
+            # 如果该节点不是任何人的 child，则认为是新的子图起点
+            if not parent_map.get(node):
+                subtree = dfs(node)
+                if subtree:
+                    detached_trees.append(subtree)
+
+        # 接入主树
+        if detached_trees:
+            main_tree["children"].append({
+                "name": "其他知识",
+                "children": detached_trees
+            })
+
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": main_tree
         })
 
     except Exception as e:

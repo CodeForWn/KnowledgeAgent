@@ -588,7 +588,7 @@ def answer_question_stream_new():
         ref_num = data.get('ref_num', 5)
         llm = data.get('llm', 'deepseek').lower()
         top_p = data.get('top_p', 0.8)
-        temperature = data.get('temperature', 0)
+        temperature = 0.1
         user_info = data.get('userInfo', {})
 
         if not assistant_id or not query:
@@ -650,38 +650,17 @@ def answer_question_stream_new():
                 prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
                 matches = []
             else:
-                # ✅ 将前5个ref的file_id去重，构造成 ref 结构列表
-                file_ids = list({ref['file_id'] for ref in top_refs})
-                full_context_refs = []
-                seen_chars = 0
-
-                logger.info(f"即将召回以下 file_id 的全文内容：{file_ids}")
-
-                for file_id in file_ids:
-                    content = es_handler.get_full_text_by_file_id(assistant_id.strip(), file_id.strip())
-                    if not content:
-                        logger.warning(f"file_id = {file_id} 的全文为空，跳过。")
-                        continue
-
-                    content_len = len(content)
-                    if seen_chars + len(content) > 15000:
-                        logger.info(f"file_id = {file_id} 的全文超出总长度限制（已用 {seen_chars} 字符，将跳过该全文）")
-                        break
-
-                    logger.info(f"file_id = {file_id} 的全文长度为 {content_len} 字符，当前累计 {seen_chars}，即将添加")
-                    full_context_refs.append({
-                        'text': f"以下是文件（{file_id}）的完整内容：\n{content}",
-                        'file_id': file_id
-                    })
-                    seen_chars += len(content)
-
-                # ✅ 用全文作为上下文构建prompt（结构保持和top_refs一致）
-                prompt = prompt_builder.generate_answer_prompt(
-                    query=query,
-                    refs=full_context_refs,
-                    history=history,
-                    user_context=user_context
-                )
+                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context)
+                matches = [{
+                    'text': ref['text'],
+                    'original_text': ref['original_text'],
+                    'page': ref['page'],
+                    'file_id': ref['file_id'],
+                    'file_name': ref['file_name'],
+                    'download_path': ref['download_path'],
+                    'score': ref['score'],
+                    'rerank_score': score
+                } for ref, score in top_list]
 
         def generate_stream(model_name, prompt, matches, top_p, temperature, query, request_id):
             full_answer = ""

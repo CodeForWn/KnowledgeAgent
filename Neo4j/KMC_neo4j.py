@@ -580,6 +580,21 @@ class KMCNeo4jHandler:
             else:
                 return set(), []
 
+    def fetch_all_valid_edges_new(self):
+        query = """
+        MATCH (a:Entity)-[r:RELATION]->(b:Entity)
+        WHERE r.type IN ["前置于", "包含", "相关"]
+        RETURN DISTINCT a.name AS parent, b.name AS child
+        """
+        with self.driver.session() as session:
+            result = session.run(query)
+            edges = [(record["parent"], record["child"]) for record in result]
+            nodes = set()
+            for p, c in edges:
+                nodes.add(p)
+                nodes.add(c)
+            return nodes, edges
+
     # 查询所有知识点节点
     def fetch_all_knowledge_points(self):
         query = "MATCH (n:Entity) RETURN n.name AS name"
@@ -717,25 +732,25 @@ class KMCNeo4jHandler:
             print(f"✅ 成功更新了 {update_count} 个 Resource 节点的 file_name")
             print(f"⚠️ 有 {missing_in_mongo} 个 docID 在MongoDB中未找到或无question字段")
 
-if __name__ == "__main__":
-    config = Config()
-    config.load_config()  # 如果 Config 中没有此方法，可以删除这行
-    neo4j_handler = KMCNeo4jHandler(config)
-    neo4j_handler.update_resources()
-    mongo_handler = KMCMongoDBHandler(config)
-    neo4j_handler.update_file_names()
-    neo4j_handler.close()
-    mongo_handler.close()
-
-    grouped_resources = neo4j_handler.group_resources_by_type()
-    # 保存到 /home/ubuntu/work/kmcGPT/KMC/Neo4j/resource_summary.json
-    save_path = "/home/ubuntu/work/kmcGPT/KMC/Neo4j/resource_summary.json"
-    try:
-        with open(save_path, "w", encoding="utf-8") as f:
-            json.dump(grouped_resources, f, ensure_ascii=False, indent=2)
-        print(f"资源分类结果已成功保存到：{save_path}")
-    except Exception as e:
-        print(f"保存文件失败: {e}")
+# if __name__ == "__main__":
+#     config = Config()
+#     config.load_config()  # 如果 Config 中没有此方法，可以删除这行
+#     neo4j_handler = KMCNeo4jHandler(config)
+#     neo4j_handler.update_resources()
+#     mongo_handler = KMCMongoDBHandler(config)
+#     neo4j_handler.update_file_names()
+#     neo4j_handler.close()
+#     mongo_handler.close()
+#
+#     grouped_resources = neo4j_handler.group_resources_by_type()
+#     # 保存到 /home/ubuntu/work/kmcGPT/KMC/Neo4j/resource_summary.json
+#     save_path = "/home/ubuntu/work/kmcGPT/KMC/Neo4j/resource_summary.json"
+#     try:
+#         with open(save_path, "w", encoding="utf-8") as f:
+#             json.dump(grouped_resources, f, ensure_ascii=False, indent=2)
+#         print(f"资源分类结果已成功保存到：{save_path}")
+#     except Exception as e:
+#         print(f"保存文件失败: {e}")
 
 
 

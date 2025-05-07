@@ -59,6 +59,7 @@
     "log_file": "myapp.log",
     "rerank_model_path": "/home/ubuntu/work/kmcGPT/model/bge-reranker-base",
     "model_path": "/home/ubuntu/work/kmcGPT/model/bge_large_zh",
+    "embed_model_path": "/home/ubuntu/work/kmcGPT/model/bge_large_zh",
     "spacy_model": "/home/ubuntu/work/kmcGPT/model/zh_core_web_sm/zh_core_web_sm-3.5.0",
     "history_api_url": "http://127.0.0.1:82/client/answerhistory/getOpen?sessionId=",
     "stopwords": "/home/ubuntu/work/kmcGPT/KMC/config/stopwords.txt",

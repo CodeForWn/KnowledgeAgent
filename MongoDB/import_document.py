@@ -9,6 +9,8 @@ from pymongo import MongoClient
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
 from MongoDB.KMC_Mongo import KMCMongoDBHandler
+from ElasticSearch.KMC_ES import ElasticSearchHandler
+from File_manager.KMC_FileHandler import FileManager
 
 
 def generate_docid():
@@ -231,10 +233,32 @@ if __name__ == '__main__':
     config = Config()
     config.load_config()  # 确保配置加载成功，包括 mongodb_host、mongodb_port 等
     mongo_handler = KMCMongoDBHandler(config)
+    es_handler = ElasticSearchHandler(config)
+    file_manager = FileManager(config)
 
     collection_name = "geo_documents"  # 集合名称，根据实际情况设置
     collection_name_ques = "edu_question"
     new_collection_name = "edu_documents"
+
+    # 替换 diff_level 字段：容易 => 简单，中等 => 普通
+    try:
+        result_easy = mongo_handler.db[collection_name_ques].update_many(
+            {"diff_level": "容易"},
+            {"$set": {"diff_level": "简单"}}
+        )
+        print(f"已将 {result_easy.modified_count} 条 '容易' 修改为 '简单'")
+
+        result_medium = mongo_handler.db[collection_name_ques].update_many(
+            {"diff_level": "中等"},
+            {"$set": {"diff_level": "普通"}}
+        )
+        print(f"已将 {result_medium.modified_count} 条 '中等' 修改为 '普通'")
+
+    except Exception as e:
+        print(f"更新 diff_level 时出错: {e}")
+
+    finally:
+        mongo_handler.close()
     # #指定要处理的文件夹路径，例如：
     # folder_path = "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理"
     # process_directory(folder_path, mongo_handler, collection_name)
@@ -243,7 +267,7 @@ if __name__ == '__main__':
     #第二步：补全数据库中已有的资源字段
     # fix_resource_type(mongo_handler)  # 调用修复方法
     # complete_all_resources(mongo_handler, collection_name_ques)
-    update_all_kb_ids(mongo_handler)
+    # update_all_kb_ids(mongo_handler)
 
     # 插入一条空题目文档，用于建立字段结构
     # mongo_handler.db[collection_name_ques].insert_one({
@@ -287,4 +311,4 @@ if __name__ == '__main__':
     #     print(f"处理过程中出现错误: {e}")
     #
     # finally:
-    mongo_handler.close()
+    # mongo_handler.close()

@@ -106,6 +106,7 @@ class Config(object):
                 # 读取通用配置
                 self._read_attr(conf, 'rerank_model_path')
                 self._read_attr(conf, 'model_path')
+                self._read_attr(conf, 'embed_model_path')
                 self._read_attr(conf, 'threads')
                 self._read_attr(conf, 'log_file')
                 self._read_attr(conf, 'spacy_model')
