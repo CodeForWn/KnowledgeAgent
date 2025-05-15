@@ -135,9 +135,12 @@ class KMCNeo4jHandler:
             self.logger.error("执行查询时出错: {}".format(e))
             return None
 
-    def get_entity_details(self, knowledge_point_name):
+    def get_entity_details(self, knowledge_point_name, kb_id=None):
         query = """
         MATCH (e:Entity {name: $name})
+        """ + ("""
+        WHERE e.kb_id = $kb_id
+        """ if kb_id else "") + """
         OPTIONAL MATCH (e)-[:`RELATION`]-(related:Entity)
         OPTIONAL MATCH (e)-[:`相关`]->(res:Resource)
         RETURN properties(e) as entity,
@@ -152,7 +155,10 @@ class KMCNeo4jHandler:
         """
 
         with self.driver.session() as session:
-            result = session.run(query, name=knowledge_point_name).single()
+            params = {"name": knowledge_point_name}
+            if kb_id:
+                params["kb_id"] = kb_id
+            result = session.run(query, **params).single()
 
             if result is None:
                 return {}
@@ -230,17 +236,27 @@ class KMCNeo4jHandler:
             result = session.run(query, entity_name=entity_name).data()
             return [record["child_name"] for record in result]
 
-    def get_related_entities(self, entity_name):
+    def get_related_entities(self, entity_name, kb_id):
         """
         获取通过 前置/包含/相关 关系连接的一跳 Entity 节点
         """
-        query = """
-        MATCH (parent:Entity {name: $entity_name})-[r:RELATION|相关]->(child:Entity)
-        WHERE r.type IN ["前置于", "包含", "相关"]
-        RETURN DISTINCT child.name AS child_name
-        """
+        if kb_id:
+            query = """
+                MATCH (parent:Entity {name: $entity_name, kb_id: $kb_id})-[r:RELATION|相关]->(child:Entity {kb_id: $kb_id})
+                WHERE r.type IN ["前置于", "包含", "相关"]
+                RETURN DISTINCT child.name AS child_name
+                """
+            params = {"entity_name": entity_name, "kb_id": kb_id}
+        else:
+            query = """
+                MATCH (parent:Entity {name: $entity_name})-[r:RELATION|相关]->(child:Entity)
+                WHERE r.type IN ["前置于", "包含", "相关"]
+                RETURN DISTINCT child.name AS child_name
+                """
+            params = {"entity_name": entity_name}
+
         with self.driver.session() as session:
-            result = session.run(query, entity_name=entity_name).data()
+            result = session.run(query, **params).data()
             return [record["child_name"] for record in result]
 
     def build_predecessor_tree(self, root_entity, max_depth=5):
@@ -252,9 +268,8 @@ class KMCNeo4jHandler:
 
         return {root_entity: dfs(root_entity, 1)}
 
-    def build_relation_subgraph(self, root_entity, max_depth=3):
+    def build_relation_subgraph(self, root_entity, kb_id, max_depth=3):
         visited = set()
-
         def dfs(entity_name, depth):
             if depth > max_depth:
                 return {}
@@ -262,7 +277,7 @@ class KMCNeo4jHandler:
                 return {}  # 防止回环
             visited.add(entity_name)
 
-            related_entities = self.get_related_entities(entity_name)
+            related_entities = self.get_related_entities(entity_name, kb_id)
             subtree = {child: dfs(child, depth + 1) for child in related_entities}
 
             visited.remove(entity_name)
@@ -270,67 +285,66 @@ class KMCNeo4jHandler:
 
         return {root_entity: dfs(root_entity, 1)}
 
-    def export_full_graph_for_g6(self):
+    def export_full_graph_for_g6(self, kb_id=None):
         """
         导出图谱数据（对 ID 做简化映射，适配 G6 显示）
+        可选：按 kb_id 过滤节点和关系
         """
         try:
             with self.driver.session() as session:
-                # 查询所有节点并构建 ID 映射
-                node_result = session.run(
-                    "MATCH (n) RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props")
+                if kb_id:
+                    node_query = """
+                        MATCH (n:Entity {kb_id: $kb_id})
+                        RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props
+                    """
+                    rel_query = """
+                        MATCH (a:Entity {kb_id: $kb_id})-[r]->(b:Entity {kb_id: $kb_id})
+                        RETURN elementId(r) AS id, elementId(a) AS source, elementId(b) AS target,
+                               type(r) AS type, properties(r) AS props
+                    """
+                    node_result = session.run(node_query, kb_id=kb_id)
+                    rel_result = session.run(rel_query, kb_id=kb_id)
+                else:
+                    node_result = session.run(
+                        "MATCH (n) RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props")
+                    rel_result = session.run("""
+                        MATCH (a)-[r]->(b)
+                        RETURN elementId(r) AS id, elementId(a) AS source, elementId(b) AS target,
+                               type(r) AS type, properties(r) AS props
+                    """)
+
+                # ID 映射 + 节点构建
                 nodes = []
-                node_id_map = {}  # elementId -> shortId
-                node_index = 0
-
-                for record in node_result:
+                node_id_map = {}
+                for idx, record in enumerate(node_result):
                     eid = record["id"]
-                    short_id = f"n{node_index}"
+                    short_id = f"n{idx}"
                     node_id_map[eid] = short_id
-
                     labels = record["labels"]
                     props = record["props"]
-
-                    node = {
+                    nodes.append({
                         "id": short_id,
                         "label": props.get("name", labels[0] if labels else "Entity"),
                         "type": labels[0] if labels else "Entity",
                         "rawProps": props
-                    }
-                    nodes.append(node)
-                    node_index += 1
+                    })
 
-                # 查询所有边
-                rel_result = session.run("""
-                    MATCH (a)-[r]->(b)
-                    RETURN elementId(r) AS id, elementId(a) AS source, elementId(b) AS target, type(r) AS type, properties(r) AS props
-                """)
+                # 边构建
                 edges = []
-                edge_index = 0
-
-                for record in rel_result:
-                    rel_id = f"r{edge_index}"
-                    source_id = node_id_map.get(record["source"], record["source"])
-                    target_id = node_id_map.get(record["target"], record["target"])
-
-                    rel_type = record["type"]
-                    rel_props = record["props"]
-
-                    edge = {
-                        "id": rel_id,
-                        "source": source_id,
-                        "target": target_id,
-                        "label": rel_props.get("type", rel_type),
-                        "type": rel_type,
-                        "rawProps": rel_props
-                    }
-                    edges.append(edge)
-                    edge_index += 1
+                for idx, record in enumerate(rel_result):
+                    edges.append({
+                        "id": f"r{idx}",
+                        "source": node_id_map.get(record["source"], record["source"]),
+                        "target": node_id_map.get(record["target"], record["target"]),
+                        "label": record["props"].get("type", record["type"]),
+                        "type": record["type"],
+                        "rawProps": record["props"]
+                    })
 
             return {"nodes": nodes, "edges": edges}
 
         except Exception as e:
-            self.logger.error("导出图谱数据失败: {}".format(e))
+            self.logger.error(f"导出图谱数据失败: {e}")
             return {"nodes": [], "edges": [], "error": str(e)}
 
     def update_entity_name(self, old_name, new_name):
@@ -581,14 +595,15 @@ class KMCNeo4jHandler:
             else:
                 return set(), []
 
-    def fetch_all_valid_edges_new(self):
+    def fetch_all_valid_edges_new(self, kb_id):
         query = """
         MATCH (a:Entity)-[r:RELATION]->(b:Entity)
         WHERE r.type IN ["前置于", "包含", "相关"]
+          AND a.kb_id = $kb_id AND b.kb_id = $kb_id
         RETURN DISTINCT a.name AS parent, b.name AS child
         """
         with self.driver.session() as session:
-            result = session.run(query)
+            result = session.run(query, kb_id=kb_id)
             edges = [(record["parent"], record["child"]) for record in result]
             nodes = set()
             for p, c in edges:

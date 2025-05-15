@@ -81,14 +81,15 @@ def get_question_agent():
         question_count = data.get('question_count', 3)  # 题目数量
         llm = data.get('llm', 'qwen')
         top_p = data.get('top_p', 0.8)
-        temperature = data.get('temperature', 0.8)
+        kb_id = data.get('kb_id', '1911603842693210113')
+        temperature = data.get('temperature', 0.6)
         query = knowledge_point + "的地理定义和意义是什么？"
 
         if not knowledge_point:
             return jsonify({"error": "knowledge_point 参数为空"}), 400
 
         # 调用 get_entity_details 方法获取该知识点的详细信息
-        result = neo4j_handler.get_entity_details(knowledge_point)
+        result = neo4j_handler.get_entity_details(knowledge_point, kb_id)
         resources = result.get("resources", []) if result else []
 
         if not resources:
@@ -529,14 +530,15 @@ def get_question_explanation_agent():
         question_content = data.get("question_content", "")
         difficulty_level = data.get('difficulty_level', '困难')  # 难度等级
         question_type = data.get('question_type', '单选题')  # 题型
-        llm = data.get('llm', 'deepseek')
+        llm = data.get('llm', 'qwen')
         top_p = data.get('top_p', 0.8)
-        temperature = data.get('temperature', 0.4)
+        kb_id = data.get('kb_id', '1911603842693210113')
+        temperature = data.get('temperature', 0.6)
 
         if not question_content:
             return jsonify({"error": "题干为空"}), 400
 
-        result = neo4j_handler.get_entity_details(knowledge_point)
+        result = neo4j_handler.get_entity_details(knowledge_point, kb_id)
 
         # 生成完整提示词：
         prompt = prompt_builder.generate_explanation_prompt_for_qwen(
@@ -1537,6 +1539,7 @@ def generate_ppt_outline_stream():
         textbook_pdf_path = data.get("textbook_pdf_path",
                                      "/home/ubuntu/work/kmcGPT/temp/resource/中小学课程/高中 地理/选必1/选必1 教材/教学要点与单元实施（选择性必修）第一单元.docx")
         llm = data.get("llm", "qwen")
+        kb_id = data.get("kb_id", "1911603842693210113")
         top_p = data.get("top_p", 0.9)
         temperature = data.get("temperature", 0.7)
         components = data.get("components", ["主题", "教学要求", "知识讲解", "小结", "习题"])
@@ -1550,11 +1553,16 @@ def generate_ppt_outline_stream():
         if not textbook_content:
             return jsonify({"error": "教材内容为空或读取失败"}), 400
 
-        entity_details = neo4j_handler.get_entity_details(knowledge_point)
+        entity_details = neo4j_handler.get_entity_details(knowledge_point, kb_id)
         logger.info(f"[知识点详情] {knowledge_point} 的详细信息：{json.dumps(entity_details, ensure_ascii=False)}")
         entity_info = entity_details.get("entity", {})
         teaching_requirements = entity_info.get("teaching_requirements", "")
-        knowledge_tree = neo4j_handler.build_relation_subgraph(knowledge_point)
+        knowledge_tree = neo4j_handler.build_relation_subgraph(
+            root_entity=knowledge_point,
+            kb_id=kb_id,
+            max_depth=3
+        )
+
         logger.info(f"[知识树] {knowledge_point} 的知识树结构：{json.dumps(knowledge_tree, ensure_ascii=False)}")
         pages = []
 
@@ -2220,7 +2228,8 @@ def export_graph():
     """
     获取整张图谱，返回适配 G6 的数据格式
     """
-    result = neo4j_handler.export_full_graph_for_g6()
+    kb_id = request.args.get("kb_id", default="1911603842693210113")
+    result = neo4j_handler.export_full_graph_for_g6(kb_id)
     return jsonify(result)
 
 # 资源库筛选查询接口
@@ -2760,12 +2769,15 @@ def get_related_resources():
     try:
         data = request.get_json()
         knowledge_point = data.get("knowledge_point", "")
+        kb_id = data.get("kb_id", "1911603842693210113")
 
         if not knowledge_point:
             return jsonify({"code": 400, "msg": "缺少知识点名称", "data": []})
+        if not kb_id:
+            return jsonify({"code": 400, "msg": "缺少 kb_id 参数", "data": []})
 
         # 调用你的方法获取详细信息
-        result = neo4j_handler.get_entity_details(knowledge_point)
+        result = neo4j_handler.get_entity_details(knowledge_point, kb_id)
 
         if not result:
             return jsonify({"code": 404, "msg": "未找到该知识点", "data": []})
@@ -2836,8 +2848,20 @@ def get_full_knowledge_tree():
 @app.route("/api/knowledge_tree/all_new", methods=["GET"])
 def get_full_knowledge_tree_new():
     try:
-        root_name = "高中地理"
-        all_nodes, all_edges = neo4j_handler.fetch_all_valid_edges_new()
+        kb_id = request.args.get("kb_id")
+        if not kb_id:
+            return jsonify({"code": 400, "msg": "缺少参数 kb_id", "data": []})
+
+        # ✅ 映射 kb_id → root_name
+        kb_root_mapping = {
+            "1911603842693210113": "高中地理",
+            "1922502117046788097": "思想政治"
+        }
+        root_name = kb_root_mapping.get(kb_id)
+        if not root_name:
+            return jsonify({"code": 404, "msg": f"未找到 kb_id={kb_id} 对应的 root_name", "data": []})
+
+        all_nodes, all_edges = neo4j_handler.fetch_all_valid_edges_new(kb_id)
 
         from collections import defaultdict
 

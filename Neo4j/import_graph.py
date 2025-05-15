@@ -4,11 +4,78 @@ import re
 # Neo4j连接信息（修改为你自己的服务器IP、用户名和密码）
 uri = "bolt://localhost:7687"
 username = "neo4j"
-password = "gzc19980214"
+password = "-eZ7mQ_tqjVGHjz"
 
 # 连接Neo4j
 driver = GraphDatabase.driver(uri, auth=(username, password))
 
+# # 固定属性值
+# default_props = {
+#     "kb_id": "1922502117046788097",
+#     "unit": "第一单元",
+#     "root_name": "必修一",
+#     "difficulty": "",
+#     "type": "",
+#     "teaching_requirements": ""
+# }
+#
+# # 加载三元组数据
+# with open("/home/ubuntu/work/kmcGPT/KMC/Neo4j/思政图谱.json", "r", encoding="utf-8") as f:
+#     triplets = json.load(f)
+#
+# def create_entity_and_relation(tx, s, p, o):
+#     # 创建节点及关系（MERGE 避免重复）
+#     tx.run("""
+#         MERGE (a:Entity {name: $s})
+#         SET a += $props
+#         MERGE (b:Entity {name: $o})
+#         SET b += $props
+#         MERGE (a)-[r:RELATION {type: $p}]->(b)
+#         """, s=s, o=o, p=p, props=default_props)
+#
+# # 批量写入
+# with driver.session() as session:
+#     for item in triplets:
+#         session.write_transaction(create_entity_and_relation,
+#                                   item["subject"], item["predicate"], item["object"])
+#
+# driver.close()
+# print("✅ 图谱导入完成")
+
+
+
+# 新节点属性
+root_entity = {
+    "name": "思想政治",
+    "kb_id": "1922502117046788097",
+    "difficulty": "",
+    "teaching_requirements": ""
+}
+
+# 被包含的节点
+child_entity_name = "中国特色社会主义的开创、坚持、捍卫、发展"
+relation_type = "包含"
+
+
+def create_root_and_link(tx, root, child, rel_type):
+    tx.run("""
+        MERGE (r:Entity {name: $root_name})
+        SET r.kb_id = $kb_id,
+            r.difficulty = $difficulty,
+            r.teaching_requirements = $teaching_requirements
+        MERGE (c:Entity {name: $child_name})
+        MERGE (r)-[:RELATION {type: $rel_type}]->(c)
+    """, root_name=root["name"], kb_id=root["kb_id"],
+         difficulty=root["difficulty"],
+         teaching_requirements=root["teaching_requirements"],
+         child_name=child, rel_type=rel_type)
+
+# 写入数据库
+with driver.session() as session:
+    session.write_transaction(create_root_and_link, root_entity, child_entity_name, relation_type)
+
+driver.close()
+print("✅ 根节点“思想政治”及其包含关系已创建完成")
 #
 # # 加载JSON数据
 # def load_json(filepath):

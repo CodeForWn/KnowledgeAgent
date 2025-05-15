@@ -782,7 +782,7 @@ class PromptBuilder:
                 texts_context = "请结合你的高中地理知识设计题目。"
 
         # 系统角色提示：
-        system_content = "你是一位经验丰富的地理学科专业出题专家，擅长根据给定的教材资源内容及知识图谱关系生成高质量的考试题目。请只输出题干内容，不包含答案和解析。"
+        system_content = "你是一位经验丰富的中学教育出题专家，擅长根据知识点的学科，根据给定的教材资源内容及知识图谱关系生成高质量的考试题目。请只输出题干内容，不包含答案和解析。"
         user_content = f"""
             【当前任务】：
             - 知识点：{knowledge_point}
@@ -913,9 +913,9 @@ class PromptBuilder:
             list: 包含角色和内容的消息列表，用于提交给大语言模型
         """
         system_content = (
-            "## Role：地理教学PPT课件内容生成专家\n\n"
+            "## Role：中学教育PPT课件内容生成专家\n\n"
             "## 任务描述\n"
-            f"你是一位地理学科特级教师，现需要为《{knowledge_point}》创建教学PPT课件内容。你应当基于教材内容和大纲结构，生成具体、详实、有教学价值的PPT内容。\n\n"
+            f"你是一位学科特级教师，现需要为《{knowledge_point}》创建教学PPT课件内容。你应当基于教材内容和大纲结构，生成具体、详实、有教学价值的PPT内容。\n\n"
             "## 输出格式要求\n"
             "你必须严格按照以下格式输出Markdown内容：\n\n"
             "```\n"
@@ -1047,7 +1047,7 @@ class PromptBuilder:
     @staticmethod
     def generate_outline_prompt(page_type, title, description_text, textbook_text):
         system_content = (
-            "你是一位高中地理教学设计专家，擅长为课件的每一页设计简洁清晰的讲解大纲。"
+            "你是一位教育教学设计专家，擅长为课件的每一页设计简洁清晰的讲解大纲。"
             "请基于课件页的类型、知识点和考纲内容，为该页生成一句或几句简要讲解内容，语言自然、无结构化提示词，不使用 markdown，不要输出“内容安排”、“教学目标”、“教学语言风格”等固定词语。"
             "输出应精炼直观，仅描述该页要讲解的核心知识，控制在100字左右。\n\n"
         )
