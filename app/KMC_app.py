@@ -2180,9 +2180,89 @@ def video2text_stream():
                     # 如果只有视频，自动填充 text
                     if not any(c['type'] == 'text' for c in message_content):
                         message_content.append({"type": "text", "text": "请描述这段视频"})
+
                     message_content.append({
                         "type": "video_url",
                         "video_url": {"url": item['video']}
+                    })
+
+                if message_content and len(message_content) == 1 and 'text' in message_content[0]:
+                    messages.append({
+                        "role": "user",
+                        "content": message_content[0]["text"]
+                    })
+                elif message_content:
+                    messages.append({
+                        "role": "user",
+                        "content": message_content
+                    })
+                else:
+                    return jsonify({"error": "每个条目必须包含有效的 text 或 video 字段"}), 400
+        else:
+            return jsonify({"error": "query 必须是一个列表"}), 400
+
+        logger.info(f"构建的提示词: {messages}")
+
+        # 流式响应生成器
+        def generate_stream_response():
+            for part in large_model_service.get_answer_from_qwenvl_stream(messages):
+                if part is None:
+                    continue
+                if not isinstance(part, str):
+                    part = str(part)
+                if not part.endswith('\n'):
+                    part += '\n'
+                yield part
+
+        return Response(generate_stream_response(), content_type='application/json; charset=utf-8')
+
+    except Exception as e:
+        logger.error(f"处理请求时发生错误: {str(e)}")
+        return jsonify({"error": "内部服务器错误", "details": str(e)}), 500
+
+
+@app.route('/api/multimodal2text_stream', methods=['POST'])
+def multi2text_stream():
+    try:
+        data = request.json
+        query = data.get('query')
+
+        # 判断用户输入是列表
+        messages = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": "You are a helpful assistant."}]
+            }
+        ]
+        # 然后再 append 每个用户输入生成的 message
+
+        if isinstance(query, list):
+            for item in query:
+                message_content = []
+
+                media_type = item.get("media_type", "video")  # 默认为视频
+
+                # 如果有文字部分
+                if 'text' in item and isinstance(item['text'], str):
+                    message_content.append({"type": "text", "text": item['text']})
+
+
+                # 如果是视频类型
+                if media_type == "video" and 'video' in item and isinstance(item['video'], str):
+                    if not any(c['type'] == 'text' for c in message_content):
+                        message_content.append({"type": "text", "text": "请描述这段视频"})
+                    message_content.append({
+                        "type": "video_url",
+                        "video_url": {"url": item['video']}
+                    })
+
+                # 如果是图片类型
+                elif media_type == "image" and 'image' in item and isinstance(item['image'], str):
+                    if not any(c['type'] == 'text' for c in message_content):
+                        message_content.append({"type": "text", "text": "请描述这张图片"})
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": item['image']}
                     })
 
                 if message_content and len(message_content) == 1 and 'text' in message_content[0]:
@@ -2196,7 +2276,7 @@ def video2text_stream():
                         "content": message_content
                     })
                 else:
-                    return jsonify({"error": "每个条目必须包含有效的 text 或 video 字段"}), 400
+                    return jsonify({"error": "每个条目必须包含有效的 text、video 或 image 字段"}), 400
         else:
             return jsonify({"error": "query 必须是一个列表"}), 400
 

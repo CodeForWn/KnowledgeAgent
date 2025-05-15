@@ -144,6 +144,7 @@ class KMCNeo4jHandler:
                collect(DISTINCT {relationship:'RELATION', entity: related.name}) as entity_relations,
                collect(DISTINCT {
                    docID: res.docID, 
+                   kb_id: res.kb_id,
                    file_name: res.file_name, 
                    resource_type: res.resource_type,
                    folder_id: res.folder_id
@@ -417,7 +418,7 @@ class KMCNeo4jHandler:
             return updated_props
 
     def bind_resource_to_entities(self, docID: str, entity_names: list, file_name: str = "",
-                                  resource_type: str = "", folder_id: str = "", kb_id: str = "1911603842693210113"):
+                                  resource_type: str = "", folder_id: str = "", kb_id: str = ""):
         """
         将某一资源绑定到多个知识点（Entity 节点），建立“相关”关系。
         - docID: Resource 节点的唯一标识
@@ -558,7 +559,7 @@ class KMCNeo4jHandler:
             self.logger.error(f"从 {filepath} 导入三元组失败")
         return success
 
-    def fetch_main_tree(self, root_name="高中地理"):
+    def fetch_main_tree(self, root_name=""):
         query = """
             MATCH path = (root:Entity {name: $root})-[:RELATION*1..]->(child:Entity)
             WHERE ALL(r IN relationships(path) WHERE r.type = "前置于" OR r.type = "包含")

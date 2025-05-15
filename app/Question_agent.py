@@ -2104,6 +2104,116 @@ def generate_and_render_ppt():
     except Exception as e:
         return jsonify({"error": f"接口异常: {str(e)}"}), 500
 
+
+@app.route("/api/generate_ppt_from_outline_and_render_new", methods=["POST"])
+def generate_and_render_ppt_new():
+    try:
+        # 1. 解析请求参数
+        data = request.get_json(force=True)
+        knowledge_point = data.get("knowledge_point", "")
+        outline_json = data.get("outline_json", [])
+        textbook_pdf_path = data.get("textbook_pdf_path", "")
+        llm = data.get("llm", "qwen")
+        top_p = data.get("top_p", 0.9)
+        temperature = data.get("temperature", 0.4)
+
+        if not knowledge_point:
+            return jsonify({"error": "knowledge_point 参数为空"}), 400
+
+        # 2. 加载教材全文
+        textbook_content = mongo_handler.read_pdf(textbook_pdf_path)
+
+        # 3. 拆分 outline_json 为结构部分
+        theme_items = [item for item in outline_json if item.get("label") == "主题"]
+        teaching_items = [item for item in outline_json if item.get("label") == "教学要求"]
+        other_items = [item for item in outline_json if item.get("label") not in ("主题", "教学要求", "习题")]
+        exercise_items = [item for item in outline_json if item.get("label") == "习题"]
+
+        # 4. 构造 markdown 结构（教学要求不进入大模型）
+        theme_markdown = json_to_markdown(theme_items)
+
+        teaching_markdown = ""
+        for item in teaching_items:
+            teaching_markdown += "\n\n## 教学基本要求\n"
+            content_lines = item.get("content", "").strip().splitlines()
+            for line in content_lines:
+                if line.strip():
+                    teaching_markdown += f"- {line.strip()}\n"
+            teaching_markdown += "\n"
+
+        other_markdown = json_to_markdown(other_items)
+
+        # 5. 拼接最终用于提示词的 markdown
+        outline_markdown = theme_markdown + teaching_markdown + other_markdown
+
+        # 6. 调用大模型生成 PPT 页面内容
+        prompt = prompt_builder.generate_ppt_from_outline_prompt(
+            knowledge_point, outline_markdown, textbook_content
+        )
+
+        if llm.lower() == 'qwen':
+            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
+        elif llm.lower() == 'deepseek':
+            response_text = large_model_service.get_answer_from_deepseek(prompt)
+        else:
+            return jsonify({"error": f"不支持的模型类型: {llm}"}), 400
+
+        markdown_part = extract_markdown_from_response(response_text)
+        cleaned_markdown = optimize_ppt_markdown(markdown_part, knowledge_point)
+
+        # 7. 构造最终 markdown，保留教学要求页
+        final_markdown = theme_markdown + teaching_markdown + cleaned_markdown
+
+        # 8. 追加习题页内容（不进大模型）
+        for exercise_item in exercise_items:
+            final_markdown += f"\n\n## 习题\n\n"
+            if exercise_item.get("title"):
+                final_markdown += f"### {exercise_item.get('title')}\n\n"
+            content = exercise_item.get("content", "")
+            if content.strip():
+                final_markdown += f"- {content.strip()}\n\n"
+
+        # 9. 保存 markdown 为本地文件
+        save_dir = "/home/ubuntu/work/kmcGPT/temp/resource/测试结果/ppt内容结果"
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{knowledge_point}_ppt.md")
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(final_markdown)
+        logger.info(f"markdown内容已保存到：{save_path}")
+
+        # 10. 调用渲染接口生成 PPT
+        ppt_url = markdown_to_ppt.render_markdown_to_ppt(title=knowledge_point, markdown_text=final_markdown)
+
+        # 11. 下载 PPT 文件到本地
+        TEMP_DIR = "/home/ubuntu/work/kmcGPT/temp/resource/"
+        PUBLIC_URL_PREFIX = "http://119.45.164.254/resource/"
+        filename = get_filename_from_url(ppt_url)
+        local_ppt_path = os.path.join(TEMP_DIR, filename)
+        file_manager.download_file(ppt_url, local_ppt_path)
+
+        # 12. 转换为 PDF 并获取公网访问地址
+        pdf_local_path = file_manager.convert_docx_to_pdf(local_ppt_path, TEMP_DIR)
+        if pdf_local_path is None:
+            raise Exception("PPT 转 PDF 转换失败")
+        pdf_public_url = pdf_local_path.replace(TEMP_DIR, PUBLIC_URL_PREFIX)
+
+        # 13. 返回结果
+        response_data = {
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "ppt_url": ppt_url,
+                "pdf_url": pdf_public_url
+            }
+        }
+        logger.info(f"生成的 PPT 在线下载链接: {ppt_url}")
+        return jsonify(response_data)
+
+    except Exception as e:
+        logger.exception("生成并渲染 PPT 失败")
+        return jsonify({"error": f"接口异常: {str(e)}"}), 500
+
+
 # 获取知识图谱数据
 @app.route("/api/graph/full_export", methods=["GET"])
 def export_graph():
@@ -2120,7 +2230,7 @@ def filter_data():
         data = request.get_json(force=True)
         folder_id = data.get("folder_id")
         docID = data.get("docID", "")
-        kb_id = data.get("kb_id", "1911603842693210113")
+        kb_id = data.get("kb_id", "")
 
         # ✅ 特别处理 knowledge_point 字段（支持中英文逗号分隔）
         knowledge_point_raw = data.get("knowledge_point", [])
@@ -2152,7 +2262,7 @@ def filter_data():
             if folder_id != "1911604997812920321":
                 # 进入资源库查询
                 filters = {
-                    "kb_id": data.get("kb_id", "1911603842693210113"),
+                    "kb_id": data.get("kb_id", ""),
                     "file_name": data.get("file_name", []),
                     "status": data.get("status", []),
                     "folder_id": folder_id,
@@ -2166,7 +2276,7 @@ def filter_data():
             elif folder_id == "1911604997812920321":
                 # 进入题库查询
                 filters = {
-                    "kb_id": data.get("kb_id", "1911603842693210113"),
+                    "kb_id": data.get("kb_id", ""),
                     "type": data.get("type", []),
                     "diff_level": data.get("diff_level", []),
                     "status": data.get("status", []),
@@ -2290,6 +2400,7 @@ def update_resource():
                     file_name=update_fields.get("file_name", old_doc.get("file_name", "")),
                     resource_type=update_fields.get("resource_type", old_doc.get("resource_type", "")),
                     folder_id=update_fields.get("folder_id", old_doc.get("folder_id", "")),
+                    kb_id=old_doc.get("kb_id", ""),
                 )
                 logger.info(f"知识点绑定成功：{doc_id} -> {new_kps}")
 
@@ -2383,7 +2494,8 @@ def update_question():
                     entity_names=new_kps,
                     file_name=old_doc.get("question", ""),  # 试题以question字段做file_name
                     resource_type="试题",
-                    folder_id=old_doc.get("folder_id", "1911604997812920321")
+                    folder_id=old_doc.get("folder_id", "1911604997812920321"),
+                    kb_id=old_doc.get("kb_id", ""),
                 )
                 logger.info(f"知识点绑定成功：{doc_id} -> {new_kps}")
 
@@ -2426,7 +2538,7 @@ def add_resource():
             "resource_type": data.get("resource_type", ""),
             "status": data.get("status", ""),
             "file_path": data.get("file_path", ""),
-            "kb_id": data.get("kb_id", "1911603842693210113"),
+            "kb_id": data.get("kb_id", ""),
             "created_at": datetime.datetime.utcnow(),
             "subject": data.get("subject", ""),
             "folder_id": data.get("folder_id", ""),
@@ -2447,7 +2559,9 @@ def add_resource():
                     docID=doc_id,
                     entity_names=knowledge_point_list,
                     file_name=document["file_name"],
-                    resource_type=document["resource_type"]
+                    resource_type=document["resource_type"],
+                    folder_id=document["folder_id"],
+                    kb_id=document["kb_id"]
                 )
             except Exception as e:
                 logger.error(f"[知识点绑定异常] docID={doc_id}，错误：{str(e)}", exc_info=True)
@@ -2503,8 +2617,8 @@ def add_question():
             "created_at": datetime.datetime.utcnow(),
             "resource_type": "试题",
             "subject": data.get("subject", ""),
-            "kb_id": data.get("kb_id", "1911603842693210113"),
-            "folder_id": data.get("folder_id", "1911604997812920321"),
+            "kb_id": data.get("kb_id", ""),
+            "folder_id": data.get("folder_id", ""),
             "knowledge_point": knowledge_point_list
         }
 
@@ -2582,6 +2696,7 @@ def bind_resource_to_entities():
         file_name = data.get("file_name", "")
         resource_type = data.get("resource_type", "课件")
         folder_id = data.get("folder_id", "")
+        kb_id = data.get("kb_id", "")
 
         if not docID or not entity_names:
             return jsonify({"code": 400, "msg": "参数 docID 或 entity_names 缺失", "data": {}}), 400
@@ -2591,7 +2706,8 @@ def bind_resource_to_entities():
             entity_names=entity_names,
             file_name=file_name,
             resource_type=resource_type,
-            folder_id=folder_id
+            folder_id=folder_id,
+            kb_id=kb_id
         )
 
         return jsonify({

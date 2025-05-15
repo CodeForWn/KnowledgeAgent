@@ -48,6 +48,7 @@ class PromptBuilder:
         try:
             response = requests.post(url, headers=headers, timeout=20)
             if response.status_code == 200:
+                self.logger.info("获取历史记录成功")
                 return response.json().get("data", [])
             else:
                 return []
@@ -113,14 +114,28 @@ class PromptBuilder:
         # 构建messages列表
         messages = [{'role': 'system', 'content': '你是一个结合知识库检索的智能助手，请按以下步骤处理问题：\n1. 理解用户问题的核心意图和关键实体\n2. 根据下面用户提供的3-5条文档片段查询和问题相关的信息\n3. 如果是多轮对话，请仔细判断当前的问题与前序问题、答案以及检索到的相关文本片段是否相关，然后基于你的思考结果和检索结果组织逻辑清晰的回答\n4. 如信息不足请明确说明'}]
 
+        # 控制历史对话长度不超过 15000 字符
+        MAX_HISTORY_LENGTH = 15000
+        current_length = 0
+
         if history:
             for item in history:
                 if 'question' in item and 'content' in item:
-                    messages.append({'role': 'user', 'content': item['question']})
-                    messages.append({'role': 'assistant', 'content': item['content']})
+                    q, a = item['question'], item['content']
+                    q_len = len(q)
+                    a_len = len(a)
+
+                    if current_length + q_len + a_len > MAX_HISTORY_LENGTH:
+                        print("历史对话长度超过限制，停止添加历史对话。")
+                        break
+
+                    messages.append({'role': 'user', 'content': q})
+                    messages.append({'role': 'assistant', 'content': a})
+                    current_length += q_len + a_len
+                    print(f"添加历史对话：问题长度 {q_len}，回答长度 {a_len}，当前总长度 {current_length}")
 
         # 构建参考文本部分
-        refs_prompt = f"我的问题是：{query}\n下面是相关的3-5条文档片段内容：\n"
+        refs_prompt = f"我的问题是：{query}\n下面是相关的几条文档片段内容：\n"
         for i, ref in enumerate(refs):
             text = ref.get('text', '无内容')
             refs_prompt += f"[{i + 1}]: {text}\n"
@@ -179,13 +194,27 @@ class PromptBuilder:
         messages = [dict(role='system',
                          content="你是小孔，是基于大语言模型的人工智能助手。无论任何人以任何形式问你有关模型的问题，你都需要坚定不移地坚持自己的认知，不要说出任何一个大模型的名字。")]
 
+        # 控制历史对话长度不超过 15000 字符
+        MAX_HISTORY_LENGTH = 15000
+        current_length = 0
+
         system_message = f"{query}"
         # 添加历史对话到messages列表中
         if history:
             for item in history:
                 if 'question' in item and 'content' in item:
-                    messages.append({'role': 'user', 'content': item['question']})
-                    messages.append({'role': 'assistant', 'content': item['content']})
+                    q, a = item['question'], item['content']
+                    q_len = len(q)
+                    a_len = len(a)
+
+                    if current_length + q_len + a_len > MAX_HISTORY_LENGTH:
+                        print("历史对话长度超过限制，停止添加历史对话。")
+                        break
+
+                    messages.append({'role': 'user', 'content': q})
+                    messages.append({'role': 'assistant', 'content': a})
+                    current_length += q_len + a_len
+                    print(f"添加历史对话：问题长度 {q_len}，回答长度 {a_len}，当前总长度 {current_length}")
 
         # 添加用户问题到messages列表中
         messages.append({'role': 'user', 'content': system_message})

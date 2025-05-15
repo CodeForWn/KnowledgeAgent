@@ -719,6 +719,11 @@ class LargeModelAPIService:
                 delta = chunk.choices[0].delta
                 if hasattr(delta, 'content'):
                     content = delta.content
+
+                    # 安全处理 None
+                    if content is None:
+                        continue
+
                     self.logger.info("收到新的chunk内容: %s", content)
                     accumulated_text += content
 
