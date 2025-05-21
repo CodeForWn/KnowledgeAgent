@@ -122,6 +122,8 @@ class Config(object):
                 self._read_attr(conf, 'mongodb_database')
                 self._read_attr(conf, 'mongodb_username')
                 self._read_attr(conf, 'mongodb_password')
+                self._read_attr(conf, 'neo4j_max_depth_down')
+                self._read_attr(conf, 'neo4j_include_relations')
                 # Neo4j配置
                 self._read_attr(conf, 'neo4j_uri')
                 self._read_attr(conf, 'neo4j_username')

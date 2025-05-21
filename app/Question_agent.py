@@ -38,6 +38,8 @@ import os
 from docx import Document
 from urllib.parse import urlparse
 from collections import defaultdict
+import networkx as nx
+from collections import deque
 
 
 app = Flask(__name__)
@@ -2240,6 +2242,7 @@ def filter_data():
         folder_id = data.get("folder_id")
         docID = data.get("docID", "")
         kb_id = data.get("kb_id", "")
+        table_type = data.get("table_type", "")
 
         # ✅ 特别处理 knowledge_point 字段（支持中英文逗号分隔）
         knowledge_point_raw = data.get("knowledge_point", [])
@@ -2268,7 +2271,7 @@ def filter_data():
 
         else:
             # 根据 folder_id 判断选择资源库或题库查询
-            if folder_id != "1911604997812920321":
+            if table_type != "question":
                 # 进入资源库查询
                 filters = {
                     "kb_id": data.get("kb_id", ""),
@@ -2282,7 +2285,7 @@ def filter_data():
                 # 调用资源库查询方法
                 results = mongo_handler.filter_documents(filters)
 
-            elif folder_id == "1911604997812920321":
+            elif table_type == "question":
                 # 进入题库查询
                 filters = {
                     "kb_id": data.get("kb_id", ""),
@@ -2855,7 +2858,8 @@ def get_full_knowledge_tree_new():
         # ✅ 映射 kb_id → root_name
         kb_root_mapping = {
             "1911603842693210113": "高中地理",
-            "1922502117046788097": "思想政治"
+            "1922502117046788097": "思想政治",
+            "1924751678557442049": "医学微生物学",
         }
         root_name = kb_root_mapping.get(kb_id)
         if not root_name:
@@ -2919,6 +2923,117 @@ def get_full_knowledge_tree_new():
         logger.error(f"生成知识点树失败: {e}", exc_info=True)
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
+def init_graph(edge_list):
+    G = nx.DiGraph()
+    for s, p, o in edge_list:
+        G.add_edge(s, o, predicate=p)
+    return G
+
+def add_outgoing_edges(entity_id, max_bfs_depth, include_relations):
+    queue = deque([(entity_id, 0)])
+    visited = set()
+    edge_list = set()
+    node_info = dict()
+    while queue:
+        current, depth = queue.popleft()
+        if depth > max_bfs_depth:
+            continue
+        for r in neo4j_handler.query_outgoing(current):
+            if r["predicate"] in include_relations:
+                edge_list.add((r["s_id"], r["s_name"], r["predicate"], r["o_id"], r["o_name"]))
+                node_info[r["s_id"]] = r["s_name"]
+                node_info[r["o_id"]] = r["o_name"]
+                if r["o_id"] not in visited:
+                    visited.add(r["o_id"])
+                    queue.append((r["o_id"], depth + 1))
+    return edge_list, node_info
+
+def add_incoming_edges(entity_id, include_relations):
+    edges = neo4j_handler.query_incoming(entity_id)
+    edge_list = set()
+    node_info = dict()
+    for r in edges:
+        if r["predicate"] in include_relations:
+            edge_list.add((r["s_id"], r["s_name"], r["predicate"], r["o_id"], r["o_name"]))
+            node_info[r["s_id"]] = r["s_name"]
+            node_info[r["o_id"]] = r["o_name"]
+    return edge_list, node_info
+
+def find_all_paths(s_id, t_id, max_dfs_depth, include_relations):
+    result_paths = []
+    visited = set()
+
+    def dfs(node, path, depth):
+        if depth > max_dfs_depth:
+            return
+        if node == t_id:
+            result_paths.append(path.copy())
+            return
+        for s, p, o in neo4j_handler.query_outgoing(node):
+            if p not in include_relations or o in path:
+                continue
+            path.append(o)
+            dfs(o, path, depth + 1)
+            path.pop()
+
+    dfs(s_id, [s_id], 0)
+    return result_paths
+
+def extract_answer_space(entity_ids):
+    max_depth_down = config.neo4j_max_depth_down
+    include_relations = config.neo4j_include_relations
+
+    all_edges = set()
+    node_info = dict()
+
+    # 各节点上下游
+    for eid in entity_ids:
+        out_edges, out_nodes = add_outgoing_edges(eid, max_depth_down, include_relations)
+        in_edges, in_nodes = add_incoming_edges(eid, include_relations)
+        all_edges |= out_edges | in_edges
+        node_info.update(out_nodes)
+        node_info.update(in_nodes)
+
+    # 两两最短路径
+    n = len(entity_ids)
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            sid, tid = entity_ids[i], entity_ids[j]
+            for r in neo4j_handler.get_shortest_path_edges_with_names(sid, tid, max_depth_down, include_relations):
+                edge_tuple = (r["s_id"], r["s_name"], r["predicate"], r["o_id"], r["o_name"])
+                all_edges.add(edge_tuple)
+                node_info[r["s_id"]] = r["s_name"]
+                node_info[r["o_id"]] = r["o_name"]
+
+    # 构建节点列表
+    node_list = [{"id": node_id, "name": node_info[node_id]} for node_id in node_info]
+    # 构建边列表
+    edge_list = [{"source_id": s, "source_name": s_name, "predicate": p, "target_id": o, "target_name": o_name}
+                 for (s, s_name, p, o, o_name) in all_edges]
+
+    return node_list, edge_list
+
+
+@app.route("/api/test_by_kg", methods=["POST"])
+def build_answer_space_api():
+    data = request.get_json()
+    entity_ids = data.get("entity_ids", [])
+    if not entity_ids:
+        return jsonify({"error": "entity_ids 参数缺失"}), 400
+
+    node_list, edge_list = extract_answer_space(entity_ids)
+    return jsonify({
+        "code": 200,
+        "msg": "success",
+        "data": {
+            "nodes": node_list,
+            "edges": edge_list,
+            "node_count": len(node_list),
+            "edge_count": len(edge_list)
+        }
+    })
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777, threaded=True)

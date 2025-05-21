@@ -1,0 +1,522 @@
+[
+    {
+        "subject": "细菌学",
+        "predicate": "包含",
+        "object": "细菌"
+    },
+    {
+        "subject": "细菌学",
+        "predicate": "包含",
+        "object": "细菌形态与结构"
+    },
+    {
+        "subject": "细菌",
+        "predicate": "相关",
+        "object": "原核生物界的一种单细胞微生物"
+    },
+    {
+        "subject": "细菌",
+        "predicate": "包含",
+        "object": "广义细菌"
+    },
+    {
+        "subject": "细菌",
+        "predicate": "包含",
+        "object": "狭义细菌"
+    },
+    {
+        "subject": "广义细菌",
+        "predicate": "包含",
+        "object": "细菌"
+    },
+    {
+        "subject": "广义细菌",
+        "predicate": "包含",
+        "object": "放线菌"
+    },
+    {
+        "subject": "广义细菌",
+        "predicate": "包含",
+        "object": "支原体"
+    },
+    {
+        "subject": "广义细菌",
+        "predicate": "包含",
+        "object": "衣原体"
+    },
+    {
+        "subject": "广义细菌",
+        "predicate": "包含",
+        "object": "立克次体"
+    },
+    {
+        "subject": "广义细菌",
+        "predicate": "包含",
+        "object": "螺旋体"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "前置于",
+        "object": "细菌生理活动"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "前置于",
+        "object": "细菌致病性"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "前置于",
+        "object": "细菌免疫性"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "前置于",
+        "object": "细菌鉴别"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "前置于",
+        "object": "细菌性感染诊断"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "前置于",
+        "object": "细菌性感染防治"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "包含",
+        "object": "细菌的大小与形态"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "包含",
+        "object": "细菌结构"
+    },
+    {
+        "subject": "细菌形态与结构",
+        "predicate": "包含",
+        "object": "细菌形态与结构检查法"
+    },
+    {
+        "subject": "细菌的大小与形态",
+        "predicate": "包含",
+        "object": "球菌"
+    },
+    {
+        "subject": "细菌的大小与形态",
+        "predicate": "包含",
+        "object": "杆菌"
+    },
+    {
+        "subject": "细菌的大小与形态",
+        "predicate": "包含",
+        "object": "螺形菌"
+    },
+    {
+        "subject": "球菌",
+        "predicate": "包含",
+        "object": "双球菌"
+    },
+    {
+        "subject": "球菌",
+        "predicate": "包含",
+        "object": "链球菌"
+    },
+    {
+        "subject": "球菌",
+        "predicate": "包含",
+        "object": "葡萄球菌"
+    },
+    {
+        "subject": "球菌",
+        "predicate": "包含",
+        "object": "四联球菌"
+    },
+    {
+        "subject": "球菌",
+        "predicate": "包含",
+        "object": "八叠球菌"
+    },
+    {
+        "subject": "双球菌",
+        "predicate": "相关",
+        "object": "脑膜炎奈瑟菌"
+    },
+    {
+        "subject": "双球菌",
+        "predicate": "相关",
+        "object": "肺炎链球菌"
+    },
+    {
+        "subject": "链球菌",
+        "predicate": "相关",
+        "object": "乙型溶血性链球菌"
+    },
+    {
+        "subject": "葡萄球菌",
+        "predicate": "相关",
+        "object": "金黄色葡萄球菌"
+    },
+    {
+        "subject": "四联球菌",
+        "predicate": "相关",
+        "object": "四联加夫基菌"
+    },
+    {
+        "subject": "八叠球菌",
+        "predicate": "相关",
+        "object": "藤黄八叠球菌"
+    },
+    {
+        "subject": "细菌结构",
+        "predicate": "包含",
+        "object": "基本结构"
+    },
+    {
+        "subject": "细菌结构",
+        "predicate": "包含",
+        "object": "特殊结构"
+    },
+    {
+        "subject": "基本结构",
+        "predicate": "包含",
+        "object": "细胞壁"
+    },
+    {
+        "subject": "基本结构",
+        "predicate": "包含",
+        "object": "细胞膜"
+    },
+    {
+        "subject": "基本结构",
+        "predicate": "包含",
+        "object": "细胞质"
+    },
+    {
+        "subject": "基本结构",
+        "predicate": "包含",
+        "object": "核质"
+    },
+    {
+        "subject": "特殊结构",
+        "predicate": "包含",
+        "object": "荚膜"
+    },
+    {
+        "subject": "特殊结构",
+        "predicate": "包含",
+        "object": "鞭毛"
+    },
+    {
+        "subject": "特殊结构",
+        "predicate": "包含",
+        "object": "菌毛"
+    },
+    {
+        "subject": "特殊结构",
+        "predicate": "包含",
+        "object": "芽胞"
+    },
+    {
+        "subject": "细胞壁",
+        "predicate": "包含",
+        "object": "肽聚糖"
+    },
+    {
+        "subject": "细胞壁",
+        "predicate": "包含",
+        "object": "革兰阳性菌细胞壁特殊组分"
+    },
+    {
+        "subject": "细胞壁",
+        "predicate": "包含",
+        "object": "革兰阴性菌细胞壁特殊组分"
+    },
+    {
+        "subject": "肽聚糖",
+        "predicate": "包含",
+        "object": "聚糖骨架"
+    },
+    {
+        "subject": "肽聚糖",
+        "predicate": "包含",
+        "object": "四肽侧链"
+    },
+    {
+        "subject": "肽聚糖",
+        "predicate": "包含",
+        "object": "五肽交联桥"
+    },
+    {
+        "subject": "革兰阳性菌细胞壁",
+        "predicate": "包含",
+        "object": "磷壁酸"
+    },
+    {
+        "subject": "革兰阳性菌细胞壁",
+        "predicate": "包含",
+        "object": "多层肽聚糖"
+    },
+    {
+        "subject": "革兰阴性菌细胞壁",
+        "predicate": "包含",
+        "object": "外膜"
+    },
+    {
+        "subject": "革兰阴性菌细胞壁",
+        "predicate": "包含",
+        "object": "少量肽聚糖"
+    },
+    {
+        "subject": "细胞壁",
+        "predicate": "相关",
+        "object": "革兰阳性菌细胞壁"
+    },
+    {
+        "subject": "细胞壁",
+        "predicate": "相关",
+        "object": "革兰阴性菌细胞壁"
+    },
+    {
+        "subject": "外膜",
+        "predicate": "包含",
+        "object": "脂蛋白"
+    },
+    {
+        "subject": "外膜",
+        "predicate": "包含",
+        "object": "脂质双层"
+    },
+    {
+        "subject": "外膜",
+        "predicate": "包含",
+        "object": "脂多糖"
+    },
+    {
+        "subject": "脂多糖",
+        "predicate": "包含",
+        "object": "脂质A"
+    },
+    {
+        "subject": "脂多糖",
+        "predicate": "包含",
+        "object": "核心多糖"
+    },
+    {
+        "subject": "脂多糖",
+        "predicate": "包含",
+        "object": "特异多糖"
+    },
+    {
+        "subject": "脂质A",
+        "predicate": "相关",
+        "object": "内毒素毒性"
+    },
+    {
+        "subject": "特异多糖",
+        "predicate": "相关",
+        "object": "菌体抗原"
+    },
+    {
+        "subject": "细胞膜",
+        "predicate": "相关",
+        "object": "物质转运"
+    },
+    {
+        "subject": "细胞膜",
+        "predicate": "相关",
+        "object": "呼吸和分泌"
+    },
+    {
+        "subject": "细胞膜",
+        "predicate": "相关",
+        "object": "生物合成"
+    },
+    {
+        "subject": "细胞膜",
+        "predicate": "相关",
+        "object": "细菌分裂"
+    },
+    {
+        "subject": "细胞膜",
+        "predicate": "包含",
+        "object": "中介体"
+    },
+    {
+        "subject": "细胞质",
+        "predicate": "包含",
+        "object": "核糖体"
+    },
+    {
+        "subject": "细胞质",
+        "predicate": "包含",
+        "object": "质粒"
+    },
+    {
+        "subject": "细胞质",
+        "predicate": "包含",
+        "object": "胞质颗粒"
+    },
+    {
+        "subject": "核质",
+        "predicate": "相关",
+        "object": "细菌的遗传物质"
+    },
+    {
+        "subject": "核质",
+        "predicate": "相关",
+        "object": "细菌染色体"
+    },
+    {
+        "subject": "细菌染色体",
+        "predicate": "相关",
+        "object": "单倍体"
+    },
+    {
+        "subject": "细菌染色体",
+        "predicate": "相关",
+        "object": "环状DNA分子"
+    },
+    {
+        "subject": "荚膜",
+        "predicate": "相关",
+        "object": "抗吞噬作用"
+    },
+    {
+        "subject": "荚膜",
+        "predicate": "相关",
+        "object": "黏附作用"
+    },
+    {
+        "subject": "荚膜",
+        "predicate": "相关",
+        "object": "抗有害物质的损伤作用"
+    },
+    {
+        "subject": "鞭毛",
+        "predicate": "相关",
+        "object": "细菌运动"
+    },
+    {
+        "subject": "鞭毛",
+        "predicate": "包含",
+        "object": "单毛菌"
+    },
+    {
+        "subject": "鞭毛",
+        "predicate": "包含",
+        "object": "双毛菌"
+    },
+    {
+        "subject": "鞭毛",
+        "predicate": "包含",
+        "object": "丛毛菌"
+    },
+    {
+        "subject": "鞭毛",
+        "predicate": "包含",
+        "object": "周毛菌"
+    },
+    {
+        "subject": "菌毛",
+        "predicate": "包含",
+        "object": "普通菌毛"
+    },
+    {
+        "subject": "菌毛",
+        "predicate": "包含",
+        "object": "性菌毛"
+    },
+    {
+        "subject": "普通菌毛",
+        "predicate": "相关",
+        "object": "黏附结构"
+    },
+    {
+        "subject": "性菌毛",
+        "predicate": "相关",
+        "object": "接合"
+    },
+    {
+        "subject": "芽胞",
+        "predicate": "相关",
+        "object": "细菌抵抗力"
+    },
+    {
+        "subject": "芽胞",
+        "predicate": "相关",
+        "object": "休眠形式"
+    },
+    {
+        "subject": "芽胞",
+        "predicate": "相关",
+        "object": "外源性感染"
+    },
+    {
+        "subject": "细菌形态与结构检查法",
+        "predicate": "包含",
+        "object": "显微镜放大法"
+    },
+    {
+        "subject": "细菌形态与结构检查法",
+        "predicate": "包含",
+        "object": "染色法"
+    },
+    {
+        "subject": "显微镜放大法",
+        "predicate": "包含",
+        "object": "普通光学显微镜"
+    },
+    {
+        "subject": "显微镜放大法",
+        "predicate": "包含",
+        "object": "电子显微镜"
+    },
+    {
+        "subject": "显微镜放大法",
+        "predicate": "包含",
+        "object": "暗视野显微镜"
+    },
+    {
+        "subject": "显微镜放大法",
+        "predicate": "包含",
+        "object": "相差显微镜"
+    },
+    {
+        "subject": "显微镜放大法",
+        "predicate": "包含",
+        "object": "荧光显微镜"
+    },
+    {
+        "subject": "染色法",
+        "predicate": "包含",
+        "object": "革兰染色法"
+    },
+    {
+        "subject": "染色法",
+        "predicate": "包含",
+        "object": "单染色法"
+    },
+    {
+        "subject": "染色法",
+        "predicate": "包含",
+        "object": "抗酸染色法"
+    },
+    {
+        "subject": "染色法",
+        "predicate": "包含",
+        "object": "特殊结构染色法"
+    },
+    {
+        "subject": "革兰染色法",
+        "predicate": "相关",
+        "object": "细菌分类"
+    },
+    {
+        "subject": "革兰染色法",
+        "predicate": "相关",
+        "object": "抗菌药物选择"
+    }
+]

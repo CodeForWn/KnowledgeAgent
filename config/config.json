@@ -70,6 +70,8 @@
         "llm_ans": "http://kmc.sundeinfo.cn/ans",
         "backend_notify": "http://127.0.0.1:82/sync/syncCallback"
     },
+    "neo4j_max_depth_down": 7,
+    "neo4j_include_relations": ["前置于", "包含", "相关"],
     "file_storage_path": "/home/ubuntu/work/kmcGPT/temp",
     "record_path": "QA_record.json"
 }

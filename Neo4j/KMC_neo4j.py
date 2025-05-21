@@ -748,6 +748,61 @@ class KMCNeo4jHandler:
             print(f"✅ 成功更新了 {update_count} 个 Resource 节点的 file_name")
             print(f"⚠️ 有 {missing_in_mongo} 个 docID 在MongoDB中未找到或无question字段")
 
+    def query_outgoing(self, element_id):
+        query = """
+        MATCH (a)-[r:RELATION]->(b)
+        WHERE elementId(a) = $element_id
+        RETURN elementId(a) AS s_id, a.name AS s_name, r.type AS predicate, elementId(b) AS o_id, b.name AS o_name
+        """
+        with self.driver.session() as session:
+            result = session.run(query, element_id=element_id)
+            return [dict(r) for r in result]
+
+    def query_incoming(self, element_id):
+        query = """
+        MATCH (a)-[r:RELATION]->(b)
+        WHERE elementId(b) = $element_id
+        RETURN elementId(a) AS s_id, a.name AS s_name, r.type AS predicate, elementId(b) AS o_id, b.name AS o_name
+        """
+        with self.driver.session() as session:
+            result = session.run(query, element_id=element_id)
+            return [dict(r) for r in result]
+
+    def get_relation_between(self, s, o):
+        query = """
+        MATCH (a)-[r:RELATION]->(b)
+        WHERE elementId(a) = $s_id AND elementId(b) = $o_id
+        RETURN r.type AS predicate, a.name AS s_name, b.name AS o_name
+        """
+        with self.driver.session() as session:
+            result = session.run(query, s_id=s, o_id=o).single()
+            if result:
+                return dict(result)
+            else:
+                return None
+
+    def get_shortest_path_edges_with_names(self, source_id, target_id, max_depth, include_relations):
+        query = f"""
+        MATCH p = shortestPath((a)-[r:RELATION*..{max_depth}]->(b))
+        WHERE elementId(a) = $source_id AND elementId(b) = $target_id
+        WITH nodes(p) AS ns, relationships(p) AS rs
+        UNWIND range(0, size(rs)-1) AS i
+        WITH ns[i] AS src, rs[i] AS rel, ns[i+1] AS tgt
+        WHERE rel.type IN $include_relations
+        RETURN
+          elementId(src) AS s_id, src.name AS s_name,
+          rel.type AS predicate,
+          elementId(tgt) AS o_id, tgt.name AS o_name
+        """
+        with self.driver.session() as session:
+            result = session.run(
+                query,
+                source_id=source_id,
+                target_id=target_id,
+                include_relations=include_relations
+            )
+            return [dict(r) for r in result]
+
 # if __name__ == "__main__":
 #     config = Config()
 #     config.load_config()  # 如果 Config 中没有此方法，可以删除这行

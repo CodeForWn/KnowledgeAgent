@@ -9,30 +9,30 @@ password = "-eZ7mQ_tqjVGHjz"
 # 连接Neo4j
 driver = GraphDatabase.driver(uri, auth=(username, password))
 
-# # 固定属性值
-# default_props = {
-#     "kb_id": "1922502117046788097",
-#     "unit": "第一单元",
-#     "root_name": "必修一",
-#     "difficulty": "",
-#     "type": "",
-#     "teaching_requirements": ""
-# }
-#
-# # 加载三元组数据
-# with open("/home/ubuntu/work/kmcGPT/KMC/Neo4j/思政图谱.json", "r", encoding="utf-8") as f:
-#     triplets = json.load(f)
-#
-# def create_entity_and_relation(tx, s, p, o):
-#     # 创建节点及关系（MERGE 避免重复）
-#     tx.run("""
-#         MERGE (a:Entity {name: $s})
-#         SET a += $props
-#         MERGE (b:Entity {name: $o})
-#         SET b += $props
-#         MERGE (a)-[r:RELATION {type: $p}]->(b)
-#         """, s=s, o=o, p=p, props=default_props)
-#
+# 固定属性值
+default_props = {
+    "kb_id": "1924751678557442049",
+    "unit": "第一单元",
+    "root_name": "第九版",
+    "difficulty": "",
+    "type": "概念型",
+    "teaching_requirements": ""
+}
+
+# 加载三元组数据
+with open("/home/ubuntu/work/kmcGPT/KMC/Neo4j/微生物学第一章图谱.json", "r", encoding="utf-8") as f:
+    triplets = json.load(f)
+
+def create_entity_and_relation(tx, s, p, o):
+    # 创建节点及关系（MERGE 避免重复）
+    tx.run("""
+        MERGE (a:Entity {name: $s})
+        SET a += $props
+        MERGE (b:Entity {name: $o})
+        SET b += $props
+        MERGE (a)-[r:RELATION {type: $p}]->(b)
+        """, s=s, o=o, p=p, props=default_props)
+
 # # 批量写入
 # with driver.session() as session:
 #     for item in triplets:
@@ -42,18 +42,16 @@ driver = GraphDatabase.driver(uri, auth=(username, password))
 # driver.close()
 # print("✅ 图谱导入完成")
 
-
-
 # 新节点属性
 root_entity = {
-    "name": "思想政治",
-    "kb_id": "1922502117046788097",
+    "name": "医学微生物学",
+    "kb_id": "1924751678557442049",
     "difficulty": "",
     "teaching_requirements": ""
 }
 
 # 被包含的节点
-child_entity_name = "中国特色社会主义的开创、坚持、捍卫、发展"
+child_entity_name = "细菌学"
 relation_type = "包含"
 
 
@@ -75,7 +73,7 @@ with driver.session() as session:
     session.write_transaction(create_root_and_link, root_entity, child_entity_name, relation_type)
 
 driver.close()
-print("✅ 根节点“思想政治”及其包含关系已创建完成")
+print("✅ 根节点“医学微生物学”及其包含关系已创建完成")
 #
 # # 加载JSON数据
 # def load_json(filepath):
