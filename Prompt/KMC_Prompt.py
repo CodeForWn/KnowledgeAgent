@@ -33,6 +33,117 @@ import sys
 sys.path.append("../")
 from config.KMC_config import Config
 
+# 放在模块顶部：定义多学科题目难度与示例配置
+QUESTION_CONFIGS = {
+    # 高中地理
+    "1911603842693210113": {
+        "name": "高中地理",
+        "difficulty_details": {
+            "简单": """简单难度：
+- 题目仅考查该知识点的单一属性（如定义、判断方法）；
+- 单选题和多选题：选项中的干扰项最多不超过2个；
+- 填空题：填空数量只有1个；
+- 推理步长：从题干推理得出答案的思考步数小于2。""",
+            "普通": """普通难度：
+- 题目考查该知识点及其知识图谱关系中知识点的各自单一属性的理解；
+- 单选题和多选题：选项中的干扰项超过1个；
+- 填空题：填空数量1-3个；
+- 推理步长：2-4步。""",
+            "困难": """困难难度：
+- 题目考查该知识点及其图谱关系中知识点的多属性混合理解；
+- 单选题和多选题：每个非正确选项都要有一定的干扰；
+- 填空题：填空数量大于3；
+- 推理步长：大于5步；
+- 可生成计算题。"""
+        },
+        "example_dict": {
+            ("单选题", "简单"): """示例：
+下列关于地球自转的叙述，正确的是（ ）
+A. 地球自转周期为365天
+B. 地球自转方向为自西向东
+C. 地球自转造成昼夜变化
+D. 地球自转速度处处相同""",
+            ("单选题", "普通"): """示例：
+下列关于大气环流与气候分布的关系，正确的是（ ）
+A. 赤道附近为下沉气流，降水少
+B. 副热带高气压带影响下，常年多雨
+C. 副极地低气压带地区风多雨少
+D. 信风带地区降水较多""",
+            ("单选题", "困难"): """示例：
+关于板块构造学说，下列说法正确的是（ ）
+A. 板块边界都为消亡边界
+B. 板块内部地壳活动最频繁
+C. 板块碰撞可引发地震和火山活动
+D. 只有大陆板块才会发生碰撞""",
+            # 其他类型...
+        }
+    },
+    # 思想政治
+    "1922502117046788097": {
+        "name": "思想政治",
+        "difficulty_details": {
+            "简单": """简单难度：
+- 只考查基础概念或单一观点的识记和理解；
+- 干扰项较少，题干表述直接。""",
+            "普通": """普通难度：
+- 考查两个及以上相关概念或观点的比较和应用；
+- 干扰项与正确项相似，需一定判断分析。""",
+            "困难": """困难难度：
+- 综合性强，涉及多重观点、价值判断和材料分析；
+- 干扰项具有较强迷惑性，需逻辑推理。"""
+        },
+        "example_dict": {
+            ("单选题", "简单"): """示例：
+“人民民主专政”的实质是（ ）
+A. 人民当家作主
+B. 无产阶级专政
+C. 党的领导
+D. 国家治理""",
+            # 其他类型...
+        }
+    },
+    # 医学微生物学
+    "1924751678557442049": {
+        "name": "医学微生物学",
+        "difficulty_details": {
+            "简单": """简单难度：
+- 题目只涉及基本名词定义、单一结构或功能；
+- 干扰项为明显错误内容；
+- 推理步长1步以内。""",
+            "普通": """普通难度：
+- 涉及单个病原体与疾病、实验方法、分类特点等；
+- 干扰项与正确答案有一定相似度；
+- 推理2-5步。""",
+            "困难": """困难难度：
+- 涉及致病机制、实验原理、综合分析与推理；
+- 请注意一定要非常的困难，符合考研标准的难题；
+- 干扰项设计为易混淆知识点；
+- 推理大于5步，需要结合情景分析。"""
+        },
+        "example_dict": {
+            ("单选题", "简单"): """示例：
+下列关于细菌细胞壁的描述，正确的是（ ）
+A. 由肽聚糖组成
+B. 不含任何蛋白质
+C. 只存在于病毒中
+D. 对青霉素无反应""",
+            ("单选题", "普通"): """示例：
+适应性免疫中的克隆选择理论的基础是什么？（ ）
+A：具有抗原特异受体的淋巴细胞在遇到该抗原后会增殖
+B：抗体是由先天免疫细胞在没有抗原暴露的情况下产生的
+C：所有淋巴细胞对任何给定抗原的反应相同
+D：记忆细胞是在首次接触任何病原体之前产生的""",
+            ("单选题", "困难"): """示例：
+肺炎链球菌(Streptococcus pneumoniae)是引起社区获得性肺炎的主要病原体，关于该菌的特性，下列说法错误的是：（ ）
+A. 肺炎链球菌的荚膜多糖是其主要毒力因子，不同血清型的荚膜多糖结构差异是分型的基础
+B. 肺炎链球菌的细胞壁含有四肽交联的肽聚糖，且其细胞壁中的磷壁酸可激活宿主补体系统的替代途径
+C. 肺炎链球菌表面的胆碱结合蛋白A(CbpA)可介导该菌通过与多聚免疫球蛋白受体(pIgR)结合穿越上皮细胞
+D. 肺炎链球菌的自溶素LytA是一种N-乙酰神经氨酸酶，能水解宿主细胞表面的唾液酸，促进细菌黏附""",
+            # 其他类型...
+        }
+    }
+}
+
 # prompts类
 class PromptBuilder:
     def __init__(self, config):
@@ -820,6 +931,78 @@ class PromptBuilder:
 
         return messages
 
+
+    @staticmethod
+    def generate_test_prompt_for_qwen(
+            knowledge_point, related_texts, spo, difficulty_level, question_type, question_count, kb_id
+    ):
+        # 1. 按kb_id查找配置，找不到则用地理作为默认
+        config = QUESTION_CONFIGS.get(str(kb_id), QUESTION_CONFIGS["1911603842693210113"])
+
+        # 2. 取对应难度描述与题型示例
+        difficulty_details = config["difficulty_details"].get(
+            difficulty_level, next(iter(config["difficulty_details"].values()))
+        )
+        example = config["example_dict"].get((question_type, difficulty_level), "")
+        subject_name = config["name"]
+
+        # 3. 题型描述
+        question_desc = {
+            "单选题": "生成单选题的题干及4个选项，只有1个正确选项，每个选项不超过15字。",
+            "多选题": "生成多选题的题干及4个选项，正确选项1至4个，每个选项不超过15字。",
+            "填空题": "生成填空题的题干，需填空数量根据难度等级而定。"
+        }.get(question_type, "生成单选题的题干及4个选项，只有1个正确选项。")
+
+        # 4. 知识图谱关系文本
+        spo_text = spo.strip() if spo and isinstance(spo, str) and spo.strip() else "当前知识点在图谱中未找到任何关系，请结合学科常识自由出题。"
+
+
+        # 5. 教材片段 texts_context
+        if related_texts:
+            texts_context = "\n\n".join([f"片段{i + 1}：{text}" for i, text in enumerate(related_texts)])
+        else:
+            texts_context = "请结合图谱关系或学科常识出题。"
+
+        # 6. 系统role提示词
+        system_content = f"你是一位经验丰富的{subject_name}学科出题专家，擅长根据知识点、教材资源、知识图谱关系生成高质量考试题目。请只输出题干内容，不包含答案和解析。"
+
+        # 7. 用户任务内容
+        user_content = f"""
+    【当前任务】：
+    - 知识点：{knowledge_point}
+    - 题型：{question_type}
+    - 难度等级：{difficulty_level}
+    - 题目数量：{question_count}
+
+    任务要求：
+    题型：{question_desc}
+    难度：{difficulty_details}
+
+    请严格依据以下给定的知识内容片段和知识图谱关系生成题目：
+
+    相关知识内容片段：
+    {texts_context}
+
+    知识图谱关系提示：
+    {spo_text}
+    题目示例：
+    {example}
+
+    请严格按照示例的格式生成题目内容，确保：
+    - 题干表述清晰，逻辑严谨。
+    - 只生成题干及选项内容，不输出答案及解析。
+    - 每道题之间以换行分隔。
+
+    现在请生成共{question_count}道{question_type}。
+    """
+
+        # 8. 返回消息格式
+        messages = [
+            {'role': 'system', 'content': system_content.strip()},
+            {'role': 'user', 'content': user_content.strip()}
+        ]
+        return messages
+
     @staticmethod
     def generate_explanation_prompt_for_qwen(knowledge_point, question_type, question_content, difficulty_level, related_entity_info):
         """
@@ -1064,6 +1247,28 @@ class PromptBuilder:
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content}
         ]
+
+    @staticmethod
+    def summarize_graph_relations(triplet_sentences, subject_name=None):
+        """
+        输入一批自然语言化的三元组句子，让大模型归纳总结整体知识关系。
+        """
+        system_msg = "你是一位善于梳理知识图谱关系结构的专家。请根据下列多个知识点关系表达，将这些零散的关系梳理、归纳，合成为一段简洁且逻辑清晰的整体讲解，突出核心概念、主要结构与逻辑链条。"
+        if subject_name:
+            task_msg = f"这些关系都与“{subject_name}”有关。"
+        else:
+            task_msg = ""
+        user_msg = f"""{task_msg}
+    已知各个知识点间的关系表达如下：
+    {chr(10).join(['- ' + s for s in triplet_sentences])}
+    
+    请合并整理为一段整体描述，不要逐条复述，而是像老师为学生整体讲解本主题知识结构一样表达，要努力挖掘出这些关系带来的隐含的，复杂的关系。语言要简明、准确、有条理。
+    """
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg.strip()}
+        ]
+        return messages
 
 # # 测试
 # # 加载配置

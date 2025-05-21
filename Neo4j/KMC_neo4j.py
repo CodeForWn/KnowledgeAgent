@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import re
 import shutil
 import pickle
+import random
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch, helpers
@@ -35,6 +36,29 @@ from config.KMC_config import Config
 from neo4j import GraphDatabase, basic_auth
 from MongoDB.KMC_Mongo import KMCMongoDBHandler
 
+TRIPLET_TEMPLATES = {
+    "前置于": [
+        "{S} 是 {O} 的前置知识点。",
+        "理解 {S} 是学习 {O} 的基础。",
+        "在教学中应先讲解 {S}，再讲 {O}。",
+        "{O} 的掌握依赖于对 {S} 的理解。",
+        "{S} 为 {O} 提供了逻辑铺垫。"
+    ],
+    "包含": [
+        "{S} 包含了 {O}。",
+        "{O} 是 {S} 的一个组成部分。",
+        "{O} 属于 {S} 这个更大知识模块。",
+        "在 {S} 的教学中，{O} 是其中的一个子主题。",
+        "{S} 涵盖了包括 {O} 在内的多个核心内容。"
+    ],
+    "相关": [
+        "{S} 与 {O} 密切相关。",
+        "理解 {S} 有助于拓展对 {O} 的认识。",
+        "{S} 和 {O} 在实际应用中经常被联系在一起。",
+        "在教学中可通过 {S} 引出 {O}。",
+        "{S} 与 {O} 虽属于不同章节，但存在知识上的联系。"
+    ]
+}
 
 
 class KMCNeo4jHandler:
@@ -135,7 +159,7 @@ class KMCNeo4jHandler:
             self.logger.error("执行查询时出错: {}".format(e))
             return None
 
-    def get_entity_details(self, knowledge_point_name, kb_id=None):
+    def get_entity_details(self, knowledge_point_name, kb_id):
         query = """
         MATCH (e:Entity {name: $name})
         """ + ("""
@@ -748,6 +772,21 @@ class KMCNeo4jHandler:
             print(f"✅ 成功更新了 {update_count} 个 Resource 节点的 file_name")
             print(f"⚠️ 有 {missing_in_mongo} 个 docID 在MongoDB中未找到或无question字段")
 
+    def get_element_id_by_name(self, entity_name):
+        """
+        根据实体名称查询其 Neo4j 节点的 elementId。
+        """
+        query = """
+        MATCH (e:Entity {name: $name})
+        RETURN elementId(e) AS element_id
+        """
+        with self.driver.session() as session:
+            result = session.run(query, name=entity_name).single()
+            if result:
+                return result["element_id"]
+            else:
+                return None  # 查不到返回None
+
     def query_outgoing(self, element_id):
         query = """
         MATCH (a)-[r:RELATION]->(b)
@@ -802,6 +841,18 @@ class KMCNeo4jHandler:
                 include_relations=include_relations
             )
             return [dict(r) for r in result]
+
+    @staticmethod
+    def triplet_to_natural_language(s, p, o):
+        """
+        将(s, p, o)三元组转化为自然语言句子，自动匹配模板并随机选择一种表达方式。
+        """
+        templates = TRIPLET_TEMPLATES.get(p)
+        if not templates:
+            # 默认降级输出
+            return f"{s} 与 {o} 存在 {p} 关系。"
+        template = random.choice(templates)
+        return template.format(S=s, O=o)
 
 # if __name__ == "__main__":
 #     config = Config()

@@ -85,27 +85,39 @@ def get_question_agent():
         top_p = data.get('top_p', 0.8)
         kb_id = data.get('kb_id', '1911603842693210113')
         temperature = data.get('temperature', 0.6)
-        query = knowledge_point + "的地理定义和意义是什么？"
+        query = knowledge_point + "的定义和属性是什么？"
 
         if not knowledge_point:
             return jsonify({"error": "knowledge_point 参数为空"}), 400
+        element_id = neo4j_handler.get_element_id_by_name(knowledge_point)
 
         # 调用 get_entity_details 方法获取该知识点的详细信息
         result = neo4j_handler.get_entity_details(knowledge_point, kb_id)
         resources = result.get("resources", []) if result else []
-
+        node_list, edge_list = extract_answer_space([element_id])
+        spo_text_list = [
+            neo4j_handler.triplet_to_natural_language(
+                edge["source_name"],
+                edge["predicate"],
+                edge["target_name"]
+            ) for edge in edge_list
+        ]
+        spo_text = "；\n".join(spo_text_list) if spo_text_list else ""
+        summary_prompt = prompt_builder.summarize_graph_relations(spo_text, knowledge_point)
+        spo_text_summary = large_model_service.get_answer_from_Tyqwen(summary_prompt)
         if not resources:
             logger.info(f"知识点 {knowledge_point} 无资源，直接走空相关内容构造prompt")
             related_texts = []
-            spo = {}
-            prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
+            prompt = prompt_builder.generate_test_prompt_for_qwen(
                 knowledge_point=knowledge_point,
                 related_texts=related_texts,
-                spo=spo,
+                kb_id=kb_id,
+                spo=spo_text_summary,
                 difficulty_level=difficulty_level,
                 question_type=question_type,
                 question_count=question_count
             )
+            logger.info(f"构造的提示词：{prompt}")
             if llm.lower() == 'qwen':
                 response_text = large_model_service.get_answer_from_Tyqwen(prompt)
                 try:
@@ -233,16 +245,18 @@ def get_question_agent():
                         related_texts = [doc['_source']['text'] for doc in final_docs]
                         spo = result  # 保留原子图信息
 
+        logger.info(f"最终相关子图：{spo}")
         # 构造提示词，发送大模型
-        prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
+        prompt = prompt_builder.generate_test_prompt_for_qwen(
             knowledge_point=knowledge_point,
             related_texts=related_texts,
-            spo=spo,
+            spo=spo_text_summary,
+            kb_id=kb_id,
             difficulty_level=difficulty_level,
             question_type=question_type,
             question_count=question_count
         )
-
+        logger.info(f"构造的提示词：{prompt}")
         if llm.lower() == 'qwen':
             response_text = large_model_service.get_answer_from_Tyqwen(prompt)
             try:
@@ -287,7 +301,7 @@ def get_question_agent_pro():
             return jsonify({"error": "knowledge_point 参数为空"}), 400
 
         # 调用 get_entity_details 方法获取该知识点的详细信息
-        result = neo4j_handler.get_entity_details(knowledge_point)
+        result = neo4j_handler.get_entity_details(knowledge_point, kb_id)
         resources = result.get("resources", []) if result else []
 
         if not resources:
@@ -3024,15 +3038,18 @@ def build_answer_space_api():
         return jsonify({"error": "entity_ids 参数缺失"}), 400
 
     node_list, edge_list = extract_answer_space(entity_ids)
+    spo_text_list = [
+        triplet_to_natural_language(
+            edge["source_name"],
+            edge["predicate"],
+            edge["target_name"]
+        ) for edge in edge_list
+    ]
+    spo_text = "；\n".join(spo_text_list) if spo_text_list else ""
     return jsonify({
         "code": 200,
         "msg": "success",
-        "data": {
-            "nodes": node_list,
-            "edges": edge_list,
-            "node_count": len(node_list),
-            "edge_count": len(edge_list)
-        }
+        "data": spo_text
     })
 
 if __name__ == "__main__":
