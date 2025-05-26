@@ -781,7 +781,7 @@ class PromptBuilder:
         return messages
 
     @staticmethod
-    def generate_question_agent_prompt_for_qwen(knowledge_point, related_texts, spo, difficulty_level, question_type, question_count):
+    def generate_question_agent_prompt_for_qwen(knowledge_point, spo, difficulty_level, question_type, question_count):
         """
         生成用于Qwen或DeepSeek大模型的复杂出题prompt（含示例题目）。
         """
@@ -883,14 +883,14 @@ class PromptBuilder:
         else:
             spo_text = "当前知识点在图谱中未找到任何信息，请结合地理常识自由出题。"
 
-        # --- 构建教材片段 texts_context ---
-        if related_texts:
-            texts_context = "\n\n".join([f"片段{i + 1}：{text}" for i, text in enumerate(related_texts)])
-        else:
-            if spo and 'entity_relations' in spo:
-                texts_context = "请结合图谱关系出题。"
-            else:
-                texts_context = "请结合你的高中地理知识设计题目。"
+        # # --- 构建教材片段 texts_context ---
+        # if related_texts:
+        #     texts_context = "\n\n".join([f"片段{i + 1}：{text}" for i, text in enumerate(related_texts)])
+        # else:
+        #     if spo and 'entity_relations' in spo:
+        #         texts_context = "请结合图谱关系出题。"
+        #     else:
+        #         texts_context = "请结合你的高中地理知识设计题目。"
 
         # 系统角色提示：
         system_content = "你是一位经验丰富的中学教育出题专家，擅长根据知识点的学科，根据给定的教材资源内容及知识图谱关系生成高质量的考试题目。请只输出题干内容，不包含答案和解析。"
@@ -905,12 +905,9 @@ class PromptBuilder:
             题型：{question_desc}\n
             难度：{difficulty_details}\n
             
-            请严格依据以下给定的知识内容片段和知识图谱关系生成题目：
+            请严格依据以下的知识图谱中此知识点的关系结构信息生成题目：
             
-            相关知识内容片段：
-            {texts_context}\n
-            
-            知识图谱关系提示：
+            知识图谱关系总结：
             {spo_text}\n
             题目示例：
             {example}\n
@@ -934,7 +931,7 @@ class PromptBuilder:
 
     @staticmethod
     def generate_test_prompt_for_qwen(
-            knowledge_point, related_texts, spo, difficulty_level, question_type, question_count, kb_id
+            knowledge_point, spo, difficulty_level, question_type, question_count, kb_id
     ):
         # 1. 按kb_id查找配置，找不到则用地理作为默认
         config = QUESTION_CONFIGS.get(str(kb_id), QUESTION_CONFIGS["1911603842693210113"])
@@ -957,11 +954,11 @@ class PromptBuilder:
         spo_text = spo.strip() if spo and isinstance(spo, str) and spo.strip() else "当前知识点在图谱中未找到任何关系，请结合学科常识自由出题。"
 
 
-        # 5. 教材片段 texts_context
-        if related_texts:
-            texts_context = "\n\n".join([f"片段{i + 1}：{text}" for i, text in enumerate(related_texts)])
-        else:
-            texts_context = "请结合图谱关系或学科常识出题。"
+        # # 5. 教材片段 texts_context
+        # if related_texts:
+        #     texts_context = "\n\n".join([f"片段{i + 1}：{text}" for i, text in enumerate(related_texts)])
+        # else:
+        #     texts_context = "请结合图谱关系或学科常识出题。"
 
         # 6. 系统role提示词
         system_content = f"你是一位经验丰富的{subject_name}学科出题专家，擅长根据知识点、教材资源、知识图谱关系生成高质量考试题目。请只输出题干内容，不包含答案和解析。"
@@ -978,12 +975,9 @@ class PromptBuilder:
     题型：{question_desc}
     难度：{difficulty_details}
 
-    请严格依据以下给定的知识内容片段和知识图谱关系生成题目：
+    请严格依据以下给定的知识图谱关系生成题目：
 
-    相关知识内容片段：
-    {texts_context}
-
-    知识图谱关系提示：
+    知识图谱关系总结：
     {spo_text}
     题目示例：
     {example}

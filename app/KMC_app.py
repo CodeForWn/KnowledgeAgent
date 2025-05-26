@@ -215,7 +215,7 @@ def _process_file_data(data):
                 logger.info("文件处理完成并创建索引: %s", file_name)
 
             # 在文件处理完成后添加 3 秒间隔
-            time.sleep(3)
+            time.sleep(1)
 
     except Exception as e:
         logger.error("处理文件数据失败: %s", e)

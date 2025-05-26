@@ -11,7 +11,7 @@ import torch
 import requests
 import jieba.posseg as pseg
 import tempfile
-from langchain.document_loaders import DirectoryLoader, PyPDFLoader
+from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 import logging
 from logging.handlers import RotatingFileHandler

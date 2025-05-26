@@ -110,7 +110,6 @@ def get_question_agent():
             related_texts = []
             prompt = prompt_builder.generate_test_prompt_for_qwen(
                 knowledge_point=knowledge_point,
-                related_texts=related_texts,
                 kb_id=kb_id,
                 spo=spo_text_summary,
                 difficulty_level=difficulty_level,
@@ -141,115 +140,114 @@ def get_question_agent():
 
         logger.info(f"获取知识点 {knowledge_point} 的子图信息：{result}")
 
-        # 有资源的话，处理资源
-        combined_doc_list = []
-        index_name = f"temp_kb_{knowledge_point}_{int(time.time())}"
+        # # 有资源的话，处理资源
+        # combined_doc_list = []
+        # index_name = f"temp_kb_{knowledge_point}_{int(time.time())}"
+        #
+        # for res in resources:
+        #     docID = res.get("docID")
+        #     resource_detail = mongo_handler.get_resource_by_docID(docID)
+        #     # logger.info(f"资源 docID={docID} 的详情信息：{resource_detail}")
+        #
+        #     if not resource_detail:
+        #         logger.warning(f"资源未找到：docID = {docID}")
+        #         continue
+        #
+        #     file_path = resource_detail.get("file_path", "")
+        #     file_name = resource_detail.get("file_name", "")
+        #     subject = resource_detail.get("subject", "")
+        #     resource_type = resource_detail.get("resource_type", "")
+        #     metadata = resource_detail.get("metadata", {})
+        #
+        #     if not file_path:
+        #         logger.error(f"资源 file_path 为空：docID = {docID}")
+        #         continue
+        #
+        #     # 检查远程文件或本地文件是否存在
+        #     if file_path.startswith('http://') or file_path.startswith('https://'):
+        #         try:
+        #             response = requests.head(file_path, timeout=5)
+        #             if response.status_code != 200:
+        #                 logger.error(f"远程文件 {file_path} 不可访问，跳过资源 {file_name}")
+        #                 continue
+        #         except requests.RequestException:
+        #             logger.error(f"远程文件 {file_path} 请求异常，跳过资源 {file_name}")
+        #             continue
+        #     else:
+        #         if not os.path.exists(file_path):
+        #             logger.error(f"本地文件 {file_path} 不存在，跳过资源 {file_name}")
+        #             continue
 
-        for res in resources:
-            docID = res.get("docID")
-            resource_detail = mongo_handler.get_resource_by_docID(docID)
-            logger.info(f"资源 docID={docID} 的详情信息：{resource_detail}")
+            # # 处理文件，创建临时索引
+            # try:
+            #     doc_list = file_manager.process_pdf_file(file_path, file_name)
+            #     if not doc_list:
+            #         logger.error(f"文件处理失败：{file_name}")
+            #         continue
+            #
+            #     success = es_handler.create_temp_index(index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata)
+            #     if not success:
+            #         logger.error(f"临时索引创建失败：{index_name}")
+            #         continue
+            #
+            #     logger.info(f"临时索引 {index_name} 创建成功")
+            #
+            #     bm25_hits = es_handler.agent_search_bm25(index_name, query, ref_num=10)
+            #     embed_hits = es_handler.agent_search_embed(index_name, query, ref_num=10)
+            #
+            #     combined_doc_list.extend(bm25_hits)
+            #     combined_doc_list.extend(embed_hits)
+            #
+            # except Exception as e:
+            #     logger.error(f"处理文件 {file_name} 时发生异常: {e}", exc_info=True)
+            #     continue
 
-            if not resource_detail:
-                logger.warning(f"资源未找到：docID = {docID}")
-                continue
-
-            file_path = resource_detail.get("file_path", "")
-            file_name = resource_detail.get("file_name", "")
-            subject = resource_detail.get("subject", "")
-            resource_type = resource_detail.get("resource_type", "")
-            metadata = resource_detail.get("metadata", {})
-
-            if not file_path:
-                logger.error(f"资源 file_path 为空：docID = {docID}")
-                continue
-
-            # 检查远程文件或本地文件是否存在
-            if file_path.startswith('http://') or file_path.startswith('https://'):
-                try:
-                    response = requests.head(file_path, timeout=5)
-                    if response.status_code != 200:
-                        logger.error(f"远程文件 {file_path} 不可访问，跳过资源 {file_name}")
-                        continue
-                except requests.RequestException:
-                    logger.error(f"远程文件 {file_path} 请求异常，跳过资源 {file_name}")
-                    continue
-            else:
-                if not os.path.exists(file_path):
-                    logger.error(f"本地文件 {file_path} 不存在，跳过资源 {file_name}")
-                    continue
-
-            # 处理文件，创建临时索引
-            try:
-                doc_list = file_manager.process_pdf_file(file_path, file_name)
-                if not doc_list:
-                    logger.error(f"文件处理失败：{file_name}")
-                    continue
-
-                success = es_handler.create_temp_index(index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata)
-                if not success:
-                    logger.error(f"临时索引创建失败：{index_name}")
-                    continue
-
-                logger.info(f"临时索引 {index_name} 创建成功")
-
-                bm25_hits = es_handler.agent_search_bm25(index_name, query, ref_num=10)
-                embed_hits = es_handler.agent_search_embed(index_name, query, ref_num=10)
-
-                combined_doc_list.extend(bm25_hits)
-                combined_doc_list.extend(embed_hits)
-
-            except Exception as e:
-                logger.error(f"处理文件 {file_name} 时发生异常: {e}", exc_info=True)
-                continue
-
-        # 删除临时索引
-        es_handler.delete_index(index_name)
-        logger.info(f"索引 {index_name} 已删除")
-
-        # 检查检索结果
-        if not combined_doc_list:
-            logger.warning(f"检索到的片段为空，走空related_texts模式继续生成。")
-            related_texts = []
-            spo = {}
-        else:
-            # 过滤、去重、重排
-            filtered_combined_doc_list = [
-                doc for doc in combined_doc_list
-                if '_source' in doc and 'text' in doc['_source'] and doc['_source']['text'].strip()
-            ]
-
-            if not filtered_combined_doc_list:
-                logger.warning("经过过滤后，没有有效的文档片段，走空related_texts。")
-                related_texts = []
-                spo = {}
-            else:
-                unique_docs = {doc['_source']['text']: doc for doc in filtered_combined_doc_list}.values()
-                ref_pairs = [[query, doc['_source']['text']] for doc in unique_docs]
-
-                if not ref_pairs:
-                    logger.warning("没有可供重排的文档对，走空related_texts。")
-                    related_texts = []
-                    spo = {}
-                else:
-                    scores = reranker.compute_score(ref_pairs, normalize=True)
-                    sorted_docs_with_scores = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
-                    threshold = 0.3
-                    final_docs = [doc for doc, score in sorted_docs_with_scores if score > threshold]
-
-                    if not final_docs:
-                        logger.warning(f"重排后无得分超过阈值 {threshold} 的片段，走空related_texts。")
-                        related_texts = []
-                        spo = {}
-                    else:
-                        related_texts = [doc['_source']['text'] for doc in final_docs]
-                        spo = result  # 保留原子图信息
-
-        logger.info(f"最终相关子图：{spo}")
+        # # 删除临时索引
+        # es_handler.delete_index(index_name)
+        # logger.info(f"索引 {index_name} 已删除")
+        #
+        # # 检查检索结果
+        # if not combined_doc_list:
+        #     logger.warning(f"检索到的片段为空，走空related_texts模式继续生成。")
+        #     related_texts = []
+        #     spo = {}
+        # else:
+        #     # 过滤、去重、重排
+        #     filtered_combined_doc_list = [
+        #         doc for doc in combined_doc_list
+        #         if '_source' in doc and 'text' in doc['_source'] and doc['_source']['text'].strip()
+        #     ]
+        #
+        #     if not filtered_combined_doc_list:
+        #         logger.warning("经过过滤后，没有有效的文档片段，走空related_texts。")
+        #         related_texts = []
+        #         spo = {}
+        #     else:
+        #         unique_docs = {doc['_source']['text']: doc for doc in filtered_combined_doc_list}.values()
+        #         ref_pairs = [[query, doc['_source']['text']] for doc in unique_docs]
+        #
+        #         if not ref_pairs:
+        #             logger.warning("没有可供重排的文档对，走空related_texts。")
+        #             related_texts = []
+        #             spo = {}
+        #         else:
+        #             scores = reranker.compute_score(ref_pairs, normalize=True)
+        #             sorted_docs_with_scores = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
+        #             threshold = 0.3
+        #             final_docs = [doc for doc, score in sorted_docs_with_scores if score > threshold]
+        #
+        #             if not final_docs:
+        #                 logger.warning(f"重排后无得分超过阈值 {threshold} 的片段，走空related_texts。")
+        #                 related_texts = []
+        #                 spo = {}
+        #             else:
+        #                 related_texts = [doc['_source']['text'] for doc in final_docs]
+        #                 spo = result  # 保留原子图信息
+        #
+        # logger.info(f"最终相关子图：{spo}")
         # 构造提示词，发送大模型
         prompt = prompt_builder.generate_test_prompt_for_qwen(
             knowledge_point=knowledge_point,
-            related_texts=related_texts,
             spo=spo_text_summary,
             kb_id=kb_id,
             difficulty_level=difficulty_level,
@@ -2408,6 +2406,13 @@ def update_resource():
 
         if result and result.modified_count > 0:
             new_kps = actual_update_fields.get("knowledge_point", knowledge_point_list)
+            # ✅ 如果知识点解绑，直接删除资源节点和所有关系
+
+            if new_kps == []:
+                neo4j_handler.delete_resource_and_relations(doc_id)
+                logger.info(f"资源 docID={doc_id} 已解绑所有知识点并删除节点")
+                return jsonify(
+                    {"code": 200, "msg": "资源节点及所有关系已删除", "data": {"modified": result.modified_count}})
 
             # ✅ 比较新旧 knowledge_point 是否真正变化（统一用清洗后的）
             if new_kps and set(new_kps) != set(clean_old_kps):
@@ -2505,6 +2510,12 @@ def update_question():
 
         if result and result.modified_count > 0:
             new_kps = actual_update_fields.get("knowledge_point", knowledge_point_list)
+            # ✅ 如果知识点解绑，直接删除资源节点和所有关系
+            if new_kps == []:
+                neo4j_handler.delete_resource_and_relations(doc_id)
+                logger.info(f"资源 docID={doc_id} 已解绑所有知识点并删除节点")
+                return jsonify(
+                    {"code": 200, "msg": "资源节点及所有关系已删除", "data": {"modified": result.modified_count}})
             if new_kps and set(new_kps) != set(clean_old_kps):
                 # ✅ 删除原有绑定
                 with neo4j_handler.driver.session() as session:
@@ -3033,23 +3044,38 @@ def extract_answer_space(entity_ids):
 @app.route("/api/test_by_kg", methods=["POST"])
 def build_answer_space_api():
     data = request.get_json()
-    entity_ids = data.get("entity_ids", [])
+    knowledge_points = data.get("knowledge_points", [])   # 支持单个/多个
+    if isinstance(knowledge_points, str):
+        knowledge_points = [knowledge_points]
+    if not knowledge_points:
+        return jsonify({"error": "knowledge_points 参数缺失"}), 400
+
+    entity_ids = []
+    for kp in knowledge_points:
+        eid = neo4j_handler.get_element_id_by_name(kp)
+        if eid:
+            entity_ids.append(eid)
     if not entity_ids:
-        return jsonify({"error": "entity_ids 参数缺失"}), 400
+        return jsonify({"error": "所有知识点都未找到实体ID"}), 400
 
     node_list, edge_list = extract_answer_space(entity_ids)
+    print(node_list, edge_list)
     spo_text_list = [
-        triplet_to_natural_language(
+        neo4j_handler.triplet_to_natural_language(
             edge["source_name"],
             edge["predicate"],
             edge["target_name"]
         ) for edge in edge_list
     ]
     spo_text = "；\n".join(spo_text_list) if spo_text_list else ""
+    print(spo_text)
+    summary_prompt = prompt_builder.summarize_graph_relations(spo_text, subject_name="、".join(knowledge_points))
+    spo_text_summary = large_model_service.get_answer_from_Tyqwen(summary_prompt)
+
     return jsonify({
         "code": 200,
         "msg": "success",
-        "data": spo_text
+        "data": spo_text_summary
     })
 
 if __name__ == "__main__":
