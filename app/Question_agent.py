@@ -2885,6 +2885,7 @@ def get_full_knowledge_tree_new():
             "1911603842693210113": "高中地理",
             "1922502117046788097": "思想政治",
             "1924751678557442049": "医学微生物学",
+            "1927242001741434881": "编译原理"
         }
         root_name = kb_root_mapping.get(kb_id)
         if not root_name:

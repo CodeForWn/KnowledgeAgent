@@ -1723,7 +1723,7 @@ def Canvas_chatpdf():
         try:
             all_content = es_handler.get_full_text_by_file_id(assistant_id.strip(), file_id.strip())
             if all_content:
-                logger.info("检索到全文内容")
+                logger.info(f"检索到全文内容: {all_content}")
             else:
                 logger.info(f"未能检索到全文内容 for Assistant ID: {assistant_id}, File ID: {file_id}")
         except Exception as e:

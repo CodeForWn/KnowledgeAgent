@@ -34,7 +34,6 @@ frozenlist==1.4.0
 fsspec==2023.6.0
 google-auth==2.23.0
 google-auth-oauthlib==1.0.0
-gradio @ file:///E:/%E5%B7%A5%E4%BD%9C/chatgpt_academic/docs/gradio-3.32.2-py3-none-any.whl#sha256=552ce00f8e5cc8e2f4c5634edfdd458ed45d5d1ed8950cd41b9595bf7a562fee
 gradio_client==0.3.0
 greenlet==2.0.2
 grpcio==1.58.0

@@ -11,16 +11,16 @@ driver = GraphDatabase.driver(uri, auth=(username, password))
 
 # 固定属性值
 default_props = {
-    "kb_id": "1924751678557442049",
-    "unit": "第一单元",
-    "root_name": "第九版",
+    "kb_id": "1927242001741434881",
+    "unit": "",
+    "root_name": "100395",
     "difficulty": "",
     "type": "概念型",
     "teaching_requirements": ""
 }
 
 # 加载三元组数据
-with open("/home/ubuntu/work/kmcGPT/KMC/Neo4j/微生物学第一章图谱.json", "r", encoding="utf-8") as f:
+with open("/home/ubuntu/work/kmcGPT/KMC/Neo4j/编译原理精简版.json", "r", encoding="utf-8") as f:
     triplets = json.load(f)
 
 def create_entity_and_relation(tx, s, p, o):
@@ -33,6 +33,15 @@ def create_entity_and_relation(tx, s, p, o):
         MERGE (a)-[r:RELATION {type: $p}]->(b)
         """, s=s, o=o, p=p, props=default_props)
 
+def batch_import(triplets):
+    with driver.session() as session:
+        for s, p, o in triplets:
+            session.write_transaction(create_entity_and_relation, s, p, o)
+    print(f"导入完成，共写入 {len(triplets)} 条三元组。")
+
+if __name__ == "__main__":
+    batch_import(triplets)
+    driver.close()
 # # 批量写入
 # with driver.session() as session:
 #     for item in triplets:
@@ -42,38 +51,38 @@ def create_entity_and_relation(tx, s, p, o):
 # driver.close()
 # print("✅ 图谱导入完成")
 
-# 新节点属性
-root_entity = {
-    "name": "医学微生物学",
-    "kb_id": "1924751678557442049",
-    "difficulty": "",
-    "teaching_requirements": ""
-}
-
-# 被包含的节点
-child_entity_name = "细菌学"
-relation_type = "包含"
-
-
-def create_root_and_link(tx, root, child, rel_type):
-    tx.run("""
-        MERGE (r:Entity {name: $root_name})
-        SET r.kb_id = $kb_id,
-            r.difficulty = $difficulty,
-            r.teaching_requirements = $teaching_requirements
-        MERGE (c:Entity {name: $child_name})
-        MERGE (r)-[:RELATION {type: $rel_type}]->(c)
-    """, root_name=root["name"], kb_id=root["kb_id"],
-         difficulty=root["difficulty"],
-         teaching_requirements=root["teaching_requirements"],
-         child_name=child, rel_type=rel_type)
-
-# 写入数据库
-with driver.session() as session:
-    session.write_transaction(create_root_and_link, root_entity, child_entity_name, relation_type)
-
-driver.close()
-print("✅ 根节点“医学微生物学”及其包含关系已创建完成")
+# # 新节点属性
+# root_entity = {
+#     "name": "医学微生物学",
+#     "kb_id": "1924751678557442049",
+#     "difficulty": "",
+#     "teaching_requirements": ""
+# }
+#
+# # 被包含的节点
+# child_entity_name = "细菌学"
+# relation_type = "包含"
+#
+#
+# def create_root_and_link(tx, root, child, rel_type):
+#     tx.run("""
+#         MERGE (r:Entity {name: $root_name})
+#         SET r.kb_id = $kb_id,
+#             r.difficulty = $difficulty,
+#             r.teaching_requirements = $teaching_requirements
+#         MERGE (c:Entity {name: $child_name})
+#         MERGE (r)-[:RELATION {type: $rel_type}]->(c)
+#     """, root_name=root["name"], kb_id=root["kb_id"],
+#          difficulty=root["difficulty"],
+#          teaching_requirements=root["teaching_requirements"],
+#          child_name=child, rel_type=rel_type)
+#
+# # 写入数据库
+# with driver.session() as session:
+#     session.write_transaction(create_root_and_link, root_entity, child_entity_name, relation_type)
+#
+# driver.close()
+# print("✅ 根节点“医学微生物学”及其包含关系已创建完成")
 #
 # # 加载JSON数据
 # def load_json(filepath):
