@@ -40,7 +40,8 @@ from urllib.parse import urlparse
 from collections import defaultdict
 import networkx as nx
 from collections import deque
-
+import numpy as np
+import random
 
 app = Flask(__name__)
 CORS(app)
@@ -111,10 +112,10 @@ def get_question_agent():
             prompt = prompt_builder.generate_test_prompt_for_qwen(
                 knowledge_point=knowledge_point,
                 kb_id=kb_id,
-                spo=spo_text_summary,
                 difficulty_level=difficulty_level,
                 question_type=question_type,
-                question_count=question_count
+                question_count=question_count,
+                graph2text=spo_text_summary,
             )
             logger.info(f"构造的提示词：{prompt}")
             if llm.lower() == 'qwen':
@@ -248,11 +249,11 @@ def get_question_agent():
         # 构造提示词，发送大模型
         prompt = prompt_builder.generate_test_prompt_for_qwen(
             knowledge_point=knowledge_point,
-            spo=spo_text_summary,
             kb_id=kb_id,
             difficulty_level=difficulty_level,
             question_type=question_type,
-            question_count=question_count
+            question_count=question_count,
+            graph2text=spo_text_summary,
         )
         logger.info(f"构造的提示词：{prompt}")
         if llm.lower() == 'qwen':
@@ -540,7 +541,7 @@ def get_question_explanation_agent():
     try:
         # 从请求中获取 JSON 数据
         data = request.get_json()
-        knowledge_point = data.get("knowledge_point", "")
+        knowledge_points = data.get("knowledge_point", "")
         question_content = data.get("question_content", "")
         difficulty_level = data.get('difficulty_level', '困难')  # 难度等级
         question_type = data.get('question_type', '单选题')  # 题型
@@ -552,11 +553,11 @@ def get_question_explanation_agent():
         if not question_content:
             return jsonify({"error": "题干为空"}), 400
 
-        result = neo4j_handler.get_entity_details(knowledge_point, kb_id)
+        result = neo4j_handler.get_entity_details(knowledge_points, kb_id)
 
         # 生成完整提示词：
         prompt = prompt_builder.generate_explanation_prompt_for_qwen(
-            knowledge_point=knowledge_point,
+            knowledge_points=knowledge_points,
             question_type=question_type,
             difficulty_level=difficulty_level,
             question_content=question_content,
@@ -3046,6 +3047,9 @@ def extract_answer_space(entity_ids):
 def build_answer_space_api():
     data = request.get_json()
     knowledge_points = data.get("knowledge_points", [])   # 支持单个/多个
+    difficulty = data.get("difficulty", "困难")  # 默认普通难度
+    kb_id = data.get("kb_id", "")  # 默认高中地理知识库
+    question_type = data.get("question_type", "单选题")  # 默认单选题
     if isinstance(knowledge_points, str):
         knowledge_points = [knowledge_points]
     if not knowledge_points:
@@ -3060,24 +3064,131 @@ def build_answer_space_api():
         return jsonify({"error": "所有知识点都未找到实体ID"}), 400
 
     node_list, edge_list = extract_answer_space(entity_ids)
-    print(node_list, edge_list)
+    G = neo4j_handler.build_graph_from_edges(node_list, edge_list)
+    print("构建的图节点数：", len(G.nodes), "边数：", len(G.edges))
+    candidate_subgraphs = neo4j_handler.generate_candidate_subgraphs(G, entity_ids)
+    print("候选子图：", candidate_subgraphs)
+    selected_subgraph, all_scored_subgraphs = neo4j_handler.score_and_select_subgraph_by_difficulty(
+        candidate_subgraphs, node_list, difficulty, weights=(0.35, 0.2, 0.1)
+    )
+
+    if not selected_subgraph:
+        return jsonify({"error": "无可用子图"}), 400
+
+    # 只返回知识点名称链
+    selected_names = selected_subgraph['path_names'].split(' - ') if selected_subgraph.get('path_names') else []
+
+    spo_list = neo4j_handler.subgraph_to_spo_list(G, selected_subgraph)
     spo_text_list = [
         neo4j_handler.triplet_to_natural_language(
-            edge["source_name"],
-            edge["predicate"],
-            edge["target_name"]
-        ) for edge in edge_list
+            edge["source_name"], edge["predicate"], edge["target_name"]
+        ) for edge in spo_list
     ]
     spo_text = "；\n".join(spo_text_list) if spo_text_list else ""
-    print(spo_text)
+    print("graph2text结果：", spo_text)
     summary_prompt = prompt_builder.summarize_graph_relations(spo_text, subject_name="、".join(knowledge_points))
     spo_text_summary = large_model_service.get_answer_from_Tyqwen(summary_prompt)
+
+    question_prompt = prompt_builder.generate_test_prompt_for_qwen(
+        knowledge_point=knowledge_points,
+        difficulty_level=difficulty,
+        question_type=question_type,
+        question_count=1,
+        kb_id=kb_id,
+        graph2text=spo_text_summary
+    )
 
     return jsonify({
         "code": 200,
         "msg": "success",
-        "data": spo_text_summary
+        "data": {
+            "question_prompt": question_prompt,
+            "graph2text": spo_text_summary
+        }
     })
+
+@app.route("/api/explanation_by_kg", methods=["POST"])
+def get_explanation_prompt():
+    # 从请求中获取 JSON 数据
+    data = request.get_json()
+    knowledge_points = data.get("knowledge_points", [])   # 支持单个/多个
+    question_content = data.get("question_content", "")
+    difficulty_level = data.get('difficulty_level', '困难')  # 难度等级
+    question_type = data.get('question_type', '单选题')  # 题型
+    kb_id = data.get('kb_id', '1911603842693210113')
+    graph2text = data.get("graph2text", "")
+
+    if not question_content:
+        return jsonify({"error": "题干为空"}), 400
+
+
+    # 生成完整提示词：
+    prompt = prompt_builder.generate_explanation_prompt_for_qwen(
+        knowledge_points=knowledge_points,
+        question_type=question_type,
+        difficulty_level=difficulty_level,
+        question_content=question_content,
+        related_entity_info=graph2text
+    )
+
+    return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "explanation_prompt": prompt
+            }
+    })
+
+@app.route('/api/get_qa_kp', methods=['POST'])
+def get_qa_kp():
+    try:
+        data = request.json
+        kb_id = data.get('kb_id')
+        question = data.get('question', "")
+        answer = data.get('answer', "")
+        top_p = data.get('top_p', 0.8)
+        temperature = data.get('temperature', 0)
+
+        if not kb_id:
+            return jsonify({"code": 400, "msg": "kb_id参数缺失", "data": []}), 400
+
+        # 1. 获取所有知识点列表（实体名）
+        knowledge_points = neo4j_handler.fuzzy_search_entities(kb_id, "")
+        logger.info(f"[知识点列表] {knowledge_points}")
+
+        # 2. 拼接 QA 文本
+        qa_text = f"【问题】：{question}\n【回答】：{answer}"
+
+        # 3. 构造大模型抽取prompt
+        extract_prompt = prompt_builder.generate_extract_kp_prompt(question, answer, knowledge_points)
+
+        # 4. 用LLM调用（此处以qwen为例，可根据llm参数选择模型）
+        result_str = large_model_service.get_answer_from_Tyqwen(extract_prompt)
+        try:
+            matched_kps_raw = json.loads(result_str)
+            assert isinstance(matched_kps_raw, list)
+        except Exception:
+            # 容错处理：如果不是标准JSON格式，返回原始内容
+            logger.error(f"大模型输出格式异常: {result_str}")
+            matched_kps_raw = []
+
+        # 5. 精确过滤，只保留知识点列表中的项
+        knowledge_points_set = set(k.strip() for k in knowledge_points)
+        matched_kps = [k for k in matched_kps_raw if k.strip() in knowledge_points_set]
+
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "matched_knowledge_points": matched_kps
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"get_qa_kp接口异常: {e}")
+        return jsonify({"code": 500, "msg": str(e), "data": []}), 500
+
+
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=7777, threaded=True)

@@ -35,6 +35,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.KMC_config import Config
 from neo4j import GraphDatabase, basic_auth
 from MongoDB.KMC_Mongo import KMCMongoDBHandler
+import networkx as nx
+import numpy as np
+import random
 
 TRIPLET_TEMPLATES = {
     "前置于": [
@@ -853,6 +856,206 @@ class KMCNeo4jHandler:
             return f"{s} 与 {o} 存在 {p} 关系。"
         template = random.choice(templates)
         return template.format(S=s, O=o)
+
+    def build_graph_from_edges(self, node_list, edge_list):
+        G = nx.DiGraph()
+        for node in node_list:
+            G.add_node(node['id'], name=node['name'])
+        for edge in edge_list:
+            G.add_edge(edge['source_id'], edge['target_id'], predicate=edge['predicate'])
+        return G
+
+    import itertools
+    import networkx as nx
+    import random
+
+    def generate_candidate_subgraphs(self, G, entity_ids, max_expand=7):
+        """
+        适用于任何数量知识点的健壮子图生成方法：
+        - 单点：返回以该点为中心的所有k阶邻居子图
+        - 多点：返回所有覆盖全部entity_ids的最小连通子图及其扩展
+        """
+        candidates = []
+        bet_map = nx.betweenness_centrality(G)
+        all_entity_ids = set(entity_ids)
+
+        # 单个知识点：可以取所有k阶邻域（比如1-2阶）
+        if len(entity_ids) == 1:
+            root = entity_ids[0]
+            # 以root为中心生成不同半径的ego子图
+            for k in range(1, max_expand + 1):
+                nodes = nx.ego_graph(G, root, radius=k).nodes()
+                subG = G.subgraph(nodes)
+                node_set = set(nodes)
+                edge_set = list(subG.edges())
+                avg_bet = float(sum([bet_map[n] for n in node_set]) / len(node_set))
+                candidates.append({
+                    "nodes": node_set,
+                    "edges": edge_set,
+                    "depth": k,
+                    "avg_bet": avg_bet,
+                    "kp_count": len(node_set)
+                })
+            return candidates
+
+        # 多个知识点：最小连通块，并适度扩展
+        # 1. 首先找所有entity_ids之间的最短路径的并集
+        node_set = set(entity_ids)
+        edge_set = set()
+        max_depth = 0
+        for s, t in itertools.combinations(entity_ids, 2):
+            try:
+                path = nx.shortest_path(G, s, t)
+                node_set.update(path)
+                edge_set.update([(u, v) for u, v in zip(path, path[1:])])
+                if len(path) - 1 > max_depth:
+                    max_depth = len(path) - 1
+            except nx.NetworkXNoPath:
+                continue  # 某些知识点之间没路，允许不完整，但后续还是要返回
+
+        # 2. 最小连通子图
+        subG = G.subgraph(node_set)
+        avg_bet = float(sum([bet_map[n] for n in node_set]) / len(node_set))
+        candidates.append({
+            "nodes": set(node_set),
+            "edges": list(edge_set),
+            "depth": max_depth,
+            "avg_bet": avg_bet,
+            "kp_count": len(node_set)
+        })
+
+        # 3. 外扩max_expand阶邻居（让子图更丰富，但不会漏掉所有知识点）
+        for k in range(1, max_expand + 1):
+            expand_nodes = set(node_set)
+            for nid in node_set:
+                expand_nodes.update(nx.ego_graph(G, nid, radius=k).nodes())
+            expand_subG = G.subgraph(expand_nodes)
+            expand_edge_set = list(expand_subG.edges())
+            expand_avg_bet = float(sum([bet_map[n] for n in expand_nodes]) / len(expand_nodes))
+            candidates.append({
+                "nodes": set(expand_nodes),
+                "edges": expand_edge_set,
+                "depth": max_depth + k,
+                "avg_bet": expand_avg_bet,
+                "kp_count": len(expand_nodes)
+            })
+
+        return candidates
+
+    def normalize_list(self, lst):
+        """标准min-max归一化，防止全相等导致除零"""
+        arr = np.array(lst, dtype=np.float32)
+        if arr.max() == arr.min():
+            return [0.0 for _ in lst]
+        return ((arr - arr.min()) / (arr.max() - arr.min())).tolist()
+
+    def path_names_from_edges(self, edges, id2name):
+        """
+        将一条子图的有序边集合转换为知识点名称链（如：A - B - C - D）
+        edges: [(u, v), ...]
+        id2name: {id: name}
+        """
+        if not edges:
+            return ""
+        path = [edges[0][0]]  # 起点
+        for u, v in edges:
+            path.append(v)
+        return " - ".join([id2name.get(n, n) for n in path])
+
+    def score_to_difficulty_label(self, score):
+        """
+        根据加权得分将子图分为简单、普通、困难三个等级
+        """
+        # 强化“困难”条件：要求分数至少大于0.45
+        if score > 0.4:
+            return "困难"
+        # 普通：得分在0.25到0.45之间
+        elif score > 0.25:
+            return "普通"
+        # 简单：得分小于或等于0.25
+        else:
+            return "简单"
+
+    def score_and_select_subgraph_by_difficulty(self, candidate_subgraphs, node_list, difficulty,
+                                                weights=(0.35, 0.2, 0.1)):
+        """
+        对所有候选子图归一化+加权打分，排序返回
+        :param candidate_subgraphs: [{..., 'depth', 'avg_bet', 'kp_count'}, ...]
+        :param difficulty: "简单"/"普通"/"困难"（仅用于人工筛选，不影响得分）
+        :param weights: (w1, w2, w3)，分别对应 depth、avg_bet、kp_count 的权重
+        :return: (最佳子图, 所有候选子图及得分)
+        """
+        if not candidate_subgraphs:
+            return None, []
+
+        id2name = {n['id']: n['name'] for n in node_list}
+
+        # 1. 收集原始分数
+        depth_list = [sg["depth"] for sg in candidate_subgraphs]
+        avg_bet_list = [sg["avg_bet"] for sg in candidate_subgraphs]
+        kp_count_list = [sg["kp_count"] for sg in candidate_subgraphs]
+
+        # 2. 归一化
+        depth_norm = self.normalize_list(depth_list)
+        avg_bet_norm = self.normalize_list(avg_bet_list)
+        kp_count_norm = self.normalize_list(kp_count_list)
+
+        # 3. 加权总分（每个子图均有完整得分信息）
+        w1, w2, w3 = weights
+        for idx, sg in enumerate(candidate_subgraphs):
+            sg["depth_norm"] = depth_norm[idx]
+            sg["avg_bet_norm"] = avg_bet_norm[idx]
+            sg["kp_count_norm"] = kp_count_norm[idx]
+            sg["weighted_score"] = w1 * depth_norm[idx] + w2 * avg_bet_norm[idx] + w3 * kp_count_norm[idx]
+            sg["path_names"] = self.path_names_from_edges(sg["edges"], id2name)
+            sg["difficulty_label"] = self.score_to_difficulty_label(sg["weighted_score"])
+            print(f"子图{idx + 1}: score={sg['weighted_score']}, difficulty_label={sg['difficulty_label']}")
+
+        # 4. 筛选符合指定难度的子图
+        filtered_subgraphs = [sg for sg in candidate_subgraphs if sg["difficulty_label"] == difficulty]
+
+        # 5. 加权随机选择子图
+        if filtered_subgraphs:
+            total_weight = sum(sg["avg_bet"] for sg in filtered_subgraphs)
+            if total_weight == 0:
+                selected_subgraph = random.choice(filtered_subgraphs)
+            else:
+                weights = [sg["avg_bet"] / total_weight for sg in filtered_subgraphs]
+                selected_subgraph = random.choices(filtered_subgraphs, weights=weights, k=1)[0]
+        else:
+            # 若无符合条件的子图，选择得分最高的子图
+            selected_subgraph = max(candidate_subgraphs, key=lambda x: x["weighted_score"])
+
+        # 6. 排序所有候选子图
+        sorted_subgraphs = sorted(candidate_subgraphs, key=lambda x: x["weighted_score"], reverse=True)
+
+        # 7. 输出每个候选子图的得分详情
+        print("=" * 40)
+        print(f"候选子图得分详情 (w1={w1}, w2={w2}, w3={w3}):")
+        for idx, sg in enumerate(sorted_subgraphs):
+            print(f"子图{idx + 1}: {sg['path_names']}")
+            print(f"  depth={sg['depth']}, avg_bet={sg['avg_bet']:.4f}, kp_count={sg['kp_count']}")
+            print(
+                f"  归一化: depth={sg['depth_norm']:.2f}, avg_bet={sg['avg_bet_norm']:.2f}, kp_count={sg['kp_count_norm']:.2f}")
+            print(f"  总分: {sg['weighted_score']:.4f}\n")
+        print("=" * 40)
+
+        return selected_subgraph, sorted_subgraphs
+
+    def subgraph_to_spo_list(self, G, subgraph):
+        """子图结构转为SPO三元组列表"""
+        spo_list = []
+        for u, v in subgraph["edges"]:
+            pred = G.get_edge_data(u, v)['predicate']
+            spo_list.append({
+                "source_id": u,
+                "source_name": G.nodes[u]['name'],
+                "predicate": pred,
+                "target_id": v,
+                "target_name": G.nodes[v]['name']
+            })
+        return spo_list
+
 
 # if __name__ == "__main__":
 #     config = Config()

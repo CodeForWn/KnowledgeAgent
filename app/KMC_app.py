@@ -291,10 +291,11 @@ def get_open_ans_stream():
     data = request.json
     session_id = data.get('session_id')
     token = data.get('token')
+    kb_id = data.get('kb_id', "")  # 用于特定知识库
     query = data.get('query')
     llm = data.get('llm', 'qwen')  # 默认使用 qwen
     top_p = data.get('top_p', 0.8)
-    temperature = data.get('temperature', 0)
+    temperature = data.get('temperature', 0.4)
     # 获取历史对话内容
     history = prompt_builder.get_history(session_id, token)
     logger.info(f"历史对话：{history}")
@@ -584,9 +585,10 @@ def answer_question_stream_new():
         session_id = data.get('session_id')
         token = data.get('token')
         query = data.get('query')
+        kb_id = data.get('kb_id', "")  # 用于特定知识库
         func = data.get('func', 'bm25')
         ref_num = data.get('ref_num', 5)
-        llm = data.get('llm', 'deepseek').lower()
+        llm = data.get('llm', 'qwen').lower()
         top_p = data.get('top_p', 0.8)
         temperature = 0.1
         user_info = data.get('userInfo', {})
@@ -617,7 +619,7 @@ def answer_question_stream_new():
 
         if not all_refs:
             matches = []
-            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
+            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context, kb_id)
         else:
             reranker = FlagReranker(rerank_model_path, use_fp16=True)
             ref_pairs = [[query, ref['text']] for ref in all_refs]
@@ -647,10 +649,11 @@ def answer_question_stream_new():
             } for ref, score in top_list]
 
             if not top_scores or top_scores[0] < 0.3:
-                prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context)
+                prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context, kb_id)
                 matches = []
             else:
-                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context)
+                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context, kb_id)
+                print(f"构建的提示词: {prompt}")
                 matches = [{
                     'text': ref['text'],
                     'original_text': ref['original_text'],

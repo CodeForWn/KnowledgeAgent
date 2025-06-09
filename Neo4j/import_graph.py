@@ -11,9 +11,9 @@ driver = GraphDatabase.driver(uri, auth=(username, password))
 
 # 固定属性值
 default_props = {
-    "kb_id": "1927242001741434881",
+    "kb_id": "",
     "unit": "",
-    "root_name": "100395",
+    "root_name": "",
     "difficulty": "",
     "type": "概念型",
     "teaching_requirements": ""

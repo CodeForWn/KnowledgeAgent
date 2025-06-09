@@ -5,6 +5,9 @@ import spacy
 import pymupdf4llm
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import MarkdownHeaderTextSplitter
+import pandas as pd
+import tempfile
+from langchain_community.document_loaders.csv_loader import CSVLoader
 from pymupdf4llm import LlamaMarkdownReader
 import jieba.posseg as pseg
 import mimetypes
@@ -238,12 +241,17 @@ class FileManager:
         _, file_extension = os.path.splitext(file_name)
         file_extension = file_extension.lower()
 
+        # ==== 新增：支持Excel多sheet分段 ====
+        if file_extension in ['.xls', '.xlsx']:
+            return self.process_excel_multi_sheet_to_doc_list(pdf_path, file_name)
+
         # 检查并设置输出路径
         if output_path is None:
             output_path = os.path.dirname(pdf_path)
 
         # 支持的文件扩展名检查
         supported_extensions = ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']
+
         # 如果文件是.docx格式，首先转换为.pdf
         if file_extension in supported_extensions:
             if file_extension in ['.docx', '.doc', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']:
@@ -531,8 +539,96 @@ class FileManager:
         pattern = r"^(#{1,6})\s+\*\*(.*?)\*\*"
         return re.sub(pattern, r"\1 \2", md_text, flags=re.MULTILINE)
 
+    def process_csv_or_excel_file(self, file_path, encoding="utf-8"):
+        """
+        解析csv/xls/xlsx文件，输出结构化文本片段，可用于后续向量化。
+        :param file_path: 文件路径
+        :param metadata_fields: 指定哪些字段存入metadata（如["id"]）
+        :param encoding: 文件编码（默认utf-8）
+        :return: List[dict]，每个元素形如{'text':..., 'original_text':..., 'metadata': {...}}
+        """
+        _, file_extension = os.path.splitext(file_path)
+        file_extension = file_extension.lower()
+        assert file_extension in [".csv", ".xls", ".xlsx"], "仅支持CSV/Excel文件"
+
+        # 统一转换为csv供CSVLoader处理
+        if file_extension == ".csv":
+            csv_path = file_path
+        else:
+            # Excel转为临时csv
+            df = pd.read_excel(file_path)
+            tmp_file = tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode='w', encoding=encoding)
+            df.to_csv(tmp_file.name, index=False)
+            csv_path = tmp_file.name
+
+        loader = CSVLoader(
+            file_path=csv_path,
+            encoding=encoding
+        )
+        docs = loader.load()
+
+        # 结构化输出
+        doc_list = []
+        for doc in docs:
+            doc_item = {
+                'text': doc.page_content,
+                'original_text': doc.page_content # 若后续有分词/预处理，可保留原文
+            }
+            doc_list.append(doc_item)
+
+        return doc_list
+
+    def process_excel_multi_sheet_to_doc_list(self, file_path, file_name, max_rows_per_chunk=5):
+        # 不再检查扩展名，直接尝试读
+        try:
+            xl = pd.ExcelFile(file_path)
+        except Exception as e:
+            self.logger.error(f"无法读取excel文件: {file_path}, 错误: {str(e)}")
+            return []
+
+        doc_list = []
+        for sheet_name in xl.sheet_names:
+            df = xl.parse(sheet_name, header=None)
+            df = df.fillna(method='ffill', axis=0)
+
+            n_rows = len(df)
+            n_chunks = (n_rows + max_rows_per_chunk - 1) // max_rows_per_chunk
+
+            for i in range(n_chunks):
+                start = i * max_rows_per_chunk
+                end = min((i + 1) * max_rows_per_chunk, n_rows)
+                chunk_df = df.iloc[start:end]
+
+                # 片段文本
+                lines = []
+                for row in chunk_df.itertuples(index=False, name=None):
+                    row_str = "\t".join([str(x) if pd.notna(x) else "" for x in row])
+                    lines.append(row_str)
+                chunk_text = f"【Sheet】{sheet_name}\n" + "\n".join(lines)
+
+                # 构建doc_list片段
+                doc_list.append({
+                    "page": i + 1,
+                    "text": chunk_text,
+                    "original_text": chunk_text,
+                    "sheet": sheet_name
+                })
+
+        self.logger.info(f"Excel多sheet共生成 {len(doc_list)} 个结构化片段")
+        return doc_list
+
 
 # if __name__ == "__main__":
+#     # 加载配置
+#     config = Config(env='production')
+#     config.load_config()  # 指定配置文件的路径
+#
+#     # 创建 FileManager 实例
+#     file_manager = FileManager(config)
+#     test_file = "/home/ubuntu/work/kmcGPT/KMC/File_manager/同济大学小舟二期功能(1).xlsx"
+#     segments = file_manager.process_excel_multi_sheet_to_doc_list(test_file)
+
+
 #     llama_reader = pymupdf4llm.LlamaMarkdownReader()
 #     llama_docs = llama_reader.load_data("/home/ubuntu/work/kmcGPT/KMC/File_manager/高中 地理 选修1(2)_7-13.pdf", write_images=True)
 #     # 输出为 Markdown 文件
