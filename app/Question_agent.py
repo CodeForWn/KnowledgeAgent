@@ -283,211 +283,92 @@ def get_question_agent():
 
 
 @app.route("/api/question_agent_pro", methods=["POST"])
-def get_question_agent_pro():
-    try:
-        # 从请求中获取 JSON 数据
-        data = request.get_json()
-        knowledge_point = data.get("knowledge_point", "")
-        difficulty_level = data.get('difficulty_level', '普通')  # 难度等级
-        question_type = data.get('question_type', '单选题')  # 题型
-        question_count = data.get('question_count', 3)  # 题目数量
-        llm = data.get('llm', 'qwen')
-        top_p = data.get('top_p', 0.8)
-        temperature = data.get('temperature', 0.8)
-        query = knowledge_point + "的地理定义和意义是什么？"
+def question_pro():
+    data = request.get_json()
+    knowledge_points = data.get("knowledge_points", [])   # 支持单个/多个
+    difficulty_level = data.get("difficulty_level", "困难")  # 默认困难难度
+    query = data.get("query", None)
+    kb_id = data.get("kb_id", "")  
+    question_type = data.get("question_type", "单选题")  # 默认单选题
+    question_count = data.get("question_count", 1)  # 默认1道题
 
-        if not knowledge_point:
-            return jsonify({"error": "knowledge_point 参数为空"}), 400
+    # 必须二选一
+    if not knowledge_points and not query:
+        return jsonify({"error": "参数缺失，knowledge_points 或 query 必须至少有一个"}), 400
+    
+    # --- 1. 如果是 query 模式，直接调用大模型提示词 ---
+    if query and not knowledge_points:
+        # 你需要在 prompt_builder 里实现 generate_test_prompt_for_qwen_un_kg 方法（见后文）
+        question_prompt = prompt_builder.generate_test_prompt_for_qwen_un_kg(query, difficulty_level, question_type, question_count, kb_id)
+        question = large_model_service.get_answer_from_Tyqwen(question_prompt)
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "question_prompt": question_prompt,
+                "graph2text": "",
+                "question": question
+            }
+        })
 
-        # 调用 get_entity_details 方法获取该知识点的详细信息
-        result = neo4j_handler.get_entity_details(knowledge_point, kb_id)
-        resources = result.get("resources", []) if result else []
+    # --- 2. 如果是知识点模式，按原图谱流程 ---
+    if isinstance(knowledge_points, str):
+        knowledge_points = [knowledge_points]
+    if not knowledge_points:
+        return jsonify({"error": "knowledge_points 参数缺失"}), 400
+    
+    entity_ids = []
+    for kp in knowledge_points:
+        eid = neo4j_handler.get_element_id_by_name(kp)
+        if eid:
+            entity_ids.append(eid)
+    if not entity_ids:
+        return jsonify({"error": "所有知识点都未找到实体ID"}), 400
 
-        if not resources:
-            logger.info(f"知识点 {knowledge_point} 无资源，直接走空相关内容构造prompt")
-            related_texts = []
-            spo = {}
-            prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
-                knowledge_point=knowledge_point,
-                related_texts=related_texts,
-                spo=spo,
-                difficulty_level=difficulty_level,
-                question_type=question_type,
-                question_count=question_count
-            )
-            if llm.lower() == 'qwen':
-                response_text = large_model_service.get_answer_from_Tyqwen(prompt)
-                try:
-                    model_result = json.loads(response_text)
-                    logger.info(f"大模型返回原始内容是标准JSON")
-                    return jsonify({"code": 200, "msg": "success", "data": model_result})
-                except json.JSONDecodeError:
-                    logger.warning(f"大模型返回的不是标准JSON，原文: {repr(response_text)}")
-                    # 直接返回纯文本
-                    return Response(response_text, content_type='text/plain; charset=utf-8')
+    node_list, edge_list = extract_answer_space(entity_ids)
+    G = neo4j_handler.build_graph_from_edges(node_list, edge_list)
+    print("构建的图节点数：", len(G.nodes), "边数：", len(G.edges))
+    candidate_subgraphs = neo4j_handler.generate_candidate_subgraphs(G, entity_ids)
+    print("候选子图：", candidate_subgraphs)
+    selected_subgraph, all_scored_subgraphs = neo4j_handler.score_and_select_subgraph_by_difficulty(
+        candidate_subgraphs, node_list, difficulty_level, weights=(0.35, 0.2, 0.1)
+    )
 
-            if llm.lower() == 'deepseek':
-                response_text = large_model_service.get_answer_from_deepseek(prompt)
-                try:
-                    model_result = json.loads(response_text)
-                    logger.info(f"大模型返回原始内容是标准JSON")
-                    return jsonify({"code": 200, "msg": "success", "data": model_result})
-                except json.JSONDecodeError:
-                    logger.warning(f"大模型返回的不是标准JSON，原文: {repr(response_text)}")
-                    return Response(response_text, content_type='text/plain; charset=utf-8')
+    if not selected_subgraph:
+        return jsonify({"error": "无可用子图"}), 400
 
-        logger.info(f"获取知识点 {knowledge_point} 的子图信息：{result}")
+    # 只返回知识点名称链
+    selected_names = selected_subgraph['path_names'].split(' - ') if selected_subgraph.get('path_names') else []
 
-        # 有资源的话，处理资源
-        combined_doc_list = []
-        index_name = f"temp_kb_{knowledge_point}_{int(time.time())}"
+    spo_list = neo4j_handler.subgraph_to_spo_list(G, selected_subgraph)
+    spo_text_list = [
+        neo4j_handler.triplet_to_natural_language(
+            edge["source_name"], edge["predicate"], edge["target_name"]
+        ) for edge in spo_list
+    ]
+    spo_text = "；\n".join(spo_text_list) if spo_text_list else ""
+    print("graph2text结果：", spo_text)
+    summary_prompt = prompt_builder.summarize_graph_relations(spo_text, subject_name="、".join(knowledge_points))
+    spo_text_summary = large_model_service.get_answer_from_Tyqwen(summary_prompt)
 
-        for res in resources:
-            docID = res.get("docID")
-            resource_detail = mongo_handler.get_resource_by_docID(docID)
-            logger.info(f"资源 docID={docID} 的详情信息：{resource_detail}")
-
-            if not resource_detail:
-                logger.warning(f"资源未找到：docID = {docID}")
-                continue
-
-            file_path = resource_detail.get("file_path", "")
-            file_name = resource_detail.get("file_name", "")
-            subject = resource_detail.get("subject", "")
-            resource_type = resource_detail.get("resource_type", "")
-            metadata = resource_detail.get("metadata", {})
-
-            if not file_path:
-                logger.error(f"资源 file_path 为空：docID = {docID}")
-                continue
-
-            # 检查远程文件或本地文件是否存在
-            if file_path.startswith('http://') or file_path.startswith('https://'):
-                try:
-                    response = requests.head(file_path, timeout=5)
-                    if response.status_code != 200:
-                        logger.error(f"远程文件 {file_path} 不可访问，跳过资源 {file_name}")
-                        continue
-                except requests.RequestException:
-                    logger.error(f"远程文件 {file_path} 请求异常，跳过资源 {file_name}")
-                    continue
-            else:
-                if not os.path.exists(file_path):
-                    logger.error(f"本地文件 {file_path} 不存在，跳过资源 {file_name}")
-                    continue
-
-            # 处理文件，创建临时索引
-            try:
-                doc_list = file_manager.process_pdf_file(file_path, file_name)
-                if not doc_list:
-                    logger.error(f"文件处理失败：{file_name}")
-                    continue
-
-                success = es_handler.create_temp_index(index_name, doc_list, docID, file_name, file_path, subject, resource_type, metadata)
-                if not success:
-                    logger.error(f"临时索引创建失败：{index_name}")
-                    continue
-
-                logger.info(f"临时索引 {index_name} 创建成功")
-
-                bm25_hits = es_handler.agent_search_bm25(index_name, query, ref_num=10)
-                embed_hits = es_handler.agent_search_embed(index_name, query, ref_num=10)
-
-                combined_doc_list.extend(bm25_hits)
-                combined_doc_list.extend(embed_hits)
-
-            except Exception as e:
-                logger.error(f"处理文件 {file_name} 时发生异常: {e}", exc_info=True)
-                continue
-
-        # 删除临时索引
-        es_handler.delete_index(index_name)
-        logger.info(f"索引 {index_name} 已删除")
-
-        # 检查检索结果
-        if not combined_doc_list:
-            logger.warning(f"检索到的片段为空，走空related_texts模式继续生成。")
-            related_texts = []
-            spo = {}
-        else:
-            # 过滤、去重、重排
-            filtered_combined_doc_list = [
-                doc for doc in combined_doc_list
-                if '_source' in doc and 'text' in doc['_source'] and doc['_source']['text'].strip()
-            ]
-
-            if not filtered_combined_doc_list:
-                logger.warning("经过过滤后，没有有效的文档片段，走空related_texts。")
-                related_texts = []
-                spo = {}
-            else:
-                unique_docs = {doc['_source']['text']: doc for doc in filtered_combined_doc_list}.values()
-                ref_pairs = [[query, doc['_source']['text']] for doc in unique_docs]
-
-                if not ref_pairs:
-                    logger.warning("没有可供重排的文档对，走空related_texts。")
-                    related_texts = []
-                    spo = {}
-                else:
-                    scores = reranker.compute_score(ref_pairs, normalize=True)
-                    sorted_docs_with_scores = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
-                    threshold = 0.3
-                    final_docs = [doc for doc, score in sorted_docs_with_scores if score > threshold]
-
-                    if not final_docs:
-                        logger.warning(f"重排后无得分超过阈值 {threshold} 的片段，走空related_texts。")
-                        related_texts = []
-                        spo = {}
-                    else:
-                        related_texts = [doc['_source']['text'] for doc in final_docs]
-                        spo = result  # 保留原子图信息
-
-        # 构造提示词，发送大模型
-        prompt = prompt_builder.generate_question_agent_prompt_for_qwen(
-            knowledge_point=knowledge_point,
-            related_texts=related_texts,
-            spo=spo,
-            difficulty_level=difficulty_level,
-            question_type=question_type,
-            question_count=question_count
-        )
-
-        def parse_questions_from_text(text):
-            """将多道题（换行分隔）解析为结构化 JSON"""
-            blocks = [q.strip() for q in text.strip().split("\n\n") if q.strip()]
-            return [{"question": block} for block in blocks]
-
-        # ✅ Qwen 模型处理
-        if llm.lower() == 'qwen':
-            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
-            try:
-                structured_questions = parse_questions_from_text(response_text)
-                return jsonify({
-                    "code": 200,
-                    "msg": "success",
-                    "data": structured_questions
-                })
-            except Exception as e:
-                logger.warning(f"[Qwen] 输出结构化失败，原始返回：{repr(response_text)}，错误: {e}")
-                return Response(response_text, content_type='text/plain; charset=utf-8')
-
-        # ✅ DeepSeek 模型处理
-        if llm.lower() == 'deepseek':
-            response_text = large_model_service.get_answer_from_deepseek(prompt)
-            try:
-                structured_questions = parse_questions_from_text(response_text)
-                return jsonify({
-                    "code": 200,
-                    "msg": "success",
-                    "data": structured_questions
-                })
-            except Exception as e:
-                logger.warning(f"[DeepSeek] 输出结构化失败，原始返回：{repr(response_text)}，错误: {e}")
-                return Response(response_text, content_type='text/plain; charset=utf-8')
-
-    except Exception as e:
-        logger.error(f"Error in get_question_agent: {e}", exc_info=True)
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+    question_prompt = prompt_builder.generate_test_prompt_for_qwen(
+        knowledge_point=knowledge_points,
+        difficulty_level=difficulty_level,
+        question_type=question_type,
+        question_count=question_count,
+        kb_id=kb_id,    
+        graph2text=spo_text_summary
+    )
+    question = large_model_service.get_answer_from_Tyqwen(question_prompt)
+    return jsonify({
+        "code": 200,
+        "msg": "success",
+        "data": {
+            "question_prompt": question_prompt,
+            "graph2text": spo_text_summary,
+            "question": question
+        }
+    })
 
 
 def highlight_answer_with_html(raw_answer: str, color: str = "#3D8BFF") -> str:
@@ -3047,14 +2928,35 @@ def extract_answer_space(entity_ids):
 def build_answer_space_api():
     data = request.get_json()
     knowledge_points = data.get("knowledge_points", [])   # 支持单个/多个
-    difficulty = data.get("difficulty", "困难")  # 默认普通难度
-    kb_id = data.get("kb_id", "")  # 默认高中地理知识库
+    difficulty_level = data.get("difficulty_level", "困难")  # 默认困难难度
+    query = data.get("query", None)
+    kb_id = data.get("kb_id", "")  
     question_type = data.get("question_type", "单选题")  # 默认单选题
+    question_count = data.get("question_count", 1)  # 默认1道题
+
+    # 必须二选一
+    if not knowledge_points and not query:
+        return jsonify({"error": "参数缺失，knowledge_points 或 query 必须至少有一个"}), 400
+    
+    # --- 1. 如果是 query 模式，直接调用大模型提示词 ---
+    if query and not knowledge_points:
+        # 你需要在 prompt_builder 里实现 generate_test_prompt_for_qwen_un_kg 方法（见后文）
+        question_prompt = prompt_builder.generate_test_prompt_for_qwen_un_kg(query, difficulty_level, question_type, question_count, kb_id)
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "question_prompt": question_prompt,
+                "graph2text": ""
+            }
+        })
+
+    # --- 2. 如果是知识点模式，按原图谱流程 ---
     if isinstance(knowledge_points, str):
         knowledge_points = [knowledge_points]
     if not knowledge_points:
         return jsonify({"error": "knowledge_points 参数缺失"}), 400
-
+    
     entity_ids = []
     for kp in knowledge_points:
         eid = neo4j_handler.get_element_id_by_name(kp)
@@ -3069,7 +2971,7 @@ def build_answer_space_api():
     candidate_subgraphs = neo4j_handler.generate_candidate_subgraphs(G, entity_ids)
     print("候选子图：", candidate_subgraphs)
     selected_subgraph, all_scored_subgraphs = neo4j_handler.score_and_select_subgraph_by_difficulty(
-        candidate_subgraphs, node_list, difficulty, weights=(0.35, 0.2, 0.1)
+        candidate_subgraphs, node_list, difficulty_level, weights=(0.35, 0.2, 0.1)
     )
 
     if not selected_subgraph:
@@ -3091,10 +2993,10 @@ def build_answer_space_api():
 
     question_prompt = prompt_builder.generate_test_prompt_for_qwen(
         knowledge_point=knowledge_points,
-        difficulty_level=difficulty,
+        difficulty_level=difficulty_level,
         question_type=question_type,
-        question_count=1,
-        kb_id=kb_id,
+        question_count=question_count,
+        kb_id=kb_id,    
         graph2text=spo_text_summary
     )
 
@@ -3187,7 +3089,6 @@ def get_qa_kp():
     except Exception as e:
         logger.error(f"get_qa_kp接口异常: {e}")
         return jsonify({"code": 500, "msg": str(e), "data": []}), 500
-
 
 
 if __name__ == "__main__":

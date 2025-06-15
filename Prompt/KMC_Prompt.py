@@ -1148,6 +1148,62 @@ class PromptBuilder:
 
         return messages
 
+
+    @staticmethod
+    def generate_test_prompt_for_qwen_un_kg(query, difficulty_level, question_type, question_count, kb_id):
+        # 1. 按kb_id查找配置，找不到则用地理作为默认
+        config = QUESTION_CONFIGS.get(str(kb_id), QUESTION_CONFIGS["1911603842693210113"])
+
+        # 2. 取对应难度描述与题型示例
+        difficulty_details = config["difficulty_details"].get(
+            difficulty_level, next(iter(config["difficulty_details"].values()))
+        )
+        example = config["example_dict"].get((question_type, difficulty_level), "")
+        subject_name = config["name"]
+
+        # 3. 题型描述
+        question_desc = {
+            "单选题": "生成单选题的题干及4个选项，只有1个正确选项。",
+            "多选题": "生成多选题的题干及4个选项，正确选项1至4个。",
+            "填空题": "生成填空题的题干，需填空数量根据难度等级而定。"
+        }.get(question_type, "生成单选题的题干及4个选项，只有1个正确选项。")
+
+        # 4. 系统role提示词
+        system_content = f"你是一位经验丰富的{subject_name}学科出题专家，擅长根据题目描述、题干约束、题目示例生成高质量考试题目。请只输出题干内容，不包含答案和解析。如果需要输出数学表达式，请严格使用行内公式 `$a + b = c$` 或块级公式 `$$...$$`。其他任何内容都不要包含美元符号。"
+
+        # 7. 用户任务内容
+        user_content = f"""
+    【当前任务】：
+    - 题目描述：{query}
+    - 题型：{question_type}
+    - 难度等级：{difficulty_level}
+    - 题目数量：{question_count}
+
+    任务要求：
+    题型：{question_desc}
+    难度：{difficulty_details}
+
+    请严格依据以下给定的题干范围生成题目：
+    题目示例：
+    {example}
+
+    请严格按照示例的格式生成题目内容，确保：
+    - 题干表述清晰，逻辑严谨。
+    - 只生成题干及选项内容，不输出答案及解析。
+    - 每道题之间以换行分隔。
+    - 不要出现任何其他特殊符号如"---"等。
+
+    现在请生成共{question_count}道{question_type}。
+    """
+
+        # 8. 返回消息格式
+        messages = [
+            {'role': 'system', 'content': system_content.strip()},
+            {'role': 'user', 'content': user_content.strip()}
+        ]
+        return messages
+
+
     @staticmethod
     def generate_ppt_from_outline_prompt(knowledge_point, outline_markdown, textbook_text):
         """

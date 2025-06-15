@@ -3,6 +3,7 @@ import re
 import shutil
 import pickle
 import random
+import itertools
 from flask_cors import CORS
 from nltk.tokenize import word_tokenize
 from elasticsearch import Elasticsearch, helpers
