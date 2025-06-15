@@ -282,6 +282,15 @@ def get_question_agent():
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
+def clean_markdown_latex(text):
+    # 替换 <br>$$ 为 $$（去掉前面的<br>）
+    text = re.sub(r'<br>\s*\$\$', r'$$', text)
+    # 替换 $$<br> 为 $$（去掉后面的<br>）
+    text = re.sub(r'\$\$\s*<br>', r'$$', text)
+    # 可选：多余的连续空行合并为1个
+    text = re.sub(r'\n{3,}', r'\n\n', text)
+    return text
+
 @app.route("/api/question_agent_pro", methods=["POST"])
 def question_pro():
     data = request.get_json()
@@ -301,13 +310,16 @@ def question_pro():
         # 你需要在 prompt_builder 里实现 generate_test_prompt_for_qwen_un_kg 方法（见后文）
         question_prompt = prompt_builder.generate_test_prompt_for_qwen_un_kg(query, difficulty_level, question_type, question_count, kb_id)
         question = large_model_service.get_answer_from_Tyqwen(question_prompt)
+        question = question.replace('\n', '<br>')
+        cleaned_question = clean_markdown_latex(question)
+
         return jsonify({
             "code": 200,
             "msg": "success",
             "data": {
                 "question_prompt": question_prompt,
                 "graph2text": "",
-                "question": question
+                "question": cleaned_question
             }
         })
 
@@ -360,13 +372,16 @@ def question_pro():
         graph2text=spo_text_summary
     )
     question = large_model_service.get_answer_from_Tyqwen(question_prompt)
+    question = question.replace('\n', '<br>')
+    cleaned_question = clean_markdown_latex(question)
+
     return jsonify({
         "code": 200,
         "msg": "success",
         "data": {
             "question_prompt": question_prompt,
             "graph2text": spo_text_summary,
-            "question": question
+            "question": cleaned_question
         }
     })
 
