@@ -43,6 +43,42 @@ class KMCMongoDBHandler:
         except Exception as e:
             self.logger.error("连接MongoDB时出现错误: {}".format(e))
 
+    def get_collection(self, collection_name):
+        """
+        获取集合对象
+        """
+        return self.db[collection_name]
+    
+    def insert_dataset(self, collection_name, data):
+        """
+        插入单条数据到指定 collection
+        自动添加唯一 docID，如果已有 dataset_id 则使用已有
+        """
+        col = self.get_collection(collection_name)
+        if "dataset_id" not in data or not data["dataset_id"]:
+            data["dataset_id"] = self.generate_docid()
+        try:
+            result = col.insert_one(data)
+            self.logger.info(f"插入数据成功，_id: {result.inserted_id}")
+            return result.inserted_id
+        except errors.DuplicateKeyError:
+            self.logger.error("dataset_id 已存在，插入失败。")
+            return None
+        except Exception as e:
+            self.logger.error(f"插入数据出错: {e}")
+            return None
+
+    def ensure_unique_index(self, collection_name, key="dataset_id"):
+        """
+        为指定字段创建唯一索引
+        """
+        col = self.get_collection(collection_name)
+        try:
+            col.create_index([(key, 1)], unique=True)
+            self.logger.info(f"已为 {collection_name}.{key} 建立唯一索引")
+        except Exception as e:
+            self.logger.error(f"创建唯一索引失败: {e}")
+
     def insert_document(self, collection_name, document):
         """向指定集合中插入单个文档"""
         try:

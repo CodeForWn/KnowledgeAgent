@@ -601,12 +601,15 @@ def answer_question_stream_new():
         role_description = "老师" if outer_user_role == '2' else "同学"
         user_context = f"您好，我是{outer_user_name}{role_description}。"
 
-        predefined_answer = config.predefined_qa.get(query)
+        predefined_qa_dict = config.predefined_qa
+        # 1. 按 kb_id+query 查询（你的配置文件是这样设计的！）
+        predefined_answer = predefined_qa_dict.get(kb_id, {}).get(query)
         if predefined_answer:
-            if isinstance(predefined_answer, str):
-                return jsonify({'answer': predefined_answer, 'matches': []}), 200
-            elif isinstance(predefined_answer, dict):
-                return jsonify(predefined_answer), 200
+            result = {
+                "answer": predefined_answer.get("answer", "") if isinstance(predefined_answer, dict) else predefined_answer,
+                "matches": predefined_answer.get("matches", []) if isinstance(predefined_answer, dict) else []
+            }
+            return Response(json.dumps(result, ensure_ascii=False), content_type='application/json; charset=utf-8')
 
         # 获取历史对话内容
         history = prompt_builder.get_history(session_id, token)
