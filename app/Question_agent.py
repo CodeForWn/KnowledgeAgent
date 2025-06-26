@@ -43,6 +43,9 @@ from collections import deque
 import numpy as np
 import random
 
+# 导入队列管理器
+from queue_manager import queue_manager, Priority, TaskStatus, async_task
+
 app = Flask(__name__)
 CORS(app)
 # 加载配置
@@ -59,6 +62,152 @@ mongo_handler = KMCMongoDBHandler(config)
 es_handler = ElasticSearchHandler(config)
 rerank_model_path = config.rerank_model_path
 reranker = FlagReranker(rerank_model_path, use_fp16=True)
+
+# 启动队列管理器
+queue_manager.start()
+logger.info("队列管理器已启动")
+
+# ===== 异步任务函数定义 =====
+
+@async_task(priority=Priority.MEDIUM, timeout=180)
+def question_pro_task(knowledge_points, difficulty_level, query, kb_id, question_type, question_count):
+    """question_agent_pro 的异步任务"""
+    try:
+        # 必须二选一
+        if not knowledge_points and not query:
+            return {"error": "参数缺失，knowledge_points 或 query 必须至少有一个"}
+        
+        # --- 1. 如果是 query 模式，直接调用大模型提示词 ---
+        if query and not knowledge_points:
+            question_prompt = prompt_builder.generate_test_prompt_for_qwen_un_kg(query, difficulty_level, question_type, question_count, kb_id)
+            question = large_model_service.get_answer_from_Tyqwen(question_prompt)
+            question = question.replace('\n', '<br>')
+            cleaned_question = clean_markdown_latex(question)
+            questions = [q.strip() for q in cleaned_question.strip().split("【题目分隔符】") if q.strip()]
+            data_json = [{"question": q} for q in questions]
+
+            return {
+                "code": 200,
+                "msg": "success",
+                "data": {
+                    "question_prompt": question_prompt,
+                    "graph2text": "",
+                    "questions": data_json
+                }
+            }
+
+        # --- 2. 如果是知识点模式，按原图谱流程 ---
+        if isinstance(knowledge_points, str):
+            knowledge_points = [knowledge_points]
+        if not knowledge_points:
+            return {"error": "knowledge_points 参数缺失"}
+        
+        entity_ids = []
+        for kp in knowledge_points:
+            eid = neo4j_handler.get_element_id_by_name(kp)
+            if eid:
+                entity_ids.append(eid)
+        if not entity_ids:
+            return {"error": "所有知识点都未找到实体ID"}
+
+        node_list, edge_list = extract_answer_space(entity_ids)
+        G = neo4j_handler.build_graph_from_edges(node_list, edge_list)
+        logger.info(f"构建的图节点数：{len(G.nodes)}，边数：{len(G.edges)}")
+        
+        candidate_subgraphs = neo4j_handler.generate_candidate_subgraphs(G, entity_ids)
+        logger.info(f"候选子图：{candidate_subgraphs}")
+        
+        selected_subgraph, all_scored_subgraphs = neo4j_handler.score_and_select_subgraph_by_difficulty(
+            candidate_subgraphs, node_list, difficulty_level, weights=(0.35, 0.2, 0.1)
+        )
+
+        if not selected_subgraph:
+            return {"error": "无可用子图"}
+
+        spo_list = neo4j_handler.subgraph_to_spo_list(G, selected_subgraph)
+        spo_text_list = [
+            neo4j_handler.triplet_to_natural_language(
+                edge["source_name"], edge["predicate"], edge["target_name"]
+            ) for edge in spo_list
+        ]
+        spo_text = "；\n".join(spo_text_list) if spo_text_list else ""
+        logger.info(f"graph2text结果：{spo_text}")
+        
+        summary_prompt = prompt_builder.summarize_graph_relations(spo_text, subject_name="、".join(knowledge_points))
+        spo_text_summary = large_model_service.get_answer_from_Tyqwen(summary_prompt)
+
+        question_prompt = prompt_builder.generate_test_prompt_for_qwen(
+            knowledge_point=knowledge_points,
+            difficulty_level=difficulty_level,
+            question_type=question_type,
+            question_count=question_count,
+            kb_id=kb_id,    
+            graph2text=spo_text_summary
+        )
+        
+        question = large_model_service.get_answer_from_Tyqwen(question_prompt)
+        logger.info(f"question: {question}")
+        cleaned_question = clean_markdown_latex(question)
+
+        questions = [q.strip() for q in cleaned_question.strip().split("【题目分隔符】") if q.strip()]
+        data_json = [{"question": q} for q in questions]
+
+        return {
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "question_prompt": question_prompt,
+                "graph2text": spo_text_summary,
+                "questions": data_json
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"question_pro_task 失败: {e}", exc_info=True)
+        return {"code": 500, "msg": str(e), "data": None}
+
+@async_task(priority=Priority.MEDIUM, timeout=240)  
+def question_explanation_agent_task(knowledge_points, question_content, difficulty_level, question_type, llm, kb_id):
+    """question_explanation_agent 的异步任务"""
+    try:
+        result = neo4j_handler.get_entity_details(knowledge_points, kb_id)
+
+        # 生成完整提示词：
+        prompt = prompt_builder.generate_explanation_prompt_for_qwen(
+            knowledge_points=knowledge_points,
+            question_type=question_type,
+            difficulty_level=difficulty_level,
+            question_content=question_content,
+            related_entity_info=result
+        )
+
+        if llm.lower() == 'qwen':
+            response_text = large_model_service.get_answer_from_Tyqwen(prompt)
+            result = json.loads(response_text)
+            result['answer'] = highlight_answer_with_html(result['answer'])
+            result['analysis'] = highlight_analysis_with_html(result['analysis'])
+            return {
+                "code": 200,
+                "msg": "success",
+                "data": result
+            }
+
+        if llm.lower() == 'deepseek':
+            response_text = large_model_service.get_answer_from_deepseek(prompt)
+            result = json.loads(response_text)
+            result['answer'] = highlight_answer_with_html(result['answer'])
+            result['analysis'] = highlight_analysis_with_html(result['analysis'])
+            return {
+                "code": 200,
+                "msg": "success",
+                "data": result
+            }
+        
+        return {"code": 500, "msg": f"不支持的模型类型: {llm}", "data": None}
+
+    except Exception as e:
+        logger.error(f"question_explanation_agent_task 失败: {e}", exc_info=True)
+        return {"code": 500, "msg": str(e), "data": None}
 
 
 def file_exists(path):
@@ -291,6 +440,7 @@ def clean_markdown_latex(text):
     text = re.sub(r'\n{3,}', r'\n\n', text)
     return text
 
+
 @app.route("/api/question_agent_pro", methods=["POST"])
 def question_pro():
     data = request.get_json()
@@ -312,6 +462,8 @@ def question_pro():
         question = large_model_service.get_answer_from_Tyqwen(question_prompt)
         question = question.replace('\n', '<br>')
         cleaned_question = clean_markdown_latex(question)
+        questions = [q.strip() for q in cleaned_question.strip().split("【题目分隔符】") if q.strip()]
+        data_json = [{"question": q} for q in questions]
 
         return jsonify({
             "code": 200,
@@ -319,7 +471,7 @@ def question_pro():
             "data": {
                 "question_prompt": question_prompt,
                 "graph2text": "",
-                "question": cleaned_question
+                "questions": data_json   # 注意key变为questions
             }
         })
 
@@ -372,8 +524,11 @@ def question_pro():
         graph2text=spo_text_summary
     )
     question = large_model_service.get_answer_from_Tyqwen(question_prompt)
-    question = question.replace('\n', '<br>')
+    logger.info(f"question: {question}")
     cleaned_question = clean_markdown_latex(question)
+
+    questions = [q.strip() for q in cleaned_question.strip().split("【题目分隔符】") if q.strip()]
+    data_json = [{"question": q} for q in questions]
 
     return jsonify({
         "code": 200,
@@ -381,7 +536,7 @@ def question_pro():
         "data": {
             "question_prompt": question_prompt,
             "graph2text": spo_text_summary,
-            "question": cleaned_question
+            "questions": data_json   # 注意key变为questions
         }
     })
 
@@ -3106,5 +3261,152 @@ def get_qa_kp():
         return jsonify({"code": 500, "msg": str(e), "data": []}), 500
 
 
+# ===== 队列版本的API端点 =====
+
+@app.route("/api/question_agent_pro_async", methods=["POST"])
+def question_agent_pro_async():
+    """异步版本的question_agent_pro"""
+    try:
+        data = request.get_json()
+        knowledge_points = data.get("knowledge_points", [])
+        difficulty_level = data.get("difficulty_level", "困难")
+        query = data.get("query", None)
+        kb_id = data.get("kb_id", "")
+        question_type = data.get("question_type", "单选题")
+        question_count = data.get("question_count", 1)
+
+        # 提交到队列
+        task_id = question_pro_task(
+            knowledge_points, difficulty_level, query, kb_id, 
+            question_type, question_count
+        )
+
+        return jsonify({
+            "code": 200,
+            "msg": "任务已提交到队列",
+            "data": {"task_id": task_id}
+        })
+
+    except Exception as e:
+        logger.error(f"提交question_agent_pro任务失败: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/question_explanation_agent_async", methods=["POST"])
+def question_explanation_agent_async():
+    """异步版本的question_explanation_agent"""
+    try:
+        data = request.get_json()
+        knowledge_points = data.get("knowledge_point", "")
+        question_content = data.get("question_content", "")
+        difficulty_level = data.get('difficulty_level', '困难')
+        question_type = data.get('question_type', '单选题')
+        llm = data.get('llm', 'qwen')
+        kb_id = data.get('kb_id', '1911603842693210113')
+
+        if not question_content:
+            return jsonify({"error": "题干为空"}), 400
+
+        # 提交到队列
+        task_id = question_explanation_agent_task(
+            knowledge_points, question_content, difficulty_level, 
+            question_type, llm, kb_id
+        )
+
+        return jsonify({
+            "code": 200,
+            "msg": "任务已提交到队列",
+            "data": {"task_id": task_id}
+        })
+
+    except Exception as e:
+        logger.error(f"提交question_explanation_agent任务失败: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/task/status/<task_id>", methods=["GET"])
+def get_task_status_api(task_id):
+    """获取任务状态"""
+    try:
+        result = queue_manager.get_task_result(task_id)
+        
+        if not result:
+            return jsonify({
+                "code": 404,
+                "msg": "任务不存在",
+                "data": None
+            }), 404
+        
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": result.to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"获取任务状态失败: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/task/result/<task_id>", methods=["GET"])
+def get_task_result_api(task_id):
+    """获取任务结果"""
+    try:
+        result = queue_manager.get_task_result(task_id)
+        
+        if not result:
+            return jsonify({
+                "code": 404,
+                "msg": "任务不存在",
+                "data": None
+            }), 404
+        
+        if result.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+            return jsonify({
+                "code": 202,
+                "msg": f"任务正在处理中，状态: {result.status.value}",
+                "data": {"status": result.status.value}
+            })
+        
+        elif result.status == TaskStatus.SUCCESS:
+            return jsonify(result.result)
+            
+        elif result.status in [TaskStatus.FAILED, TaskStatus.TIMEOUT]:
+            return jsonify({
+                "code": 500,
+                "msg": result.error or "任务执行失败",
+                "data": None
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"获取任务结果失败: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/queue/stats", methods=["GET"])
+def get_queue_stats():
+    """获取队列统计信息"""
+    try:
+        stats = queue_manager.get_stats()
+        return jsonify({
+            "code": 200,
+            "msg": "success",
+            "data": stats
+        })
+    except Exception as e:
+        logger.error(f"获取队列统计失败: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ===== 应用生命周期管理 =====
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    """请求结束时清理"""
+    pass
+
+# 应用关闭时停止队列管理器
+import atexit
+atexit.register(lambda: queue_manager.stop())
+
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=7777, threaded=True)
+    try:
+        app.run(debug=False, host="0.0.0.0", port=7777, threaded=True)
+    finally:
+        queue_manager.stop()
