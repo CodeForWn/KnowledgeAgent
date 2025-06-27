@@ -669,12 +669,20 @@ def answer_question_stream_new():
                 } for ref, score in top_list]
 
         def generate_stream(model_name, prompt, matches, top_p, temperature, query, request_id):
+            """优化的流式输出，分离matches和answer数据"""
             full_answer = ""
             ans_generator = (large_model_service.get_answer_from_Tyqwen_stream if model_name == 'qwen' else large_model_service.get_answer_from_deepseek_stream)(prompt, top_p, temperature)
 
+            # 先发送matches信息
+            yield json.dumps({'matches': matches, 'type': 'matches'}, ensure_ascii=False) + '\n'
+            
+            # 然后发送答案流
             for chunk in ans_generator:
                 full_answer += chunk
-                yield json.dumps({'matches': matches, 'answer': full_answer}, ensure_ascii=False) + '\n'
+                yield json.dumps({'answer': full_answer, 'type': 'answer'}, ensure_ascii=False) + '\n'
+
+            # 发送完成信号
+            yield json.dumps({'type': 'complete'}, ensure_ascii=False) + '\n'
 
             log_data = {'question': query, 'answer': full_answer, 'matches': matches}
             logger.info(f"问题: {query}, 答案: {full_answer}")
@@ -869,6 +877,127 @@ def answer_question():
 
     except Exception as e:
         logger.error(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/get_answer_complete', methods=['POST'])
+def answer_question_complete():
+    """非流式版本，返回完整的响应对象"""
+    request_id = str(uuid.uuid4())
+    request.environ['REQUEST_ID'] = request_id
+
+    with request_lock:
+        request_status[request_id] = {
+            "start_time": time.time(),
+            "status": "processing",
+            "url": request.url
+        }
+
+    try:
+        data = request.json
+        assistant_id = data.get('assistant_id')
+        session_id = data.get('session_id')
+        token = data.get('token')
+        query = data.get('query')
+        kb_id = data.get('kb_id', "")
+        func = data.get('func', 'bm25')
+        ref_num = data.get('ref_num', 5)
+        llm = data.get('llm', 'qwen').lower()
+        top_p = data.get('top_p', 0.8)
+        temperature = 0.1
+        user_info = data.get('userInfo', {})
+
+        if not assistant_id or not query:
+            return jsonify({'error': '参数不完整'}), 400
+
+        outer_user_name = user_info.get('outerUserName', '一名用户')
+        outer_user_role = user_info.get('outerUserRole', '1')
+        role_description = "老师" if outer_user_role == '2' else "同学"
+        user_context = f"您好，我是{outer_user_name}{role_description}。"
+
+        predefined_qa_dict = config.predefined_qa
+        predefined_answer = predefined_qa_dict.get(kb_id, {}).get(query)
+        if predefined_answer:
+            result = {
+                "answer": predefined_answer.get("answer", "") if isinstance(predefined_answer, dict) else predefined_answer,
+                "matches": predefined_answer.get("matches", []) if isinstance(predefined_answer, dict) else []
+            }
+            return jsonify(result), 200
+
+        # 获取历史对话内容
+        history = prompt_builder.get_history(session_id, token)
+
+        all_refs = []
+        if func in ('bm25', 'embed'):
+            bm25_refs = es_handler.search_bm25(assistant_id, query, ref_num)
+            embed_refs = es_handler.search_embed(assistant_id, query, ref_num)
+            if bm25_refs and embed_refs:
+                all_refs = bm25_refs + embed_refs
+            elif bm25_refs:
+                all_refs = bm25_refs
+            elif embed_refs:
+                all_refs = embed_refs
+
+        if not all_refs:
+            matches = []
+            prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context, kb_id)
+        else:
+            reranker = FlagReranker(rerank_model_path, use_fp16=True)
+            ref_pairs = [[query, ref['text']] for ref in all_refs]
+            scores = reranker.compute_score(ref_pairs, normalize=True)
+            sorted_refs = sorted(zip(all_refs, scores), key=lambda x: x[1], reverse=True)
+
+            seen_texts = set()
+            top_list = []
+            for ref, score in sorted_refs:
+                if ref['text'] not in seen_texts:
+                    seen_texts.add(ref['text'])
+                    top_list.append((ref, score))
+                if len(top_list) >= 5:
+                    break
+
+            top_refs, top_scores = zip(*top_list) if top_list else ([], [])
+
+            if not top_scores or top_scores[0] < 0.3:
+                prompt = prompt_builder.generate_answer_prompt_un_refs(query, history, user_context, kb_id)
+                matches = []
+            else:
+                prompt = prompt_builder.generate_answer_prompt(query, top_refs, history, user_context, kb_id)
+                matches = [{
+                    'text': ref['text'],
+                    'original_text': ref['original_text'],
+                    'page': ref['page'],
+                    'file_id': ref['file_id'],
+                    'file_name': ref['file_name'],
+                    'download_path': ref['download_path'],
+                    'score': ref['score'],
+                    'rerank_score': score
+                } for ref, score in top_list]
+
+        # 获取完整答案（非流式）
+        if llm == 'qwen':
+            full_answer = large_model_service.get_answer_from_Tyqwen(prompt)
+        elif llm == 'deepseek':
+            full_answer = large_model_service.get_answer_from_deepseek(prompt)
+        else:
+            return jsonify({'error': '未知的大模型服务'}), 400
+
+        # 记录日志
+        log_data = {'question': query, 'answer': full_answer, 'matches': matches}
+        logger.info(f"问题: {query}, 答案: {full_answer}")
+        with open(record_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_data, ensure_ascii=False) + '\n')
+
+        with request_lock:
+            request_status[request_id].update({"end_time": time.time(), "status": "completed"})
+
+        # 返回完整的JSON对象
+        return jsonify({'matches': matches, 'answer': full_answer}), 200
+
+    except Exception as e:
+        logger.error(f"Error in answer_question_complete: {e}")
+        with request_lock:
+            request_status[request_id].update({"end_time": time.time(), "status": "failed"})
         return jsonify({'error': str(e)}), 500
 
 
