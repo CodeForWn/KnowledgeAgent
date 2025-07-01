@@ -72,9 +72,14 @@ class ElasticSearchHandler:
         except Exception as e:
             self.logger.error(f"连接过程中出现其他错误: {e}")
 
-    def notify_backend(self, file_id, result, failure_reason=None):
+    def notify_backend(self, file_id, result, sync_url, failure_reason=None):
         """通知后端接口处理结果"""
-        url = self.backend_notify_api  # 更新后的后端接口URL
+        self.logger.info(f"[ES Handler] 开始回调后端通知 - file_id: {file_id}, result: {result}, sync_url: {sync_url}")
+        
+        if not sync_url:
+            self.logger.warning(f"[ES Handler] 回调失败：sync_url为空 - file_id: {file_id}")
+            return None
+            
         headers = {'token': file_id}
         payload = {
             'id': file_id,
@@ -82,10 +87,28 @@ class ElasticSearchHandler:
         }
         if failure_reason:
             payload['failureReason'] = failure_reason
+            self.logger.info(f"[ES Handler] 回调包含失败原因 - file_id: {file_id}, failure_reason: {failure_reason}")
 
-        response = requests.post(url, json=payload, headers=headers)
-        self.logger.info("后端接口返回状态码：%s", response.status_code)
-        return response.status_code
+        try:
+            self.logger.info(f"[ES Handler] 发送回调请求 - file_id: {file_id}, payload: {payload}, headers: {headers}")
+            response = requests.post(sync_url, json=payload, headers=headers, timeout=30)
+            self.logger.info(f"[ES Handler] 回调成功 - file_id: {file_id}, 状态码: {response.status_code}, 响应内容: {response.text}")
+            
+            if response.status_code == 200:
+                self.logger.info(f"[ES Handler] 后端接口回调成功 - file_id: {file_id}")
+            else:
+                self.logger.warning(f"[ES Handler] 后端接口回调异常 - file_id: {file_id}, 状态码: {response.status_code}")
+                
+            return response.status_code
+        except requests.exceptions.Timeout:
+            self.logger.error(f"[ES Handler] 回调超时 - file_id: {file_id}, sync_url: {sync_url}")
+            return None
+        except requests.exceptions.ConnectionError:
+            self.logger.error(f"[ES Handler] 回调连接失败 - file_id: {file_id}, sync_url: {sync_url}")
+            return None
+        except Exception as e:
+            self.logger.error(f"[ES Handler] 回调发生异常 - file_id: {file_id}, 错误: {str(e)}")
+            return None
 
     def index_exists(self, index_name):
         # 查询索引是否存在

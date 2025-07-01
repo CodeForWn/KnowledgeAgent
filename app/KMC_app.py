@@ -150,9 +150,14 @@ def hello_world():
     return 'Hello, World!'
 
 
-def notify_backend(file_id, result, failure_reason=None):
+def notify_backend(file_id, result, sync_url, failure_reason=None):
     """通知后端接口处理结果"""
-    url = backend_notify_api  # 更新后的后端接口URL
+    logger.info(f"开始回调后端通知 - file_id: {file_id}, result: {result}, sync_url: {sync_url}")
+    
+    if not sync_url:
+        logger.warning(f"回调失败：sync_url为空 - file_id: {file_id}")
+        return None
+        
     headers = {'token': file_id}
     payload = {
         'id': file_id,
@@ -160,10 +165,28 @@ def notify_backend(file_id, result, failure_reason=None):
     }
     if failure_reason:
         payload['failureReason'] = failure_reason
+        logger.info(f"回调包含失败原因 - file_id: {file_id}, failure_reason: {failure_reason}")
 
-    response = requests.post(url, json=payload, headers=headers)
-    logger.info("后端接口返回状态码：%s", response.status_code)
-    return response.status_code
+    try:
+        logger.info(f"发送回调请求 - file_id: {file_id}, payload: {payload}, headers: {headers}")
+        response = requests.post(sync_url, json=payload, headers=headers, timeout=30)
+        logger.info(f"回调成功 - file_id: {file_id}, 状态码: {response.status_code}, 响应内容: {response.text}")
+        
+        if response.status_code == 200:
+            logger.info(f"后端接口回调成功 - file_id: {file_id}")
+        else:
+            logger.warning(f"后端接口回调异常 - file_id: {file_id}, 状态码: {response.status_code}")
+            
+        return response.status_code
+    except requests.exceptions.Timeout:
+        logger.error(f"回调超时 - file_id: {file_id}, sync_url: {sync_url}")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.error(f"回调连接失败 - file_id: {file_id}, sync_url: {sync_url}")
+        return None
+    except Exception as e:
+        logger.error(f"回调发生异常 - file_id: {file_id}, 错误: {str(e)}")
+        return None
 
 
 def pull_file_data():
@@ -192,14 +215,20 @@ def _process_file_data(data):
                 tenant_id = data.get('tenant_id')
                 tag = data.get('tag')
                 createTime = data.get('createTime')
+                sync_url = data.get('sync_url')
 
                 logger.info("开始下载文件并处理: %s，文件路径：%s", file_name, download_path)
                 file_path = file_manager.download_pdf(download_path, file_id)
                 doc_list = file_manager.process_pdf_file(file_path, file_name)
 
                 if not doc_list:
-                    notify_backend(file_id, "FAILURE", "未能成功处理PDF文件")
                     logger.error("未能成功处理PDF文件: %s", file_id)
+                    logger.info(f"准备回调后端通知处理失败 - file_id: {file_id}, 原因: 未能成功处理PDF文件")
+                    status_code = notify_backend(file_id, "FAILURE", sync_url, "未能成功处理PDF文件")
+                    if status_code == 200:
+                        logger.info(f"PDF处理失败回调成功 - file_id: {file_id}")
+                    else:
+                        logger.error(f"PDF处理失败回调失败 - file_id: {file_id}, 状态码: {status_code}")
                     return
 
                 index_name = assistant_id
@@ -207,19 +236,34 @@ def _process_file_data(data):
                     createTime_int = int(createTime)
                 except ValueError as ve:
                     logger.error(f"Invalid createTime value: {createTime}. Error: {ve}")
-                    es_handler.notify_backend(file_id, "FAILURE", f"Invalid createTime value: {createTime}")
+                    logger.info(f"准备回调后端通知处理失败 - file_id: {file_id}, 原因: Invalid createTime value")
+                    status_code = notify_backend(file_id, "FAILURE", sync_url, f"Invalid createTime value: {createTime}")
+                    if status_code == 200:
+                        logger.info(f"createTime验证失败回调成功 - file_id: {file_id}")
+                    else:
+                        logger.error(f"createTime验证失败回调失败 - file_id: {file_id}, 状态码: {status_code}")
                     return
 
                 es_handler.create_index(index_name, doc_list, user_id, assistant_id, file_id, file_name, tenant_id, download_path, tag, createTime_int)
-                es_handler.notify_backend(file_id, "SUCCESS")
                 logger.info("文件处理完成并创建索引: %s", file_name)
+                logger.info(f"准备回调后端通知处理成功 - file_id: {file_id}")
+                status_code = notify_backend(file_id, "SUCCESS", sync_url)
+                if status_code == 200:
+                    logger.info(f"文件处理成功回调成功 - file_id: {file_id}")
+                else:
+                    logger.error(f"文件处理成功回调失败 - file_id: {file_id}, 状态码: {status_code}")
 
             # 在文件处理完成后添加 3 秒间隔
             time.sleep(1)
 
     except Exception as e:
         logger.error("处理文件数据失败: %s", e)
-        es_handler.notify_backend(file_id, "FAILURE", str(e))
+        logger.info(f"准备回调后端通知处理异常 - file_id: {file_id}, 异常: {str(e)}")
+        status_code = notify_backend(file_id, "FAILURE", sync_url, str(e))
+        if status_code == 200:
+            logger.info(f"文件处理异常回调成功 - file_id: {file_id}")
+        else:
+            logger.error(f"文件处理异常回调失败 - file_id: {file_id}, 状态码: {status_code}")
 
 
 def _thread_index_func(isFirst):
