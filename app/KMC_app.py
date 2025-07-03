@@ -2461,9 +2461,249 @@ def multi2text_stream():
 
         logger.info(f"构建的提示词: {messages}")
 
+        def clean_json_text(text):
+            """清理文本中可能导致JSON格式错误的字符"""
+            if not isinstance(text, str):
+                return text
+            
+            original_text = text
+            
+            try:
+                # 1. 首先移除所有可能导致JSON解析失败的控制字符
+                # 保留换行符(\n)、制表符(\t)和回车符(\r)，移除其他控制字符
+                import unicodedata
+                cleaned_chars = []
+                for char in text:
+                    # 获取字符的Unicode类别
+                    category = unicodedata.category(char)
+                    # 保留正常字符和部分格式字符，移除其他控制字符
+                    if category[0] != 'C' or char in ['\n', '\t', '\r']:
+                        cleaned_chars.append(char)
+                    else:
+                        # 将有问题的控制字符替换为空格或移除
+                        if char not in ['\x00']:  # 完全移除null字符
+                            cleaned_chars.append(' ')
+                
+                text = ''.join(cleaned_chars)
+                
+                # 2. 处理转义双引号：将过度转义的 \" 恢复为正常的 "
+                # 使用更安全的正则表达式
+                text = re.sub(r'\\+"', '"', text)
+                
+                # 3. 清理多余的空白字符
+                # 将多个连续空格压缩为单个空格
+                text = re.sub(r'\s+', ' ', text)
+                
+                # 4. 移除首尾空白
+                text = text.strip()
+                
+                return text
+                
+            except Exception as e:
+                logger.warning(f"字符清理失败: {e}, 原始文本长度: {len(original_text)}")
+                # 如果清理失败，至少尝试基本的安全处理
+                try:
+                    # 最基本的安全处理：只保留可打印字符
+                    safe_text = ''.join(char for char in original_text if char.isprintable() or char in ['\n', '\t', '\r'])
+                    return safe_text
+                except:
+                    # 最后的安全网：返回截断的ASCII文本
+                    return original_text.encode('ascii', 'ignore').decode('ascii')[:500]
+
+        def escape_for_json(text):
+            """正确转义JSON字符串中的特殊字符"""
+            # 按照JSON标准转义特殊字符
+            escape_dict = {
+                '"': '\\"',    # 双引号
+                '\\': '\\\\',  # 反斜杠
+                '\n': '\\n',   # 换行符
+                '\r': '\\r',   # 回车符
+                '\t': '\\t',   # 制表符
+                '\b': '\\b',   # 退格符
+                '\f': '\\f',   # 换页符
+            }
+            
+            result = ""
+            i = 0
+            while i < len(text):
+                char = text[i]
+                if char in escape_dict:
+                    result += escape_dict[char]
+                elif ord(char) < 32:  # 其他控制字符
+                    result += f'\\u{ord(char):04x}'
+                else:
+                    result += char
+                i += 1
+            
+            return result
+
+        def fix_json_text_field(json_str):
+            """智能修复JSON text字段中的换行符和特殊字符"""
+            try:
+                import re
+                # 使用更精确的方法来定位text字段
+                text_start_pattern = r'"text"\s*:\s*"'
+                match = re.search(text_start_pattern, json_str)
+                
+                if not match:
+                    return json_str  # 没有text字段，直接返回
+                
+                start_pos = match.end()  # "text": " 后的位置
+                
+                # 从这个位置开始，找到对应的结束引号
+                # 需要正确处理转义引号
+                text_content = ""
+                i = start_pos
+                while i < len(json_str):
+                    char = json_str[i]
+                    if char == '"':
+                        # 检查这个引号是否被转义
+                        backslash_count = 0
+                        j = i - 1
+                        while j >= 0 and json_str[j] == '\\':
+                            backslash_count += 1
+                            j -= 1
+                        
+                        # 如果反斜杠数量是偶数，说明这个引号没有被转义
+                        if backslash_count % 2 == 0:
+                            break  # 找到了结束引号
+                    
+                    text_content += char
+                    i += 1
+                
+                if i >= len(json_str):
+                    return json_str  # 没有找到结束引号，返回原文
+                
+                # 现在我们有了text字段的内容，需要正确转义它
+                escaped_content = escape_for_json(text_content)
+                
+                # 重新构建JSON
+                before_text = json_str[:match.start()]
+                after_text = json_str[i + 1:]  # 跳过结束引号
+                
+                fixed_json = before_text + f'"text": "{escaped_content}"' + after_text
+                
+                return fixed_json
+                
+            except Exception as e:
+                logger.warning(f"JSON修复失败: {e}")
+                return json_str
+
+        def safe_json_loads(text):
+            """安全的JSON解析，包含预处理"""
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError as e:
+                # 如果是控制字符问题，尝试修复后重新解析
+                if "Invalid control character" in str(e):
+                    try:
+                        # 先尝试修复换行符问题
+                        fixed_text = fix_json_text_field(text)
+                        return json.loads(fixed_text)
+                    except:
+                        try:
+                            # 如果还是失败，尝试通用清理
+                            cleaned_text = clean_json_text(text)
+                            return json.loads(cleaned_text)
+                        except:
+                            pass
+                # 重新抛出原始异常
+                raise e
+
         # 流式响应生成器
         def generate_stream_response():
             for part in large_model_service.get_answer_from_qwenvl_stream(messages):
+                original_part = part
+                try:
+                    # 跳过空内容
+                    if not part or not part.strip():
+                        continue
+                        
+                    # 首先尝试解析是否是双重包装的JSON
+                    parsed_outer = safe_json_loads(part)
+                    if 'text' in parsed_outer and isinstance(parsed_outer['text'], str):
+                        # 如果外层是 {"text": "..."} 格式，提取内层JSON
+                        inner_json_str = parsed_outer['text']
+                        try:
+                            # 尝试解析内层JSON
+                            inner_parsed = safe_json_loads(inner_json_str)
+                            if 'data' in inner_parsed and 'text' in inner_parsed['data']:
+                                # 清理内层text字段中的问题字符
+                                text_content = inner_parsed['data']['text']
+                                text_content = clean_json_text(text_content)
+                                inner_parsed['data']['text'] = text_content
+                                # 直接返回内层JSON，不要外层包装
+                                part = json.dumps(inner_parsed, ensure_ascii=False, separators=(',', ':'))
+                            else:
+                                # 如果内层不是预期格式，创建标准格式
+                                part = json.dumps({
+                                    "code": 200,
+                                    "msg": "success",
+                                    "data": {"text": clean_json_text(inner_json_str)}
+                                }, ensure_ascii=False, separators=(',', ':'))
+                        except json.JSONDecodeError:
+                            # 如果内层不是JSON，包装成标准格式
+                            part = json.dumps({
+                                "code": 200,
+                                "msg": "success", 
+                                "data": {"text": clean_json_text(inner_json_str)}
+                            }, ensure_ascii=False, separators=(',', ':'))
+                    else:
+                        # 如果是正常的JSON格式，直接处理
+                        if 'data' in parsed_outer and 'text' in parsed_outer['data']:
+                            text_content = parsed_outer['data']['text']
+                            text_content = clean_json_text(text_content)
+                            parsed_outer['data']['text'] = text_content
+                            part = json.dumps(parsed_outer, ensure_ascii=False, separators=(',', ':'))
+                        else:
+                            # 如果格式不符合预期，但能解析，尝试标准化
+                            part = json.dumps(parsed_outer, ensure_ascii=False, separators=(',', ':'))
+                            
+                except json.JSONDecodeError as json_err:
+                    # 如果无法解析JSON，可能是纯文本，包装成标准格式
+                    logger.warning(f"JSON解析失败，作为纯文本处理: {json_err}")
+                    
+                    # 添加详细的调试信息
+                    if hasattr(json_err, 'pos') and json_err.pos is not None:
+                        error_pos = json_err.pos
+                        if error_pos < len(part):
+                            problem_char = part[error_pos]
+                            logger.error(f"问题字符在位置 {error_pos}: ASCII码={ord(problem_char)}, 字符='{repr(problem_char)}'")
+                            
+                            # 显示错误位置周围的内容
+                            start = max(0, error_pos - 10)
+                            end = min(len(part), error_pos + 10)
+                            context = part[start:end]
+                            logger.error(f"错误位置上下文: {repr(context)}")
+                    
+                    part = json.dumps({
+                        "code": 200,
+                        "msg": "success",
+                        "data": {"text": clean_json_text(part)}
+                    }, ensure_ascii=False, separators=(',', ':'))
+                except Exception as e:
+                    logger.warning(f"处理JSON时出错: {e}, 原始内容长度: {len(original_part)}")
+                    # 降级处理：包装成安全的格式
+                    part = json.dumps({
+                        "code": 200,
+                        "msg": "success",
+                        "data": {"text": str(original_part)[:1000]}  # 限制长度防止过大
+                    }, ensure_ascii=False, separators=(',', ':'))
+                
+                # 最终验证：确保输出的是有效JSON
+                try:
+                    safe_json_loads(part)  # 最终验证
+                except json.JSONDecodeError as e:
+                    # 这种情况应该很少发生，因为我们已经处理了大部分情况
+                    logger.error(f"最终JSON验证失败: {e}")
+                    logger.error(f"问题内容: {part}")
+                    # 最后的安全网：返回最简单的有效JSON
+                    part = json.dumps({
+                        "code": 200,
+                        "msg": "success",
+                        "data": {"text": "[内容处理错误]"}
+                    }, ensure_ascii=False, separators=(',', ':'))
+                
                 if not part.endswith('\n'):
                     part += '\n'
                 yield part

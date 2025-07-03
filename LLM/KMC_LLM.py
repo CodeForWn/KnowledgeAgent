@@ -693,11 +693,18 @@ class LargeModelAPIService:
                         yield '{"code": 200, "msg": "success", "data": {"text": "finish!"}}\n'
                         break  # 停止流式输出
 
-                    # 返回每个chunk的内容，格式为 JSON
-                    yield f'{{"code": 200, "msg": "success", "data": {{"text": "{accumulated_text}"}}}}\n'
+                    # 使用json.dumps确保正确的JSON转义
+                    response_data = {
+                        "code": 200,
+                        "msg": "success",
+                        "data": {"text": accumulated_text}
+                    }
+                    yield json.dumps(response_data, ensure_ascii=False, separators=(',', ':')) + '\n'
 
 
     def get_answer_from_qwenvl_stream(self, prompt):
+        import json  # 确保导入json模块
+        
         client = OpenAI(
             api_key="sk-072837472de74c139551100f63906bd8",  # 直接填你的API KEY
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 通义千问VL的接口地址
@@ -731,7 +738,13 @@ class LargeModelAPIService:
                         yield '{"code": 200, "msg": "success", "data": {"text": "finish!"}}\n'
                         break
 
-                    yield f'{{"code": 200, "msg": "success", "data": {{"text": "{accumulated_text}"}}}}\n'
+                    # 使用json.dumps确保正确的JSON转义
+                    response_data = {
+                        "code": 200,
+                        "msg": "success",
+                        "data": {"text": accumulated_text}
+                    }
+                    yield json.dumps(response_data, ensure_ascii=False, separators=(',', ':')) + '\n'
 
 
 #
